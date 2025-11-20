@@ -39,7 +39,7 @@ const getSidebarItems = (role: UserRole) => {
         { name: "HRMS", icon: Users, path: "hrms" },
         { name: "CRM", icon: Building2, path: "crm" },
         { name: "ERP", icon: ClipboardList, path: "erp" },
-         { name: "workissue", icon: ClipboardList, path: "workissue" },
+        //  { name: "workissue", icon: ClipboardList, path: "workissue" },
         { name: "Billing & Finance", icon: DollarSign, path: "billing" },
         { name: "Operations", icon: ClipboardList, path: "operations" },
         { name: "Reports", icon: BarChart3, path: "reports" },
