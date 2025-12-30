@@ -1,3 +1,5 @@
+"use client";
+
 import { DashboardHeader } from "@/components/shared/DashboardHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -10,110 +12,80 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Search, Plus, Edit, Trash2, Shield, Briefcase, Users, Mail, Phone, MapPin, UserCog } from "lucide-react";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
+import userService from "@/services/userService"; // default import for the service
+import type { User, UserRole, CreateUserData } from "@/types/user";
+
+// Utility functions for date handling
+const formatDateForDisplay = (dateValue: any): string => {
+  if (!dateValue) return 'N/A';
+  
+  try {
+    if (typeof dateValue === 'string') {
+      // Try to extract date part from ISO string
+      const dateMatch = dateValue.match(/^(\d{4}-\d{2}-\d{2})/);
+      if (dateMatch) {
+        return dateMatch[1];
+      }
+      return dateValue;
+    }
+    
+    const date = new Date(dateValue);
+    if (isNaN(date.getTime())) return 'N/A';
+    
+    return date.toISOString().split('T')[0];
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return 'N/A';
+  }
+};
+
+const formatDateForAPI = (dateValue: any): string => {
+  if (!dateValue) return new Date().toISOString();
+  
+  try {
+    const date = new Date(dateValue);
+    if (isNaN(date.getTime())) return new Date().toISOString();
+    
+    return date.toISOString();
+  } catch (error) {
+    console.error('Error formatting date for API:', error);
+    return new Date().toISOString();
+  }
+};
 
 // Types
-interface User {
-  id: string;
+interface FormUserData {
   name: string;
   email: string;
-  role: 'admin' | 'manager' | 'supervisor' | 'employee';
+  password: string;
+  role: UserRole;
   department: string;
   site: string;
   phone: string;
   status: 'active' | 'inactive';
   joinDate: string;
+  username?: string;
+  firstName?: string;
+  lastName?: string;
 }
-
-// Indian dummy data
-const initialUsers: User[] = [
-  {
-    id: '1',
-    name: 'Rajesh Kumar',
-    email: 'rajesh.kumar@company.com',
-    role: 'admin',
-    department: 'IT',
-    site: 'Mumbai Office',
-    phone: '9876543210',
-    status: 'active',
-    joinDate: '2023-01-15'
-  },
-  {
-    id: '2',
-    name: 'Priya Sharma',
-    email: 'priya.sharma@company.com',
-    role: 'manager',
-    department: 'HR',
-    site: 'Delhi Branch',
-    phone: '9876543211',
-    status: 'active',
-    joinDate: '2023-02-20'
-  },
-  {
-    id: '3',
-    name: 'Amit Patel',
-    email: 'amit.patel@company.com',
-    role: 'manager',
-    department: 'Operations',
-    site: 'Bangalore Tech Park',
-    phone: '9876543212',
-    status: 'inactive',
-    joinDate: '2023-03-10'
-  },
-  {
-    id: '4',
-    name: 'Sanjay Singh',
-    email: 'sanjay.singh@company.com',
-    role: 'supervisor',
-    department: 'IT',
-    site: 'Mumbai Office',
-    phone: '9876543213',
-    status: 'active',
-    joinDate: '2023-04-05'
-  },
-  {
-    id: '5',
-    name: 'Neha Reddy',
-    email: 'neha.reddy@company.com',
-    role: 'supervisor',
-    department: 'HR',
-    site: 'Delhi Branch',
-    phone: '9876543214',
-    status: 'active',
-    joinDate: '2023-05-12'
-  },
-  {
-    id: '6',
-    name: 'Rahul Verma',
-    email: 'rahul.verma@company.com',
-    role: 'employee',
-    department: 'IT',
-    site: 'Mumbai Office',
-    phone: '9876543216',
-    status: 'active',
-    joinDate: '2023-06-18'
-  },
-  {
-    id: '7',
-    name: 'Sunita Iyer',
-    email: 'sunita.iyer@company.com',
-    role: 'employee',
-    department: 'HR',
-    site: 'Delhi Branch',
-    phone: '9876543217',
-    status: 'active',
-    joinDate: '2023-07-22'
-  }
-];
 
 const departments = ['IT', 'HR', 'Finance', 'Operations', 'Marketing', 'Sales', 'Admin'];
 const sites = ['Mumbai Office', 'Delhi Branch', 'Bangalore Tech Park', 'Chennai Center', 'Hyderabad Campus'];
-const roles = ['admin', 'manager', 'supervisor', 'employee'];
+const roles: UserRole[] = ['admin', 'manager', 'supervisor', 'employee'];
 
 // User Form Component
-const UserForm = ({ onSubmit, isEditing = false, user = null }: any) => {
-  const [formData, setFormData] = useState({
+const UserForm = ({ 
+  onSubmit, 
+  isEditing = false, 
+  user = null 
+}: { 
+  onSubmit: (data: FormUserData) => void;
+  isEditing?: boolean;
+  user?: User | null;
+}) => {
+  const [formData, setFormData] = useState<FormUserData>({
     name: user?.name || '',
     email: user?.email || '',
     password: '',
@@ -122,7 +94,12 @@ const UserForm = ({ onSubmit, isEditing = false, user = null }: any) => {
     site: user?.site || '',
     phone: user?.phone || '',
     status: user?.status || 'active',
-    joinDate: user?.joinDate || new Date().toISOString().split('T')[0]
+    joinDate: user?.joinDate ? 
+      (typeof user.joinDate === 'string' ? 
+        user.joinDate.split('T')[0] : 
+        new Date(user.joinDate).toISOString().split('T')[0]
+      ) : 
+      new Date().toISOString().split('T')[0]
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -133,7 +110,7 @@ const UserForm = ({ onSubmit, isEditing = false, user = null }: any) => {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor="name">Full Name</Label>
+        <Label htmlFor="name">Full Name *</Label>
         <Input
           value={formData.name}
           onChange={(e) => setFormData({...formData, name: e.target.value})}
@@ -144,7 +121,7 @@ const UserForm = ({ onSubmit, isEditing = false, user = null }: any) => {
       
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="email">Email *</Label>
           <Input
             type="email"
             value={formData.email}
@@ -154,7 +131,7 @@ const UserForm = ({ onSubmit, isEditing = false, user = null }: any) => {
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="password">Password</Label>
+          <Label htmlFor="password">Password {!isEditing && '*'}</Label>
           <Input
             type="password"
             value={formData.password}
@@ -167,8 +144,11 @@ const UserForm = ({ onSubmit, isEditing = false, user = null }: any) => {
       
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Role</Label>
-          <Select value={formData.role} onValueChange={(value) => setFormData({...formData, role: value})}>
+          <Label>Role *</Label>
+          <Select 
+            value={formData.role} 
+            onValueChange={(value: UserRole) => setFormData({...formData, role: value})}
+          >
             <SelectTrigger>
               <SelectValue placeholder="Select role" />
             </SelectTrigger>
@@ -182,8 +162,11 @@ const UserForm = ({ onSubmit, isEditing = false, user = null }: any) => {
           </Select>
         </div>
         <div className="space-y-2">
-          <Label>Department</Label>
-          <Select value={formData.department} onValueChange={(value) => setFormData({...formData, department: value})}>
+          <Label>Department *</Label>
+          <Select 
+            value={formData.department} 
+            onValueChange={(value) => setFormData({...formData, department: value})}
+          >
             <SelectTrigger>
               <SelectValue placeholder="Select department" />
             </SelectTrigger>
@@ -198,8 +181,11 @@ const UserForm = ({ onSubmit, isEditing = false, user = null }: any) => {
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Site</Label>
-          <Select value={formData.site} onValueChange={(value) => setFormData({...formData, site: value})}>
+          <Label>Site *</Label>
+          <Select 
+            value={formData.site} 
+            onValueChange={(value) => setFormData({...formData, site: value})}
+          >
             <SelectTrigger>
               <SelectValue placeholder="Select site" />
             </SelectTrigger>
@@ -211,7 +197,7 @@ const UserForm = ({ onSubmit, isEditing = false, user = null }: any) => {
           </Select>
         </div>
         <div className="space-y-2">
-          <Label>Join Date</Label>
+          <Label>Join Date *</Label>
           <Input
             type="date"
             value={formData.joinDate}
@@ -223,7 +209,7 @@ const UserForm = ({ onSubmit, isEditing = false, user = null }: any) => {
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="phone">Phone</Label>
+          <Label htmlFor="phone">Phone *</Label>
           <Input
             value={formData.phone}
             onChange={(e) => setFormData({...formData, phone: e.target.value})}
@@ -232,8 +218,11 @@ const UserForm = ({ onSubmit, isEditing = false, user = null }: any) => {
           />
         </div>
         <div className="space-y-2">
-          <Label>Status</Label>
-          <Select value={formData.status} onValueChange={(value) => setFormData({...formData, status: value})}>
+          <Label>Status *</Label>
+          <Select 
+            value={formData.status} 
+            onValueChange={(value: 'active' | 'inactive') => setFormData({...formData, status: value})}
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -261,67 +250,144 @@ const UserList = ({
 }: { 
   title: string;
   icon: React.ElementType;
-  roleFilter: User['role'][];
+  roleFilter: UserRole[];
   description: string;
 }) => {
-  const [users, setUsers] = useState<User[]>(initialUsers);
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const filteredUsers = users
-    .filter(user => roleFilter.includes(user.role))
-    .filter(user =>
-      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.department.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.site.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+  const fetchUsers = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await userService.getAllUsers();
+      const filteredUsers = data.allUsers.filter(user => 
+        roleFilter.includes(user.role)
+      );
+      setUsers(filteredUsers);
+    } catch (error) {
+      toast.error('Failed to fetch users');
+    } finally {
+      setLoading(false);
+    }
+  }, [roleFilter]);
 
-  const handleAddUser = (formData: any) => {
-    const newUser: User = {
-      id: (users.length + 1).toString(),
-      ...formData
-    };
-    setUsers([newUser, ...users]);
-    toast.success(`${title.slice(0, -1)} added successfully`);
-    setDialogOpen(false);
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  const filteredUsers = users.filter(user =>
+    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.department.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.site.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handleAddUser = async (formData: FormUserData) => {
+    try {
+      // Split name into firstName and lastName
+      const [firstName, ...lastNameParts] = formData.name.split(' ');
+      const lastName = lastNameParts.join(' ');
+      
+      const userData: CreateUserData = {
+        username: formData.email.split('@')[0],
+        email: formData.email,
+        password: formData.password,
+        role: formData.role,
+        firstName,
+        lastName,
+        department: formData.department,
+        site: formData.site,
+        phone: formData.phone,
+        joinDate: formatDateForAPI(formData.joinDate)
+      };
+
+      const newUser = await userService.createUser(userData);
+      setUsers(prev => [newUser, ...prev]);
+      toast.success(`${title.slice(0, -1)} added successfully`);
+      setDialogOpen(false);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to add user');
+    }
   };
 
-  const handleEditUser = (formData: any, userId: string) => {
-    setUsers(users.map(user =>
-      user.id === userId ? { ...user, ...formData } : user
-    ));
-    toast.success(`${title.slice(0, -1)} updated successfully`);
+  const handleEditUser = async (formData: FormUserData, userId: string) => {
+    try {
+      // Split name into firstName and lastName
+      const [firstName, ...lastNameParts] = formData.name.split(' ');
+      const lastName = lastNameParts.join(' ');
+      
+      const updateData = {
+        name: formData.name,
+        email: formData.email,
+        role: formData.role,
+        department: formData.department,
+        site: formData.site,
+        phone: formData.phone,
+        isActive: formData.status === 'active',
+        firstName,
+        lastName,
+        joinDate: formatDateForAPI(formData.joinDate)
+      };
+
+      const updatedUser = await userService.updateUser(userId, updateData);
+      setUsers(prev => prev.map(user =>
+        user._id === userId ? { ...user, ...updatedUser } : user
+      ));
+      toast.success(`${title.slice(0, -1)} updated successfully`);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to update user');
+    }
   };
 
-  const handleDeleteUser = (userId: string) => {
-    setUsers(users.filter(user => user.id !== userId));
-    toast.success(`${title.slice(0, -1)} deleted successfully`);
+  const handleDeleteUser = async (userId: string) => {
+    try {
+      await userService.deleteUser(userId);
+      setUsers(prev => prev.filter(user => user._id !== userId));
+      toast.success(`${title.slice(0, -1)} deleted successfully`);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to delete user');
+    }
   };
 
-  const handleToggleStatus = (userId: string) => {
-    setUsers(users.map(user =>
-      user.id === userId ? { 
-        ...user, 
-        status: user.status === 'active' ? 'inactive' : 'active' 
-      } : user
-    ));
-    toast.success('Status updated successfully');
+  const handleToggleStatus = async (userId: string) => {
+    try {
+      const updatedUser = await userService.toggleUserStatus(userId);
+      setUsers(prev => prev.map(user =>
+        user._id === userId ? updatedUser : user
+      ));
+      toast.success('Status updated successfully');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to update status');
+    }
   };
 
-  const getRoleColor = (role: User['role']) => {
+  const getRoleColor = (role: UserRole) => {
     const colors = {
       admin: 'destructive',
       manager: 'default',
       supervisor: 'secondary',
-      employee: 'outline'
+      employee: 'outline',
+      super_admin: 'destructive'
     };
     return colors[role];
   };
 
-  const getStatusColor = (status: User['status']) => {
+  const getStatusColor = (status: 'active' | 'inactive') => {
     return status === 'active' ? 'default' : 'secondary';
   };
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center">
+          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto"></div>
+          <p className="mt-2 text-muted-foreground">Loading {title.toLowerCase()}...</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
@@ -383,12 +449,12 @@ const UserList = ({
               </TableRow>
             ) : (
               filteredUsers.map((user) => (
-                <TableRow key={user.id}>
+                <TableRow key={user._id}>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-2">
                       <div className="flex-1">
                         <div>{user.name}</div>
-                        <div className="text-sm text-muted-foreground">ID: {user.id}</div>
+                        <div className="text-sm text-muted-foreground">ID: {user.id || user._id.slice(-6)}</div>
                       </div>
                     </div>
                   </TableCell>
@@ -399,7 +465,7 @@ const UserList = ({
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={getRoleColor(user.role) as "default" | "destructive" | "outline" | "secondary"}>
+                    <Badge variant={getRoleColor(user.role) as any}>
                       {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
                     </Badge>
                   </TableCell>
@@ -416,7 +482,7 @@ const UserList = ({
                       {user.phone}
                     </div>
                   </TableCell>
-                  <TableCell>{user.joinDate}</TableCell>
+                  <TableCell>{formatDateForDisplay(user.joinDate)}</TableCell>
                   <TableCell>
                     <Badge variant={getStatusColor(user.status)}>
                       {user.status}
@@ -427,7 +493,7 @@ const UserList = ({
                       <Button 
                         variant="outline" 
                         size="sm"
-                        onClick={() => handleToggleStatus(user.id)}
+                        onClick={() => handleToggleStatus(user._id)}
                       >
                         {user.status === 'active' ? 'Deactivate' : 'Activate'}
                       </Button>
@@ -443,7 +509,7 @@ const UserList = ({
                           </DialogHeader>
                           <UserForm 
                             user={user} 
-                            onSubmit={(data: any) => handleEditUser(data, user.id)}
+                            onSubmit={(data) => handleEditUser(data, user._id)}
                             isEditing={true}
                           />
                         </DialogContent>
@@ -451,7 +517,7 @@ const UserList = ({
                       <Button 
                         variant="destructive" 
                         size="sm"
-                        onClick={() => handleDeleteUser(user.id)}
+                        onClick={() => handleDeleteUser(user._id)}
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>
@@ -469,52 +535,38 @@ const UserList = ({
 
 // Stats Cards Component
 const StatsCards = () => {
-  const users = initialUsers;
-  
-  const stats = [
-    {
-      title: "Total Users",
-      value: users.length,
-      icon: Users,
-      description: "All system users",
-      color: "text-blue-600"
-    },
-    {
-      title: "Admins",
-      value: users.filter(u => u.role === 'admin').length,
-      icon: UserCog,
-      description: "System administrators",
-      color: "text-red-600"
-    },
-    {
-      title: "Managers",
-      value: users.filter(u => u.role === 'manager').length,
-      icon: Briefcase,
-      description: "Department managers",
-      color: "text-green-600"
-    },
-    {
-      title: "Supervisors",
-      value: users.filter(u => u.role === 'supervisor').length,
-      icon: Shield,
-      description: "Team supervisors",
-      color: "text-purple-600"
-    },
-    {
-      title: "Employees",
-      value: users.filter(u => u.role === 'employee').length,
-      icon: Users,
-      description: "Regular employees",
-      color: "text-orange-600"
-    },
-    {
-      title: "Active Users",
-      value: users.filter(u => u.status === 'active').length,
-      icon: Users,
-      description: "Currently active",
-      color: "text-green-600"
+  const [stats, setStats] = useState([
+    { title: "Total Users", value: 0, icon: Users, description: "All system users", color: "text-blue-600" },
+    { title: "Admins", value: 0, icon: UserCog, description: "System administrators", color: "text-red-600" },
+    { title: "Managers", value: 0, icon: Briefcase, description: "Department managers", color: "text-green-600" },
+    { title: "Supervisors", value: 0, icon: Shield, description: "Team supervisors", color: "text-purple-600" },
+    { title: "Employees", value: 0, icon: Users, description: "Regular employees", color: "text-orange-600" },
+    { title: "Active Users", value: 0, icon: Users, description: "Currently active", color: "text-green-600" }
+  ]);
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const fetchStats = async () => {
+    try {
+      const data = await userService.getAllUsers();
+      const users = data.allUsers;
+      
+      const newStats = [
+        { ...stats[0], value: users.length },
+        { ...stats[1], value: users.filter(u => u.role === 'admin').length },
+        { ...stats[2], value: users.filter(u => u.role === 'manager').length },
+        { ...stats[3], value: users.filter(u => u.role === 'supervisor').length },
+        { ...stats[4], value: users.filter(u => u.role === 'employee').length },
+        { ...stats[5], value: users.filter(u => u.status === 'active').length }
+      ];
+      
+      setStats(newStats);
+    } catch (error) {
+      console.error('Failed to fetch stats:', error);
     }
-  ];
+  };
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 mb-6">
