@@ -155,9 +155,6 @@ export const getSupervisorEmployees = async (req: Request, res: Response) => {
       });
     }
     
-    // First, check if Employee model is properly imported
-    console.log('🔍 Employee model:', Employee ? 'Loaded' : 'Not loaded');
-    
     // Check total employees in database
     const totalEmployees = await Employee.countDocuments();
     console.log(`📊 Total employees in Employee collection: ${totalEmployees}`);

@@ -300,6 +300,8 @@ router.get('/stats', authMiddleware, async (req: AuthRequest, res: Response) => 
   }
 });
 
+
+
 // Toggle user status
 router.patch('/:id/toggle-status', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {

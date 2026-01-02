@@ -15,6 +15,14 @@ import Employee from './models/Employee';
 import EPFForm from './models/EPFForm';
 // import Document from './models/Document';
 import deductionRoutes from './routes/deductionRoutes';
+import payrollRoutes from './routes/payrollRoutes';
+import salaryStructureRoutes from './routes/salaryStructureRoutes';
+import salarySlipRoutes from './routes/salarySlipRoutes';
+import leaveRoutes from './routes/leaveRoutes';
+import siteRoutes from './routes/siteRoutes';
+import clientRoutes from './routes/clientRoutes';
+import tasksRoutes from './routes/tasksRoutes';
+import inventoryRoutes from './routes/inventoryRoutes';
 
 const app: Application = express();
 
