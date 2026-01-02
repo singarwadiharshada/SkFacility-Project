@@ -65,19 +65,14 @@ interface Communication {
   followUpDate?: string;
   createdAt: string;
 }
-const api = {
-  async getCRMStats() {
-    const timestamp = new Date().getTime();
-    const res = await fetch(`${API_BASE_URL}/crm/stats?t=${timestamp}`);
-    if (!res.ok) throw new Error('Failed to fetch CRM stats');
-    return res.json();
-  },
 
+// API Service Functions for your backend (Simplified for Admin)
+const api = {
+  // Clients
   async getClients(search?: string) {
-    const timestamp = new Date().getTime();
     const url = search 
-      ? `${API_BASE_URL}/crm/clients?search=${encodeURIComponent(search)}&t=${timestamp}` 
-      : `${API_BASE_URL}/crm/clients?t=${timestamp}`;
+      ? `${API_BASE_URL}/crm/clients?search=${encodeURIComponent(search)}` 
+      : `${API_BASE_URL}/crm/clients`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('Failed to fetch clients');
     return res.json();
@@ -92,30 +87,6 @@ const api = {
     if (!res.ok) {
       const error = await res.json();
       throw new Error(error.message || 'Failed to create client');
-    }
-    return res.json();
-  },
-
-  async updateClient(id: string, data: Partial<Client>) {
-    const res = await fetch(`${API_BASE_URL}/crm/clients/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-    if (!res.ok) {
-      const error = await res.json();
-      throw new Error(error.message || 'Failed to update client');
-    }
-    return res.json();
-  },
-
-  async deleteClient(id: string) {
-    const res = await fetch(`${API_BASE_URL}/crm/clients/${id}`, {
-      method: 'DELETE'
-    });
-    if (!res.ok) {
-      const error = await res.json();
-      throw new Error(error.message || 'Failed to delete client');
     }
     return res.json();
   },
@@ -143,19 +114,6 @@ const api = {
     return res.json();
   },
 
-  async updateLead(id: string, data: Partial<Lead>) {
-    const res = await fetch(`${API_BASE_URL}/crm/leads/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-    if (!res.ok) {
-      const error = await res.json();
-      throw new Error(error.message || 'Failed to update lead');
-    }
-    return res.json();
-  },
-
   async updateLeadStatus(id: string, status: Lead['status']) {
     const res = await fetch(`${API_BASE_URL}/crm/leads/${id}/status`, {
       method: 'PATCH',
@@ -165,17 +123,6 @@ const api = {
     if (!res.ok) {
       const error = await res.json();
       throw new Error(error.message || 'Failed to update lead status');
-    }
-    return res.json();
-  },
-
-  async deleteLead(id: string) {
-    const res = await fetch(`${API_BASE_URL}/crm/leads/${id}`, {
-      method: 'DELETE'
-    });
-    if (!res.ok) {
-      const error = await res.json();
-      throw new Error(error.message || 'Failed to delete lead');
     }
     return res.json();
   },
@@ -202,17 +149,6 @@ const api = {
     }
     return res.json();
   },
-
-  async deleteCommunication(id: string) {
-    const res = await fetch(`${API_BASE_URL}/crm/communications/${id}`, {
-      method: 'DELETE'
-    });
-    if (!res.ok) {
-      const error = await res.json();
-      throw new Error(error.message || 'Failed to delete communication');
-    }
-    return res.json();
-  }
 };
 
 // Indian Data constants
@@ -221,26 +157,22 @@ const industries = ["IT Services", "Manufacturing", "Banking", "Healthcare", "Ed
 const leadSources = ["Website", "Referral", "Cold Call", "Social Media", "Email Campaign", "Trade Show"];
 const communicationTypes = ["call", "email", "meeting", "demo"];
 
-const CRM = () => {
+const AdminCRM = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [clientDialogOpen, setClientDialogOpen] = useState(false);
   const [leadDialogOpen, setLeadDialogOpen] = useState(false);
   const [commDialogOpen, setCommDialogOpen] = useState(false);
   const [viewClientDialog, setViewClientDialog] = useState<string | null>(null);
   const [viewLeadDialog, setViewLeadDialog] = useState<string | null>(null);
-  const [editingClient, setEditingClient] = useState<Client | null>(null);
-  const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [loading, setLoading] = useState({
     clients: false,
     leads: false,
-    communications: false,
-    stats: false
+    communications: false
   });
 
   const [stats, setStats] = useState({
     totalClients: 0,
     activeLeads: 0,
-    totalValue: "₹0",
     communications: 0
   });
 
@@ -256,27 +188,20 @@ const CRM = () => {
   // Fetch all data
   const fetchAllData = async () => {
     await Promise.all([
-      fetchStats(),
       fetchClients(),
       fetchLeads(),
       fetchCommunications()
     ]);
+    updateStats();
   };
 
-  // Fetch Stats
-  const fetchStats = async () => {
-    try {
-      setLoading(prev => ({ ...prev, stats: true }));
-      const result = await api.getCRMStats();
-      if (result.success) {
-        setStats(result.data);
-      }
-    } catch (error: any) {
-      console.error("Failed to fetch stats:", error);
-      toast.error("Failed to load CRM statistics");
-    } finally {
-      setLoading(prev => ({ ...prev, stats: false }));
-    }
+  // Update stats from current data
+  const updateStats = () => {
+    setStats({
+      totalClients: clients.length,
+      activeLeads: leads.filter(l => !l.status.includes('closed')).length,
+      communications: communications.length
+    });
   };
 
   // Fetch Clients
@@ -365,50 +290,6 @@ const CRM = () => {
     }
   };
 
-  const handleEditClient = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!editingClient) return;
-    
-    const formData = new FormData(e.currentTarget);
-    
-    try {
-      const updateData = {
-        name: formData.get("name") as string,
-        company: formData.get("company") as string,
-        email: formData.get("email") as string,
-        phone: formData.get("phone") as string,
-        address: formData.get("address") as string,
-        city: formData.get("city") as string,
-        value: formData.get("value") as string,
-        industry: formData.get("industry") as string,
-        contactPerson: formData.get("contactPerson") as string,
-      };
-
-      const result = await api.updateClient(editingClient._id, updateData);
-      if (result.success) {
-        toast.success("Client updated successfully!");
-        setEditingClient(null);
-        fetchAllData();
-      }
-    } catch (error: any) {
-      toast.error(error.message || "Failed to update client");
-    }
-  };
-
-  const handleDeleteClient = async (clientId: string) => {
-    if (!confirm("Are you sure you want to delete this client?")) return;
-    
-    try {
-      const result = await api.deleteClient(clientId);
-      if (result.success) {
-        toast.success("Client deleted successfully!");
-        fetchAllData();
-      }
-    } catch (error: any) {
-      toast.error(error.message || "Failed to delete client");
-    }
-  };
-
   // Lead Functions
   const handleAddLead = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -436,50 +317,6 @@ const CRM = () => {
       }
     } catch (error: any) {
       toast.error(error.message || "Failed to add lead");
-    }
-  };
-
-  const handleEditLead = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!editingLead) return;
-    
-    const formData = new FormData(e.currentTarget);
-    
-    try {
-      const updateData = {
-        name: formData.get("name") as string,
-        company: formData.get("company") as string,
-        email: formData.get("email") as string,
-        phone: formData.get("phone") as string,
-        source: formData.get("source") as string,
-        value: formData.get("value") as string,
-        assignedTo: formData.get("assignedTo") as string,
-        followUpDate: formData.get("followUpDate") as string,
-        notes: formData.get("notes") as string,
-      };
-
-      const result = await api.updateLead(editingLead._id, updateData);
-      if (result.success) {
-        toast.success("Lead updated successfully!");
-        setEditingLead(null);
-        fetchAllData();
-      }
-    } catch (error: any) {
-      toast.error(error.message || "Failed to update lead");
-    }
-  };
-
-  const handleDeleteLead = async (leadId: string) => {
-    if (!confirm("Are you sure you want to delete this lead?")) return;
-    
-    try {
-      const result = await api.deleteLead(leadId);
-      if (result.success) {
-        toast.success("Lead deleted successfully!");
-        fetchAllData();
-      }
-    } catch (error: any) {
-      toast.error(error.message || "Failed to delete lead");
     }
   };
 
@@ -519,20 +356,6 @@ const CRM = () => {
       }
     } catch (error: any) {
       toast.error(error.message || "Failed to log communication");
-    }
-  };
-
-  const handleDeleteCommunication = async (commId: string) => {
-    if (!confirm("Are you sure you want to delete this communication?")) return;
-    
-    try {
-      const result = await api.deleteCommunication(commId);
-      if (result.success) {
-        toast.success("Communication deleted!");
-        fetchAllData();
-      }
-    } catch (error: any) {
-      toast.error(error.message || "Failed to delete communication");
     }
   };
 
@@ -616,15 +439,15 @@ const CRM = () => {
         animate={{ opacity: 1, y: 0 }}
         className="p-6 space-y-6"
       >
-        {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-4">
+        {/* Stats Cards - Simplified for Admin */}
+        <div className="grid gap-4 md:grid-cols-3">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium">Total Clients</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {loading.stats ? <Loader2 className="h-6 w-6 animate-spin" /> : stats.totalClients}
+                {loading.clients ? <Loader2 className="h-6 w-6 animate-spin" /> : stats.totalClients}
               </div>
             </CardContent>
           </Card>
@@ -634,17 +457,7 @@ const CRM = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-primary">
-                {loading.stats ? <Loader2 className="h-6 w-6 animate-spin" /> : stats.activeLeads}
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Total Value</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {loading.stats ? <Loader2 className="h-6 w-6 animate-spin" /> : stats.totalValue}
+                {loading.leads ? <Loader2 className="h-6 w-6 animate-spin" /> : stats.activeLeads}
               </div>
             </CardContent>
           </Card>
@@ -654,7 +467,7 @@ const CRM = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {loading.stats ? <Loader2 className="h-6 w-6 animate-spin" /> : stats.communications}
+                {loading.communications ? <Loader2 className="h-6 w-6 animate-spin" /> : stats.communications}
               </div>
             </CardContent>
           </Card>
@@ -668,11 +481,11 @@ const CRM = () => {
             <TabsTrigger value="communications">Communications</TabsTrigger>
           </TabsList>
 
-          {/* Clients Tab */}
+          {/* Clients Tab - Admin can only add and view */}
           <TabsContent value="clients">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <CardTitle>Client List</CardTitle>
+                <CardTitle>Client Management</CardTitle>
                 <div className="flex gap-2">
                   <div className="relative">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
@@ -779,7 +592,7 @@ const CRM = () => {
                         <TableHead>Industry</TableHead>
                         <TableHead>Value</TableHead>
                         <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
+                        <TableHead>Details</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -812,179 +625,51 @@ const CRM = () => {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <div className="flex gap-2">
-                              <Dialog>
-                                <DialogTrigger asChild>
-                                  <Button 
-                                    variant="outline" 
-                                    size="sm" 
-                                    onClick={() => setViewClientDialog(client._id)}
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                </DialogTrigger>
-                                <DialogContent className="max-w-2xl">
-                                  <DialogHeader>
-                                    <DialogTitle>Client Details</DialogTitle>
-                                  </DialogHeader>
-                                  {viewClientDialog && getClientById(viewClientDialog) && (() => {
-                                    const client = getClientById(viewClientDialog)!;
-                                    return (
-                                      <div className="space-y-4">
-                                        <div className="grid grid-cols-2 gap-4">
-                                          <div><strong>Name:</strong> {client.name}</div>
-                                          <div><strong>Company:</strong> {client.company}</div>
-                                          <div><strong>Email:</strong> {client.email}</div>
-                                          <div><strong>Phone:</strong> {client.phone}</div>
-                                          <div><strong>Industry:</strong> {client.industry}</div>
-                                          <div><strong>City:</strong> {client.city}</div>
-                                          <div><strong>Value:</strong> {client.value}</div>
-                                          <div><strong>Status:</strong> {client.status}</div>
-                                          <div><strong>Contact Person:</strong> {client.contactPerson || "N/A"}</div>
-                                          <div><strong>Created:</strong> {formatDate(client.createdAt)}</div>
-                                          <div><strong>Updated:</strong> {formatDate(client.updatedAt)}</div>
-                                        </div>
-                                        {client.address && (
-                                          <div>
-                                            <strong>Address:</strong>
-                                            <div className="flex items-center gap-1 mt-1">
-                                              <MapPin className="h-3 w-3" />
-                                              {client.address}
-                                            </div>
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  onClick={() => setViewClientDialog(client._id)}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="max-w-2xl">
+                                <DialogHeader>
+                                  <DialogTitle>Client Details</DialogTitle>
+                                </DialogHeader>
+                                {viewClientDialog && getClientById(viewClientDialog) && (() => {
+                                  const client = getClientById(viewClientDialog)!;
+                                  return (
+                                    <div className="space-y-4">
+                                      <div className="grid grid-cols-2 gap-4">
+                                        <div><strong>Name:</strong> {client.name}</div>
+                                        <div><strong>Company:</strong> {client.company}</div>
+                                        <div><strong>Email:</strong> {client.email}</div>
+                                        <div><strong>Phone:</strong> {client.phone}</div>
+                                        <div><strong>Industry:</strong> {client.industry}</div>
+                                        <div><strong>City:</strong> {client.city}</div>
+                                        <div><strong>Value:</strong> {client.value}</div>
+                                        <div><strong>Status:</strong> {client.status}</div>
+                                        <div><strong>Contact Person:</strong> {client.contactPerson || "N/A"}</div>
+                                        <div><strong>Created:</strong> {formatDate(client.createdAt)}</div>
+                                        <div><strong>Updated:</strong> {formatDate(client.updatedAt)}</div>
+                                      </div>
+                                      {client.address && (
+                                        <div>
+                                          <strong>Address:</strong>
+                                          <div className="flex items-center gap-1 mt-1">
+                                            <MapPin className="h-3 w-3" />
+                                            {client.address}
                                           </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })()}
-                                </DialogContent>
-                              </Dialog>
-                              
-                              <Dialog open={!!editingClient} onOpenChange={(open) => !open && setEditingClient(null)}>
-                                <DialogTrigger asChild>
-                                  <Button 
-                                    variant="outline" 
-                                    size="sm"
-                                    onClick={() => setEditingClient(client)}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                </DialogTrigger>
-                                {editingClient && editingClient._id === client._id && (
-                                  <DialogContent className="max-w-2xl">
-                                    <DialogHeader>
-                                      <DialogTitle>Edit Client</DialogTitle>
-                                    </DialogHeader>
-                                    <form onSubmit={handleEditClient} className="space-y-4">
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-name">Client Name</Label>
-                                          <Input 
-                                            id="edit-name" 
-                                            name="name" 
-                                            defaultValue={editingClient.name} 
-                                            required 
-                                          />
                                         </div>
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-company">Company</Label>
-                                          <Input 
-                                            id="edit-company" 
-                                            name="company" 
-                                            defaultValue={editingClient.company} 
-                                            required 
-                                          />
-                                        </div>
-                                      </div>
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-email">Email</Label>
-                                          <Input 
-                                            id="edit-email" 
-                                            name="email" 
-                                            type="email" 
-                                            defaultValue={editingClient.email} 
-                                            required 
-                                          />
-                                        </div>
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-phone">Phone</Label>
-                                          <Input 
-                                            id="edit-phone" 
-                                            name="phone" 
-                                            defaultValue={editingClient.phone} 
-                                            required 
-                                          />
-                                        </div>
-                                      </div>
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-contactPerson">Contact Person</Label>
-                                          <Input 
-                                            id="edit-contactPerson" 
-                                            name="contactPerson" 
-                                            defaultValue={editingClient.contactPerson || ""} 
-                                          />
-                                        </div>
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-industry">Industry</Label>
-                                          <Select name="industry" defaultValue={editingClient.industry}>
-                                            <SelectTrigger>
-                                              <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              {industries.map(industry => (
-                                                <SelectItem key={industry} value={industry}>{industry}</SelectItem>
-                                              ))}
-                                            </SelectContent>
-                                          </Select>
-                                        </div>
-                                      </div>
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-city">City</Label>
-                                          <Select name="city" defaultValue={editingClient.city}>
-                                            <SelectTrigger>
-                                              <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              {indianCities.map(city => (
-                                                <SelectItem key={city} value={city}>{city}</SelectItem>
-                                              ))}
-                                            </SelectContent>
-                                          </Select>
-                                        </div>
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-value">Expected Value</Label>
-                                          <Input 
-                                            id="edit-value" 
-                                            name="value" 
-                                            defaultValue={editingClient.value} 
-                                            required 
-                                          />
-                                        </div>
-                                      </div>
-                                      <div className="space-y-2">
-                                        <Label htmlFor="edit-address">Address</Label>
-                                        <Textarea 
-                                          id="edit-address" 
-                                          name="address" 
-                                          defaultValue={editingClient.address || ""} 
-                                        />
-                                      </div>
-                                      <Button type="submit" className="w-full">Update Client</Button>
-                                    </form>
-                                  </DialogContent>
-                                )}
-                              </Dialog>
-                              
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
-                                onClick={() => handleDeleteClient(client._id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+                              </DialogContent>
+                            </Dialog>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -995,11 +680,11 @@ const CRM = () => {
             </Card>
           </TabsContent>
 
-          {/* Leads Tab */}
+          {/* Leads Tab - Admin can add and update status */}
           <TabsContent value="leads">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <CardTitle>Lead Tracker</CardTitle>
+                <CardTitle>Lead Management</CardTitle>
                 <div className="flex gap-2">
                   <div className="relative">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
@@ -1098,7 +783,7 @@ const CRM = () => {
                         <TableHead>Status</TableHead>
                         <TableHead>Value</TableHead>
                         <TableHead>Follow-up</TableHead>
-                        <TableHead>Actions</TableHead>
+                        <TableHead>Details</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1144,177 +829,52 @@ const CRM = () => {
                             )}
                           </TableCell>
                           <TableCell>
-                            <div className="flex gap-2">
-                              <Dialog>
-                                <DialogTrigger asChild>
-                                  <Button 
-                                    variant="outline" 
-                                    size="sm" 
-                                    onClick={() => setViewLeadDialog(lead._id)}
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                </DialogTrigger>
-                                <DialogContent className="max-w-2xl">
-                                  <DialogHeader>
-                                    <DialogTitle>Lead Details</DialogTitle>
-                                  </DialogHeader>
-                                  {viewLeadDialog && getLeadById(viewLeadDialog) && (() => {
-                                    const lead = getLeadById(viewLeadDialog)!;
-                                    return (
-                                      <div className="space-y-4">
-                                        <div className="grid grid-cols-2 gap-4">
-                                          <div><strong>Name:</strong> {lead.name}</div>
-                                          <div><strong>Company:</strong> {lead.company}</div>
-                                          <div><strong>Email:</strong> {lead.email}</div>
-                                          <div><strong>Phone:</strong> {lead.phone}</div>
-                                          <div><strong>Source:</strong> {lead.source}</div>
-                                          <div><strong>Status:</strong> {getStatusText(lead.status)}</div>
-                                          <div><strong>Value:</strong> {lead.value}</div>
-                                          <div><strong>Assigned To:</strong> {lead.assignedTo}</div>
-                                          <div><strong>Created:</strong> {formatDate(lead.createdAt)}</div>
-                                          <div><strong>Updated:</strong> {formatDate(lead.updatedAt)}</div>
-                                        </div>
-                                        {lead.followUpDate && (
-                                          <div>
-                                            <strong>Follow-up Date:</strong> {formatDate(lead.followUpDate)}
-                                          </div>
-                                        )}
-                                        {lead.notes && (
-                                          <div>
-                                            <strong>Notes:</strong>
-                                            <div className="mt-1 p-2 border rounded">{lead.notes}</div>
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })()}
-                                </DialogContent>
-                              </Dialog>
-                              
-                              <Dialog open={!!editingLead} onOpenChange={(open) => !open && setEditingLead(null)}>
-                                <DialogTrigger asChild>
-                                  <Button 
-                                    variant="outline" 
-                                    size="sm"
-                                    onClick={() => setEditingLead(lead)}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                </DialogTrigger>
-                                {editingLead && editingLead._id === lead._id && (
-                                  <DialogContent className="max-w-2xl">
-                                    <DialogHeader>
-                                      <DialogTitle>Edit Lead</DialogTitle>
-                                    </DialogHeader>
-                                    <form onSubmit={handleEditLead} className="space-y-4">
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  onClick={() => setViewLeadDialog(lead._id)}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="max-w-2xl">
+                                <DialogHeader>
+                                  <DialogTitle>Lead Details</DialogTitle>
+                                </DialogHeader>
+                                {viewLeadDialog && getLeadById(viewLeadDialog) && (() => {
+                                  const lead = getLeadById(viewLeadDialog)!;
+                                  return (
+                                    <div className="space-y-4">
                                       <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-lead-name">Lead Name</Label>
-                                          <Input 
-                                            id="edit-lead-name" 
-                                            name="name" 
-                                            defaultValue={editingLead.name} 
-                                            required 
-                                          />
-                                        </div>
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-lead-company">Company</Label>
-                                          <Input 
-                                            id="edit-lead-company" 
-                                            name="company" 
-                                            defaultValue={editingLead.company} 
-                                            required 
-                                          />
-                                        </div>
+                                        <div><strong>Name:</strong> {lead.name}</div>
+                                        <div><strong>Company:</strong> {lead.company}</div>
+                                        <div><strong>Email:</strong> {lead.email}</div>
+                                        <div><strong>Phone:</strong> {lead.phone}</div>
+                                        <div><strong>Source:</strong> {lead.source}</div>
+                                        <div><strong>Status:</strong> {getStatusText(lead.status)}</div>
+                                        <div><strong>Value:</strong> {lead.value}</div>
+                                        <div><strong>Assigned To:</strong> {lead.assignedTo}</div>
+                                        <div><strong>Created:</strong> {formatDate(lead.createdAt)}</div>
+                                        <div><strong>Updated:</strong> {formatDate(lead.updatedAt)}</div>
                                       </div>
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-lead-email">Email</Label>
-                                          <Input 
-                                            id="edit-lead-email" 
-                                            name="email" 
-                                            type="email" 
-                                            defaultValue={editingLead.email} 
-                                            required 
-                                          />
+                                      {lead.followUpDate && (
+                                        <div>
+                                          <strong>Follow-up Date:</strong> {formatDate(lead.followUpDate)}
                                         </div>
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-lead-phone">Phone</Label>
-                                          <Input 
-                                            id="edit-lead-phone" 
-                                            name="phone" 
-                                            defaultValue={editingLead.phone} 
-                                            required 
-                                          />
+                                      )}
+                                      {lead.notes && (
+                                        <div>
+                                          <strong>Notes:</strong>
+                                          <div className="mt-1 p-2 border rounded">{lead.notes}</div>
                                         </div>
-                                      </div>
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-source">Source</Label>
-                                          <Select name="source" defaultValue={editingLead.source}>
-                                            <SelectTrigger>
-                                              <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              {leadSources.map(source => (
-                                                <SelectItem key={source} value={source}>{source}</SelectItem>
-                                              ))}
-                                            </SelectContent>
-                                          </Select>
-                                        </div>
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-lead-value">Expected Value</Label>
-                                          <Input 
-                                            id="edit-lead-value" 
-                                            name="value" 
-                                            defaultValue={editingLead.value} 
-                                            required 
-                                          />
-                                        </div>
-                                      </div>
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-assignedTo">Assign To</Label>
-                                          <Input 
-                                            id="edit-assignedTo" 
-                                            name="assignedTo" 
-                                            defaultValue={editingLead.assignedTo} 
-                                            required 
-                                          />
-                                        </div>
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-followUpDate">Follow-up Date</Label>
-                                          <Input 
-                                            id="edit-followUpDate" 
-                                            name="followUpDate" 
-                                            type="date" 
-                                            defaultValue={editingLead.followUpDate ? editingLead.followUpDate.split('T')[0] : ''} 
-                                          />
-                                        </div>
-                                      </div>
-                                      <div className="space-y-2">
-                                        <Label htmlFor="edit-lead-notes">Notes</Label>
-                                        <Textarea 
-                                          id="edit-lead-notes" 
-                                          name="notes" 
-                                          defaultValue={editingLead.notes || ""} 
-                                        />
-                                      </div>
-                                      <Button type="submit" className="w-full">Update Lead</Button>
-                                    </form>
-                                  </DialogContent>
-                                )}
-                              </Dialog>
-                              
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
-                                onClick={() => handleDeleteLead(lead._id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+                              </DialogContent>
+                            </Dialog>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -1325,7 +885,7 @@ const CRM = () => {
             </Card>
           </TabsContent>
 
-          {/* Communications Tab */}
+          {/* Communications Tab - Admin can add only */}
           <TabsContent value="communications">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0">
@@ -1449,7 +1009,6 @@ const CRM = () => {
                         <TableHead>Date</TableHead>
                         <TableHead>Notes</TableHead>
                         <TableHead>Follow-up</TableHead>
-                        <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1483,15 +1042,6 @@ const CRM = () => {
                               <Badge variant="outline">Not Required</Badge>
                             )}
                           </TableCell>
-                          <TableCell>
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              onClick={() => handleDeleteCommunication(comm._id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -1506,4 +1056,4 @@ const CRM = () => {
   );
 };
 
-export default CRM;
+export default AdminCRM;

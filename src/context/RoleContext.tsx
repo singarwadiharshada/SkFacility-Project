@@ -1,12 +1,16 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { toast } from "sonner";
 
 export type UserRole = "superadmin" | "admin" | "manager" | "supervisor" | "employee" | null;
 
 interface User {
+  _id: string;
   id: string;
   name: string;
   email: string;
   role: UserRole;
+  isActive: boolean;
+  joinDate: string;
 }
 
 interface RoleContextType {
@@ -16,56 +20,104 @@ interface RoleContextType {
   signup: (name: string, email: string, password: string, role: UserRole) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
+  loading: boolean;
 }
+
+const API_BASE_URL = "http://localhost:5001/api/auth";
 
 const RoleContext = createContext<RoleContextType | undefined>(undefined);
 
 export const RoleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<UserRole>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check for stored user session
+    // Check for stored user session on initial load
     const storedUser = localStorage.getItem("sk_user");
-    if (storedUser) {
+    const storedToken = localStorage.getItem("sk_token");
+
+    if (storedUser && storedToken) {
       const parsedUser = JSON.parse(storedUser);
       setUser(parsedUser);
       setRole(parsedUser.role);
     }
+    
+    setLoading(false);
   }, []);
 
-  const login = async (email: string, password: string, selectedRole: UserRole) => {
-    // Simulated login - in production, this would be an API call
-    const mockUser: User = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: email.split("@")[0],
-      email,
-      role: selectedRole,
-    };
+  const signup = async (name: string, email: string, password: string, selectedRole: UserRole) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/signup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name,
+          email,
+          password,
+          role: selectedRole
+        })
+      });
 
-    setUser(mockUser);
-    setRole(selectedRole);
-    localStorage.setItem("sk_user", JSON.stringify(mockUser));
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message);
+      }
+
+      // Save user and token
+      localStorage.setItem("sk_user", JSON.stringify(data.user));
+      localStorage.setItem("sk_token", data.token);
+      
+      setUser(data.user);
+      setRole(data.user.role);
+      
+    } catch (error: any) {
+      console.error('Signup error:', error);
+      throw error;
+    }
   };
 
-  const signup = async (name: string, email: string, password: string, selectedRole: UserRole) => {
-    // Simulated signup - in production, this would be an API call
-    const mockUser: User = {
-      id: Math.random().toString(36).substr(2, 9),
-      name,
-      email,
-      role: selectedRole,
-    };
+  const login = async (email: string, password: string, selectedRole: UserRole) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          role: selectedRole
+        })
+      });
 
-    setUser(mockUser);
-    setRole(selectedRole);
-    localStorage.setItem("sk_user", JSON.stringify(mockUser));
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message);
+      }
+
+      // Save user and token
+      localStorage.setItem("sk_user", JSON.stringify(data.user));
+      localStorage.setItem("sk_token", data.token);
+      
+      setUser(data.user);
+      setRole(data.user.role);
+      
+    } catch (error: any) {
+      console.error('Login error:', error);
+      throw error;
+    }
   };
 
   const logout = () => {
     setUser(null);
     setRole(null);
     localStorage.removeItem("sk_user");
+    localStorage.removeItem("sk_token");
   };
 
   return (
@@ -77,6 +129,7 @@ export const RoleProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signup,
         logout,
         isAuthenticated: !!user,
+        loading
       }}
     >
       {children}

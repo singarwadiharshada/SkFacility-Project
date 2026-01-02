@@ -185,15 +185,16 @@ export const userService = {
   },
 
   // Get single user by ID
-  async getUserById(id: string): Promise<User> {
-    try {
-      const response = await api.get<{ data: User }>(`/users/${id}`);
-      return response.data.data;
-    } catch (error) {
-      console.error(`Error fetching user ${id}:`, error);
-      throw error;
-    }
-  },
+ // Get single user by ID
+async getUserById(id: string): Promise<User> {
+  try {
+    const response = await api.get<{ data: User }>(`/users/${id}`);
+    return response.data.data;
+  } catch (error) {
+    console.error(`Error fetching user ${id}:`, error);
+    throw error;
+  }
+},
 
   // Get active users count
   async getActiveUsersCount(): Promise<number> {

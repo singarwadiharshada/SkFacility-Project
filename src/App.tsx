@@ -83,6 +83,7 @@ import WorkQuery from "./pages/supervisor/WorkQuery";
 import SuperAdminWorkIssues from "./pages/superadmin/SuperAdminWorkIssues";
 import AdminAttendanceView from "./pages/admin/AdminAttendanceView";
 import ManagerOperations from "./pages/manager/ManagerOperations";
+import AdminCRM from "./pages/admin/AdminCRM";
 
 
 const queryClient = new QueryClient();
@@ -142,6 +143,7 @@ const App = () => (
               <Route path="team" element={<AdminTeam />} />
               <Route path="attendance" element={<AdminAttendanceView />} />
               <Route path="tasks" element={<AdminTasks />} />
+              <Route path="crm" element={<AdminCRM />} />
               <Route path="reports" element={<AdminReports />} />
               <Route path="leave" element={<AdminLeave />} />
               <Route path="notifications" element={<AdminNotifications />} />

@@ -36,6 +36,87 @@ const LedgerBalanceTab: React.FC<LedgerBalanceTabProps> = ({
     setLedgerDialogOpen(true);
   };
 
+  // Helper function to calculate values based on entry type
+  const getEntryColumnValues = (entry: LedgerEntry) => {
+    const values = {
+      labourBill: 0,
+      managementFees: 0,
+      machineRentWater: 0,
+      gst: 0,
+      billValue: 0,
+      paidSalaries: 0,
+      payableHoldSalaries: 0,
+      pfEsicPt: 0,
+      paidToVendor: 0,
+      vouchers: 0,
+      other: 0,
+      grossExpenses: 0,
+      balance: entry.balance,
+      lessManagement: 0,
+      netProfit: 0
+    };
+
+    // Map ledger entry types to your specific columns
+    switch (entry.type.toLowerCase()) {
+      case "labour":
+      case "labour_bill":
+        values.labourBill = entry.debit;
+        break;
+      case "management":
+      case "management_fees":
+        values.managementFees = entry.debit;
+        values.lessManagement = entry.debit; // For less management column
+        break;
+      case "machine":
+      case "machine_rent":
+      case "water":
+      case "machine_rent_water":
+        values.machineRentWater = entry.debit;
+        break;
+      case "salary":
+      case "salaries":
+        values.paidSalaries = entry.debit;
+        break;
+      case "payable_salary":
+      case "hold_salary":
+        values.payableHoldSalaries = entry.debit;
+        break;
+      case "pf":
+      case "esic":
+      case "pt":
+      case "statutory":
+        values.pfEsicPt = entry.debit;
+        break;
+      case "vendor":
+      case "vendor_payment":
+        values.paidToVendor = entry.debit;
+        break;
+      case "voucher":
+      case "expense_voucher":
+        values.vouchers = entry.debit;
+        break;
+      case "gst":
+        values.gst = entry.debit;
+        break;
+      case "bill":
+      case "invoice":
+        values.billValue = entry.credit;
+        break;
+      case "other":
+      case "miscellaneous":
+        values.other = entry.debit;
+        break;
+    }
+
+    // Calculate derived values
+    values.grossExpenses = values.labourBill + values.machineRentWater + values.paidSalaries + 
+                           values.pfEsicPt + values.paidToVendor + values.vouchers + values.other + values.gst;
+    
+    values.netProfit = values.billValue - values.grossExpenses - values.managementFees;
+
+    return values;
+  };
+
   const getFilteredLedgerEntries = () => {
     let filtered = ledgerEntries;
 
@@ -213,63 +294,91 @@ const LedgerBalanceTab: React.FC<LedgerBalanceTabProps> = ({
 
             {ledgerViewMode === "table" ? (
               <>
-                <div className="border rounded-lg">
+                <div className="border rounded-lg overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Site</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Reference</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead className="text-right">Debit (₹)</TableHead>
-                        <TableHead className="text-right">Credit (₹)</TableHead>
-                        <TableHead className="text-right">Balance (₹)</TableHead>
-                        <TableHead>Status</TableHead>
+                        <TableHead className="whitespace-nowrap">Site Name</TableHead>
+                        <TableHead className="whitespace-nowrap">Labour Bill</TableHead>
+                        <TableHead className="whitespace-nowrap">MNG Fees</TableHead>
+                        <TableHead className="whitespace-nowrap">Machine Rent/Water</TableHead>
+                        <TableHead className="whitespace-nowrap">GST</TableHead>
+                        <TableHead className="whitespace-nowrap">Bill Value</TableHead>
+                        <TableHead className="whitespace-nowrap">Paid Salaries</TableHead>
+                        <TableHead className="whitespace-nowrap">Payable/Hold Salaries</TableHead>
+                        <TableHead className="whitespace-nowrap">PF ESIC PT</TableHead>
+                        <TableHead className="whitespace-nowrap">Paid to Vendor</TableHead>
+                        <TableHead className="whitespace-nowrap">Vouchers</TableHead>
+                        <TableHead className="whitespace-nowrap">Other</TableHead>
+                        <TableHead className="whitespace-nowrap">Gross Expenses</TableHead>
+                        <TableHead className="whitespace-nowrap">Balance</TableHead>
+                        <TableHead className="whitespace-nowrap">Less Management</TableHead>
+                        <TableHead className="whitespace-nowrap">Net Profit</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {paginatedLedgerEntries.map((entry) => (
-                        <TableRow key={entry.id}>
-                          <TableCell className="whitespace-nowrap">{entry.date}</TableCell>
-                          <TableCell>
-                            <div 
-                              className="font-medium cursor-pointer hover:text-primary hover:underline"
-                              onClick={() => handleViewPartyLedger(entry.party)}
-                            >
-                              {entry.party}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              {getTypeIcon(entry.type)}
-                              <Badge variant="outline" className="capitalize">
-                                {entry.type.replace('_', ' ')}
-                              </Badge>
-                            </div>
-                          </TableCell>
-                          <TableCell className="font-mono text-sm">{entry.reference}</TableCell>
-                          <TableCell className="max-w-xs">
-                            <div className="truncate" title={entry.description}>
-                              {entry.description}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right font-medium">
-                            {entry.debit > 0 ? formatCurrency(entry.debit) : '-'}
-                          </TableCell>
-                          <TableCell className="text-right font-medium">
-                            {entry.credit > 0 ? formatCurrency(entry.credit) : '-'}
-                          </TableCell>
-                          <TableCell className={`text-right font-bold ${getBalanceColor(entry.balance)}`}>
-                            {formatCurrency(entry.balance)}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={getStatusColor(entry.status)}>
-                              {entry.status}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {paginatedLedgerEntries.map((entry) => {
+                        const values = getEntryColumnValues(entry);
+                        return (
+                          <TableRow key={entry.id}>
+                            <TableCell>
+                              <div 
+                                className="font-medium cursor-pointer hover:text-primary hover:underline"
+                                onClick={() => handleViewPartyLedger(entry.party)}
+                              >
+                                {entry.party}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {values.labourBill > 0 ? formatCurrency(values.labourBill) : '-'}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {values.managementFees > 0 ? formatCurrency(values.managementFees) : '-'}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {values.machineRentWater > 0 ? formatCurrency(values.machineRentWater) : '-'}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {values.gst > 0 ? formatCurrency(values.gst) : '-'}
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              {values.billValue > 0 ? formatCurrency(values.billValue) : '-'}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {values.paidSalaries > 0 ? formatCurrency(values.paidSalaries) : '-'}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {values.payableHoldSalaries > 0 ? formatCurrency(values.payableHoldSalaries) : '-'}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {values.pfEsicPt > 0 ? formatCurrency(values.pfEsicPt) : '-'}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {values.paidToVendor > 0 ? formatCurrency(values.paidToVendor) : '-'}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {values.vouchers > 0 ? formatCurrency(values.vouchers) : '-'}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {values.other > 0 ? formatCurrency(values.other) : '-'}
+                            </TableCell>
+                            <TableCell className="text-right font-bold">
+                              {formatCurrency(values.grossExpenses)}
+                            </TableCell>
+                            <TableCell className={`text-right font-bold ${getBalanceColor(values.balance)}`}>
+                              {formatCurrency(values.balance)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {values.lessManagement > 0 ? formatCurrency(values.lessManagement) : '-'}
+                            </TableCell>
+                            <TableCell className={`text-right font-bold ${
+                              values.netProfit >= 0 ? 'text-green-600' : 'text-red-600'
+                            }`}>
+                              {formatCurrency(values.netProfit)}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
@@ -304,67 +413,71 @@ const LedgerBalanceTab: React.FC<LedgerBalanceTabProps> = ({
                 )}
               </>
             ) : (
+              // Card view remains similar but with updated fields
               <>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {paginatedLedgerEntries.map((entry) => (
-                    <Card key={entry.id} className="hover:shadow-md transition-shadow">
-                      <CardHeader className="pb-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <CardTitle className="text-base">{entry.reference}</CardTitle>
-                            <p className="text-sm text-muted-foreground">{entry.party}</p>
+                  {paginatedLedgerEntries.map((entry) => {
+                    const values = getEntryColumnValues(entry);
+                    return (
+                      <Card key={entry.id} className="hover:shadow-md transition-shadow">
+                        <CardHeader className="pb-3">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <CardTitle className="text-base">{entry.party}</CardTitle>
+                              <p className="text-sm text-muted-foreground">{entry.reference}</p>
+                            </div>
+                            <Badge variant={getStatusColor(entry.status)}>
+                              {entry.status}
+                            </Badge>
                           </div>
-                          <Badge variant={getStatusColor(entry.status)}>
-                            {entry.status}
-                          </Badge>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <div className="flex items-center gap-2 text-sm">
-                          {getTypeIcon(entry.type)}
-                          <span className="capitalize">{entry.type.replace('_', ' ')}</span>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground line-clamp-2">
-                            {entry.description}
-                          </p>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          <div className="grid grid-cols-2 gap-2 text-sm">
+                            <div>
+                              <div className="text-xs text-muted-foreground">Bill Value</div>
+                              <div className="font-semibold">
+                                {values.billValue > 0 ? formatCurrency(values.billValue) : '-'}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-muted-foreground">Gross Expenses</div>
+                              <div className="font-semibold">
+                                {formatCurrency(values.grossExpenses)}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-muted-foreground">Net Profit</div>
+                              <div className={`font-semibold ${
+                                values.netProfit >= 0 ? 'text-green-600' : 'text-red-600'
+                              }`}>
+                                {formatCurrency(values.netProfit)}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-muted-foreground">Balance</div>
+                              <div className={`font-semibold ${getBalanceColor(values.balance)}`}>
+                                {formatCurrency(values.balance)}
+                              </div>
+                            </div>
+                          </div>
                           <div className="text-xs text-muted-foreground">
                             Date: {entry.date}
                           </div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2 text-center">
-                          <div>
-                            <div className="text-sm font-medium text-muted-foreground">Debit</div>
-                            <div className="font-semibold">
-                              {entry.debit > 0 ? formatCurrency(entry.debit) : '-'}
-                            </div>
+                          <div className="flex gap-2 pt-2">
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              className="flex-1"
+                              onClick={() => handleViewPartyLedger(entry.party)}
+                            >
+                              <Eye className="h-4 w-4" />
+                              View Details
+                            </Button>
                           </div>
-                          <div>
-                            <div className="text-sm font-medium text-muted-foreground">Credit</div>
-                            <div className="font-semibold">
-                              {entry.credit > 0 ? formatCurrency(entry.credit) : '-'}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-sm font-medium text-muted-foreground">Balance</div>
-                            <div className={`font-semibold ${getBalanceColor(entry.balance)}`}>
-                              {formatCurrency(entry.balance)}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex gap-2 pt-2">
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            className="flex-1"
-                            onClick={() => handleViewPartyLedger(entry.party)}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
 
                 {filteredLedgerEntries.length > 0 && (
@@ -400,7 +513,7 @@ const LedgerBalanceTab: React.FC<LedgerBalanceTabProps> = ({
 
             {filteredLedgerEntries.length === 0 && (
               <div className="text-center py-8">
-                <FileText className="mx-auto h-12 w-12 text-muted-foreground" />
+                <Search className="mx-auto h-12 w-12 text-muted-foreground" />
                 <h3 className="mt-4 text-lg font-semibold">No ledger entries found</h3>
                 <p className="text-muted-foreground">
                   {ledgerSearchTerm || dateFilter.startDate || dateFilter.endDate 
@@ -416,7 +529,7 @@ const LedgerBalanceTab: React.FC<LedgerBalanceTabProps> = ({
 
       {/* Party Ledger Dialog */}
       <Dialog open={ledgerDialogOpen} onOpenChange={setLedgerDialogOpen}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-6xl">
           <DialogHeader>
             <DialogTitle>Ledger Statement - {selectedParty}</DialogTitle>
           </DialogHeader>
@@ -436,81 +549,95 @@ const LedgerBalanceTab: React.FC<LedgerBalanceTabProps> = ({
                 </div>
                 <Button 
                   variant="outline" 
-                  onClick={() => {
-                    const partyEntries = getPartyLedgerEntries(selectedParty);
-                    const headers = ["Date", "Type", "Reference", "Description", "Debit", "Credit", "Balance", "Status"];
-                    const csvContent = [
-                      headers.join(","),
-                      ...partyEntries.map(entry => [
-                        entry.date,
-                        entry.type,
-                        entry.reference,
-                        `"${entry.description}"`,
-                        entry.debit,
-                        entry.credit,
-                        entry.balance,
-                        entry.status
-                      ].join(","))
-                    ].join("\n");
-                    
-                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.setAttribute('href', url);
-                    link.setAttribute('download', `ledger-statement-${selectedParty}.csv`);
-                    link.style.visibility = 'hidden';
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                  }}
+                  onClick={() => onExportData("statement")}
                 >
                   <Download className="mr-2 h-4 w-4" />
                   Export Statement
                 </Button>
               </div>
 
-              <div className="border rounded-lg">
+              <div className="border rounded-lg overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Date</TableHead>
-                      <TableHead>Type</TableHead>
                       <TableHead>Reference</TableHead>
                       <TableHead>Description</TableHead>
-                      <TableHead>Service/Client</TableHead>
-                      <TableHead className="text-right">Debit (₹)</TableHead>
-                      <TableHead className="text-right">Credit (₹)</TableHead>
-                      <TableHead className="text-right">Balance (₹)</TableHead>
+                      <TableHead>Labour Bill</TableHead>
+                      <TableHead>MNG Fees</TableHead>
+                      <TableHead>Machine Rent/Water</TableHead>
+                      <TableHead>GST</TableHead>
+                      <TableHead>Bill Value</TableHead>
+                      <TableHead>Paid Salaries</TableHead>
+                      <TableHead>Payable/Hold Salaries</TableHead>
+                      <TableHead>PF ESIC PT</TableHead>
+                      <TableHead>Paid to Vendor</TableHead>
+                      <TableHead>Vouchers</TableHead>
+                      <TableHead>Other</TableHead>
+                      <TableHead>Gross Expenses</TableHead>
+                      <TableHead>Balance</TableHead>
+                      <TableHead>Less Management</TableHead>
+                      <TableHead>Net Profit</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {getPartyLedgerEntries(selectedParty).map((entry) => (
-                      <TableRow key={entry.id}>
-                        <TableCell className="whitespace-nowrap">{entry.date}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="capitalize">
-                            {entry.type.replace('_', ' ')}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">{entry.reference}</TableCell>
-                        <TableCell className="max-w-xs truncate">{entry.description}</TableCell>
-                        <TableCell>
-                          <div className="text-xs text-muted-foreground">
-                            {entry.serviceType && <div>{entry.serviceType}</div>}
-                            {entry.site && <div>{entry.site}</div>}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {entry.debit > 0 ? formatCurrency(entry.debit) : '-'}
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {entry.credit > 0 ? formatCurrency(entry.credit) : '-'}
-                        </TableCell>
-                        <TableCell className={`text-right font-bold ${getBalanceColor(entry.balance)}`}>
-                          {formatCurrency(entry.balance)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {getPartyLedgerEntries(selectedParty).map((entry) => {
+                      const values = getEntryColumnValues(entry);
+                      return (
+                        <TableRow key={entry.id}>
+                          <TableCell className="whitespace-nowrap">{entry.date}</TableCell>
+                          <TableCell className="font-mono text-sm">{entry.reference}</TableCell>
+                          <TableCell className="max-w-xs truncate">{entry.description}</TableCell>
+                          <TableCell className="text-right">
+                            {values.labourBill > 0 ? formatCurrency(values.labourBill) : '-'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {values.managementFees > 0 ? formatCurrency(values.managementFees) : '-'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {values.machineRentWater > 0 ? formatCurrency(values.machineRentWater) : '-'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {values.gst > 0 ? formatCurrency(values.gst) : '-'}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {values.billValue > 0 ? formatCurrency(values.billValue) : '-'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {values.paidSalaries > 0 ? formatCurrency(values.paidSalaries) : '-'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {values.payableHoldSalaries > 0 ? formatCurrency(values.payableHoldSalaries) : '-'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {values.pfEsicPt > 0 ? formatCurrency(values.pfEsicPt) : '-'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {values.paidToVendor > 0 ? formatCurrency(values.paidToVendor) : '-'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {values.vouchers > 0 ? formatCurrency(values.vouchers) : '-'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {values.other > 0 ? formatCurrency(values.other) : '-'}
+                          </TableCell>
+                          <TableCell className="text-right font-bold">
+                            {formatCurrency(values.grossExpenses)}
+                          </TableCell>
+                          <TableCell className={`text-right font-bold ${getBalanceColor(values.balance)}`}>
+                            {formatCurrency(values.balance)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {values.lessManagement > 0 ? formatCurrency(values.lessManagement) : '-'}
+                          </TableCell>
+                          <TableCell className={`text-right font-bold ${
+                            values.netProfit >= 0 ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            {formatCurrency(values.netProfit)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
