@@ -73,10 +73,31 @@ class DocumentService {
   }
 
   // Delete document
-  async deleteDocument(publicId: string): Promise<any> {
-    const response = await axios.delete(`${API_BASE_URL}/upload/${publicId}`);
-    return response.data;
+async deleteDocument(publicIdOrDbId: string, fromCloudinary: boolean = true): Promise<any> {
+  try {
+    if (fromCloudinary) {
+      // Delete from Cloudinary
+      const response = await axios.delete(`${API_BASE_URL}/upload/${publicIdOrDbId}`);
+      return response.data;
+    } else {
+      // Delete from database only
+      const response = await axios.delete(`${API_BASE_URL}/documents/${publicIdOrDbId}`);
+      return response.data;
+    }
+  } catch (error: any) {
+    console.error('Error deleting document:', error);
+    // Try to delete from database even if Cloudinary deletion fails
+    if (fromCloudinary) {
+      try {
+        await axios.delete(`${API_BASE_URL}/documents/${publicIdOrDbId}`);
+      } catch (dbError) {
+        // Log but continue
+        console.error('Also failed to delete from database:', dbError);
+      }
+    }
+    throw error;
   }
+}
 
   // Get all documents
   async getDocuments(category?: string): Promise<GetDocumentsResponse> {

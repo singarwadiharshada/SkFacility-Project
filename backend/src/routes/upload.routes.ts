@@ -10,13 +10,25 @@ const upload = multer({
   },
 });
 
-// Single file upload
-router.post('/single', upload.single('file'), UploadController.uploadSingle);
+/// GET all documents
+router.get('/', UploadController.getAllDocuments);
 
-// Multiple files upload
-router.post('/multiple', upload.array('files', 10), UploadController.uploadMultiple);
+// GET documents by category
+router.get('/category/:category', UploadController.getDocumentsByCategory);
 
-// Delete file
-router.delete('/:publicId', UploadController.deleteFile);
+// GET document by ID
+router.get('/:id', UploadController.getDocumentById);
+
+// POST create document metadata
+router.post('/', UploadController.createDocument);
+
+// PATCH update document
+router.patch('/:id', UploadController.updateDocument);
+
+// DELETE document (with Cloudinary cleanup)
+router.delete('/:id', UploadController.deleteDocument);
+
+// Search documents
+router.get('/search/all', UploadController.searchDocuments);
 
 export default router;

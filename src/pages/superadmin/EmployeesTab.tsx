@@ -138,7 +138,7 @@ const EmployeesTab = ({
           salary: emp.salary || 0,
           status: emp.status || "active",
           documents: emp.documents || [],
-          photo: null, // Handle photo separately if available
+          photo: emp.photo || null, // Now storing Cloudinary URL string
           fatherName: emp.fatherName || "",
           motherName: emp.motherName || "",
           spouseName: emp.spouseName || "",
@@ -428,7 +428,40 @@ const EmployeesTab = ({
     }));
   };
 
-  // Form generation functions (unchanged from original)
+  // Helper function to get photo URL with fallback
+  // Helper function to get photo URL with fallback
+const getPhotoUrl = (employee: Employee): string => {
+  if (!employee.photo) {
+    return "";
+  }
+  
+  // If it's already a full URL (Cloudinary or other)
+  if (typeof employee.photo === 'string') {
+    // Check if it's a Cloudinary URL
+    if (employee.photo.includes('cloudinary.com')) {
+      // Add transformations for thumbnail display
+      return employee.photo.replace('/image/upload/', '/image/upload/w_200,h_200,c_fill,q_auto/');
+    }
+    
+    // Check if it's a local uploads path (like '/uploads/photo-12345.png')
+    if (employee.photo.startsWith('/uploads/')) {
+      // Add your backend server URL
+      return `http://localhost:5001${employee.photo}`;
+    }
+    
+    // Check if it's a base64 data URL
+    if (employee.photo.startsWith('data:image')) {
+      return employee.photo;
+    }
+    
+    // Return as-is for other cases
+    return employee.photo;
+  }
+  
+  return "";
+};
+
+  // Form generation functions (updated for Cloudinary)
   const generateIDCard = (employee: Employee) => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
@@ -436,7 +469,8 @@ const EmployeesTab = ({
       return;
     }
 
-    const photoUrl = employee.photo ? URL.createObjectURL(employee.photo) : "";
+    // Get photo URL - if it's a Cloudinary URL, use it directly
+    const photoUrl = getPhotoUrl(employee);
     
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -489,6 +523,20 @@ const EmployeesTab = ({
               border: 3px solid #e11d48;
               object-fit: cover;
               margin: 0 auto;
+              background: #f5f5f5;
+            }
+            .no-photo {
+              width: 120px;
+              height: 120px;
+              border-radius: 50%;
+              border: 3px solid #e11d48;
+              background: #ccc;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              color: #666;
+              font-size: 14px;
+              margin: 0 auto;
             }
             .details {
               padding: 20px;
@@ -536,7 +584,11 @@ const EmployeesTab = ({
               <div class="subtitle">ID CARD</div>
             </div>
             <div class="photo-section">
-              ${photoUrl ? `<img src="${photoUrl}" alt="Employee Photo" class="employee-photo" />` : '<div class="employee-photo" style="background: #ccc; display: flex; align-items: center; justify-content: center; color: #666;">No Photo</div>'}
+              ${photoUrl 
+                ? `<img src="${photoUrl}" alt="Employee Photo" class="employee-photo" onerror="this.style.display='none'; document.getElementById('no-photo').style.display='flex';" />` +
+                  `<div id="no-photo" class="no-photo" style="display: none;">No Photo</div>`
+                : '<div class="no-photo">No Photo</div>'
+              }
             </div>
             <div class="details">
               <div class="detail-row">
@@ -1979,11 +2031,14 @@ const EmployeesTab = ({
                   <h4 className="font-semibold text-lg mb-4">Employee Photo</h4>
                   <div className="border rounded-lg p-4 text-center">
                     <img 
-                      src={URL.createObjectURL(selectedEmployeeForDocuments.photo)} 
+                      src={getPhotoUrl(selectedEmployeeForDocuments)} 
                       alt={selectedEmployeeForDocuments.name}
                       className="w-32 h-32 rounded-full object-cover mx-auto border-4 border-gray-200"
+                      onError={(e) => {
+                        e.currentTarget.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E";
+                      }}
                     />
-                    <p className="text-sm text-muted-foreground mt-2">Employee Photo</p>
+                    <p className="text-sm text-muted-foreground mt-2">Employee Photo (Stored in Cloudinary)</p>
                   </div>
                 </div>
               )}
@@ -2023,13 +2078,16 @@ const EmployeesTab = ({
                   <div className="flex items-center gap-4">
                     {employee.photo ? (
                       <img 
-                        src={URL.createObjectURL(employee.photo)} 
+                        src={getPhotoUrl(employee)} 
                         alt={employee.name}
-                        className="w-12 h-12 rounded-full object-cover"
+                        className="w-12 h-12 rounded-full object-cover border-2 border-gray-200"
+                        onError={(e) => {
+                          e.currentTarget.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E";
+                        }}
                       />
                     ) : (
-                      <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center">
-                        <FileText className="h-6 w-6 text-gray-400" />
+                      <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300">
+                        <User className="h-6 w-6 text-gray-400" />
                       </div>
                     )}
                     <div>
@@ -2056,6 +2114,9 @@ const EmployeesTab = ({
                         )}
                         {employee.esicNumber && (
                           <Badge variant="secondary" className="text-xs">ESIC</Badge>
+                        )}
+                        {employee.photo && (
+                          <Badge variant="secondary" className="text-xs">Photo</Badge>
                         )}
                       </div>
                     </div>
@@ -2103,6 +2164,22 @@ const EmployeesTab = ({
                               </Badge>
                             </div>
                           </div>
+                          {employee.photo && (
+                            <div>
+                              <strong>Employee Photo:</strong>
+                              <div className="mt-2">
+                                <img 
+                                  src={getPhotoUrl(employee)} 
+                                  alt={employee.name}
+                                  className="w-32 h-32 rounded-full object-cover border-4 border-gray-200"
+                                  onError={(e) => {
+                                    e.currentTarget.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E";
+                                  }}
+                                />
+                                <p className="text-xs text-muted-foreground mt-1">Stored in Cloudinary</p>
+                              </div>
+                            </div>
+                          )}
                           <div>
                             <strong>Documents:</strong>
                             <div className="mt-2 space-y-2">

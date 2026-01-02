@@ -1,12 +1,12 @@
 import { Request, Response } from 'express';
-import User, { IUser } from '../models/User';
+import { User } from '../models/User';
 
 export const getAllUsers = async (req: Request, res: Response) => {
   try {
     const users = await User.find();
     
-    // Group by role
-    const groupedByRole = users.reduce((acc: Record<string, IUser[]>, user) => {
+    // Group by role using any type
+    const groupedByRole = (users as any[]).reduce((acc: any, user: any) => {
       if (!acc[user.role]) {
         acc[user.role] = [];
       }
@@ -18,8 +18,8 @@ export const getAllUsers = async (req: Request, res: Response) => {
       allUsers: users,
       groupedByRole,
       total: users.length,
-      active: users.filter(u => u.isActive).length,
-      inactive: users.filter(u => !u.isActive).length
+      active: (users as any[]).filter((u: any) => u.isActive).length,
+      inactive: (users as any[]).filter((u: any) => !u.isActive).length
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
@@ -28,7 +28,8 @@ export const getAllUsers = async (req: Request, res: Response) => {
 
 export const createUser = async (req: Request, res: Response) => {
   try {
-    const user = new User(req.body);
+    const userData = req.body;
+    const user = new User(userData);
     await user.save();
     
     res.status(201).json({
@@ -44,10 +45,10 @@ export const getUserStats = async (req: Request, res: Response) => {
   try {
     const users = await User.find();
     const stats = [
-      { _id: 'admin', count: users.filter(u => u.role === 'admin').length },
-      { _id: 'manager', count: users.filter(u => u.role === 'manager').length },
-      { _id: 'supervisor', count: users.filter(u => u.role === 'supervisor').length },
-      { _id: 'employee', count: users.filter(u => u.role === 'employee').length }
+      { _id: 'admin', count: (users as any[]).filter((u: any) => u.role === 'admin').length },
+      { _id: 'manager', count: (users as any[]).filter((u: any) => u.role === 'manager').length },
+      { _id: 'supervisor', count: (users as any[]).filter((u: any) => u.role === 'supervisor').length },
+      { _id: 'employee', count: (users as any[]).filter((u: any) => u.role === 'employee').length }
     ];
     
     res.json(stats);

@@ -3,18 +3,19 @@ import cors from 'cors';
 import connectDB from './config/database';
 import mongoose from 'mongoose';
 import uploadRouter from './routes/upload.routes';
-import Document from './models/documents.model'; 
+import Document from './models/documents.model';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-
+import { v2 as cloudinary } from "cloudinary";
 // Import models
 import { IUser, User } from './models/User';
 import Shift from './models/Shift';
 import Employee from './models/Employee';
 import EPFForm from './models/EPFForm';
-import Document from './models/Document';
+// import Document from './models/Document';
 import deductionRoutes from './routes/deductionRoutes';
+import inventoryRoutes from './routes/inventoryRoutes';
 
 const app: Application = express();
 
@@ -22,6 +23,12 @@ const app: Application = express();
 app.use(cors()); 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -39,6 +46,7 @@ const storage = multer.diskStorage({
 });
 
 app.use('/api', deductionRoutes);
+app.use('/api/inventory', inventoryRoutes);
 
 const upload = multer({
   storage: storage,
@@ -70,13 +78,8 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-// ======== FIX: REMOVE DUPLICATE ROUTE ========
-// Keep only this one:
-app.use('/api/upload', uploadRouter);
-// ======== END FIX ========
 
-// Health check
-// Serve uploaded files statically
+app.use('/api/upload', uploadRouter);
 app.use('/uploads', express.static('uploads'));
 
 // ==================== HEALTH CHECKS ====================
@@ -89,14 +92,13 @@ app.get('/', (req: Request, res: Response) => {
     endpoints: {
       employees: '/api/employees',
       epfForms: '/api/epf-forms',
-      documents: '/api/documents',
+      // documents: '/api/documents',
       users: '/api/users',
       shifts: '/api/shifts',
       health: '/api/health'
     }
   });
 });
-
 app.get('/api/health', (req: Request, res: Response) => {
   res.json({ 
     status: 'OK',
@@ -853,7 +855,7 @@ app.delete('/api/documents/:id', async (req: Request, res: Response) => {
     }
     
     // Delete file from filesystem
-    const filePath = `./${document.filePath}`;
+    const filePath = `./${document.url}`;
     fs.unlink(filePath, async (err) => {
       if (err && err.code !== 'ENOENT') {
         console.error('Error deleting file:', err);
@@ -1932,10 +1934,9 @@ app.get('/api/test', (req: Request, res: Response) => {
 // ======== END DOCUMENT ROUTES ========
 
 // 404 handler (MUST BE LAST)
-app.use((req: Request, res: Response) => {
-  console.log(`❌ 404: ${req.method} ${req.url}`);
 // ==================== 404 HANDLER ====================
 app.use('*', (req: Request, res: Response) => {
+  console.log(`❌ 404: ${req.method} ${req.url}`);
   res.status(404).json({
     success: false,
     message: 'Route not found',
@@ -1943,7 +1944,243 @@ app.use('*', (req: Request, res: Response) => {
   });
 });
 
-const PORT = process.env.PORT || 5001;
+// In your app.ts, update the POST /api/employees route:
+app.post('/api/employees', upload.fields([
+  { name: 'photo', maxCount: 1 },
+  { name: 'employeeSignature', maxCount: 1 },
+  { name: 'authorizedSignature', maxCount: 1 },
+  { name: 'documents', maxCount: 10 }
+]), async (req: Request, res: Response) => {
+  try {
+    console.log('📝 Creating new employee...');
+    
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    const employeeData = req.body;
+    
+    // Parse numeric fields
+    if (typeof employeeData.salary === 'string') {
+      employeeData.salary = parseFloat(employeeData.salary) || 0;
+    }
+    if (typeof employeeData.numberOfChildren === 'string') {
+      employeeData.numberOfChildren = parseInt(employeeData.numberOfChildren) || 0;
+    }
+    
+    // Handle date fields - only convert if they have values
+    const dateFields = ['dateOfBirth', 'dateOfJoining', 'dateOfExit'];
+    dateFields.forEach(field => {
+      if (employeeData[field] && employeeData[field].trim() !== '') {
+        employeeData[field] = new Date(employeeData[field]);
+      } else {
+        delete employeeData[field]; // Remove empty date fields
+      }
+    });
+    
+    // Handle boolean fields
+    const booleanFields = ['idCardIssued', 'westcoatIssued', 'apronIssued'];
+    booleanFields.forEach(field => {
+      if (employeeData[field] !== undefined) {
+        employeeData[field] = employeeData[field] === 'true' || employeeData[field] === true;
+      } else {
+        employeeData[field] = false; // Default to false if not provided
+      }
+    });
+    
+    // FIX: Handle blood group format (convert "B +ve" to "B+")
+    if (employeeData.bloodGroup) {
+      // Clean up blood group format
+      employeeData.bloodGroup = employeeData.bloodGroup
+        .replace(/\s+/g, '')  // Remove spaces
+        .replace(/\+ve/g, '+') // Replace "+ve" with "+"
+        .replace(/\-ve/g, '-'); // Replace "-ve" with "-"
+      
+      // Validate against allowed values
+      const allowedBloodGroups = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
+      if (!allowedBloodGroups.includes(employeeData.bloodGroup)) {
+        employeeData.bloodGroup = null; // Set to null if invalid
+      }
+    }
+    
+    // Clean up string fields - convert empty strings to undefined
+    const stringFields = [
+      'panNumber', 'esicNumber', 'uanNumber', 'siteName', 'bloodGroup',
+      'permanentAddress', 'permanentPincode', 'localAddress', 'localPincode',
+      'bankName', 'accountNumber', 'ifscCode', 'branchName', 'fatherName',
+      'motherName', 'spouseName', 'emergencyContactName', 'emergencyContactPhone',
+      'emergencyContactRelation', 'nomineeName', 'nomineeRelation',
+      'pantSize', 'shirtSize', 'capSize', 'gender', 'maritalStatus',
+      'position' // ADDED: Make sure position is included
+    ];
+    
+    stringFields.forEach(field => {
+      if (employeeData[field] === '' || employeeData[field] === null) {
+        delete employeeData[field];
+      } else if (employeeData[field]) {
+        // Trim and uppercase certain fields
+        employeeData[field] = employeeData[field].toString().trim();
+        if (field === 'panNumber' || field === 'ifscCode') {
+          employeeData[field] = employeeData[field].toUpperCase();
+        }
+      }
+    });
+    
+    // FIX: Validate required fields before proceeding
+    if (!employeeData.position) {
+      return res.status(400).json({
+        success: false,
+        message: 'Position is required'
+      });
+    }
+    
+    // Handle file uploads - UPLOAD TO CLOUDINARY
+    const uploadToCloudinary = async (file: Express.Multer.File, folder: string, transformations: any[] = []): Promise<string> => {
+      return new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          {
+            folder: folder,
+            transformation: transformations,
+            format: 'jpg'
+          },
+          (error: any, result: any) => {
+            if (error) {
+              reject(error);
+            } else {
+              resolve(result.secure_url);
+            }
+          }
+        );
+        
+        // Read file buffer and upload to Cloudinary
+        const fileBuffer = fs.readFileSync(file.path);
+        uploadStream.end(fileBuffer);
+        
+        // Clean up local file after Cloudinary upload
+        fs.unlink(file.path, (err) => {
+          if (err) console.error('Error deleting local file:', err);
+        });
+      });
+    };
+    
+    // Upload photo to Cloudinary
+    if (files?.photo?.[0]) {
+      try {
+        employeeData.photo = await uploadToCloudinary(
+          files.photo[0],
+          'employee-photos',
+          [{ width: 400, height: 400, crop: 'fill', gravity: 'face' }, { quality: 'auto:good' }]
+        );
+        console.log('✅ Photo uploaded to Cloudinary:', employeeData.photo);
+      } catch (error) {
+        console.error('❌ Error uploading photo to Cloudinary:', error);
+        // Don't fail the whole request if photo upload fails
+        delete employeeData.photo;
+      }
+    }
+    
+    // Upload signatures to Cloudinary
+    if (files?.employeeSignature?.[0]) {
+      try {
+        employeeData.employeeSignature = await uploadToCloudinary(
+          files.employeeSignature[0],
+          'signatures',
+          [{ width: 300, crop: 'scale' }, { quality: 'auto' }]
+        );
+        console.log('✅ Employee signature uploaded to Cloudinary');
+      } catch (error) {
+        console.error('❌ Error uploading employee signature:', error);
+        delete employeeData.employeeSignature;
+      }
+    }
+    
+    if (files?.authorizedSignature?.[0]) {
+      try {
+        employeeData.authorizedSignature = await uploadToCloudinary(
+          files.authorizedSignature[0],
+          'signatures',
+          [{ width: 300, crop: 'scale' }, { quality: 'auto' }]
+        );
+        console.log('✅ Authorized signature uploaded to Cloudinary');
+      } catch (error) {
+        console.error('❌ Error uploading authorized signature:', error);
+        delete employeeData.authorizedSignature;
+      }
+    }
+    
+    // Set default status
+    if (!employeeData.status) {
+      employeeData.status = 'active';
+    }
+    
+    // Set default role
+    if (!employeeData.role) {
+      employeeData.role = 'employee';
+    }
+    
+    console.log('📋 Employee data to save:', employeeData);
+    
+    // Create employee
+    const employee = new Employee(employeeData);
+    await employee.save();
+    
+    console.log('✅ Employee created:', employee.employeeId);
+    
+    // Handle document uploads if any
+    if (files?.documents) {
+      const documentPromises = files.documents.map(async (file) => {
+        try {
+          const documentUrl = await uploadToCloudinary(
+            file,
+            'employee-documents'
+          );
+          
+          const doc = new Document({
+            employeeId: employee.employeeId,
+            employee: employee._id,
+            documentType: 'other',
+            documentName: file.originalname,
+            fileName: file.filename,
+            filePath: documentUrl, // Cloudinary URL
+            fileSize: file.size,
+            fileType: file.mimetype,
+            uploadedBy: 'system'
+          });
+          await doc.save();
+          return doc;
+        } catch (error) {
+          console.error('Error uploading document:', error);
+          return null;
+        }
+      });
+      
+      await Promise.all(documentPromises);
+    }
+    
+    res.status(201).json({
+      success: true,
+      message: 'Employee created successfully',
+      data: employee
+    });
+  } catch (error: any) {
+    console.error('❌ Error creating employee:', error);
+    
+    // Clean up uploaded files if error occurred
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    if (files) {
+      Object.values(files).forEach(fileArray => {
+        fileArray.forEach(file => {
+          fs.unlink(file.path, (err) => {
+            if (err) console.error('Error deleting file:', err);
+          });
+        });
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error creating employee'
+    });
+  }
+});
+
 // ==================== ERROR HANDLER ====================
 app.use((error: Error, req: Request, res: Response, next: Function) => {
   console.error('❌ Server Error:', error);
@@ -1954,4 +2191,5 @@ app.use((error: Error, req: Request, res: Response, next: Function) => {
   });
 });
 
+const PORT = process.env.PORT || 5001;
 export default app;
