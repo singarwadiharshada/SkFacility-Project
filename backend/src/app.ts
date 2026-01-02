@@ -13,6 +13,13 @@ import Employee from './models/Employee';
 import EPFForm from './models/EPFForm';
 import Document from './models/Document';
 import deductionRoutes from './routes/deductionRoutes';
+import salaryStructureRoutes from './routes/salaryStructureRoutes';
+import payrollRoutes from './routes/payrollRoutes';
+import salarySlipRoutes from './routes/salarySlipRoutes';
+import leaveRoutes from './routes/leaveRoutes';
+import siteRoutes from './routes/siteRoutes';
+import clientRoutes from './routes/clientRoutes';
+import tasksRoutes from './routes/tasksRoutes';
 
 const app: Application = express();
 
@@ -37,6 +44,15 @@ const storage = multer.diskStorage({
 });
 
 app.use('/api', deductionRoutes);
+
+
+app.use('/api/salary-structures', salaryStructureRoutes);
+app.use('/api/payroll', payrollRoutes);
+app.use('/api/salary-slips', salarySlipRoutes);
+app.use('/api/leaves', leaveRoutes);
+app.use('/api/sites', siteRoutes);
+app.use('/api/clients', clientRoutes);
+app.use('/api/tasks', tasksRoutes); 
 
 const upload = multer({
   storage: storage,

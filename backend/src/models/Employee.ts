@@ -24,6 +24,7 @@ export interface IEmployee extends Document {
   permanentPincode?: string;
   localAddress?: string;
   localPincode?: string;
+   bankBranch?: string;
   
   // Bank Details
   bankName?: string;
@@ -280,6 +281,10 @@ const EmployeeSchema: Schema = new Schema(
       type: String,
       enum: ['admin', 'manager', 'supervisor', 'employee', null],
       default: 'employee'
+    },
+       bankBranch: {
+      type: String,
+      trim: true
     },
     
     // Uniform Details

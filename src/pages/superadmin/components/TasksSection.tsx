@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, memo } from "react";
+import { useState, useCallback, useMemo, memo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,32 +25,84 @@ import {
   Globe,
   Building,
   Briefcase,
-  Users
+  Users,
+  Loader2
 } from "lucide-react";
 import { toast } from "sonner";
-import { initialTasks, initialSites, Task, HourlyUpdate, Attachment, assignees } from "../data";
 import { FormField, SearchBar } from "./shared";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 
-// Memoized components to prevent unnecessary re-renders
+// Types
+interface Site {
+  _id: string;
+  name: string;
+  clientName: string;
+  location: string;
+  status: string;
+}
+
+interface Assignee {
+  _id: string;
+  name: string;
+  email: string;
+  phone: string;
+  role: 'manager' | 'supervisor' | 'staff';
+  department?: string;
+}
+
+interface Task {
+  _id: string;
+  title: string;
+  description: string;
+  assignedTo: string;
+  assignedToName: string;
+  priority: 'high' | 'medium' | 'low';
+  status: 'pending' | 'in-progress' | 'completed' | 'cancelled';
+  deadline: string;
+  dueDateTime: string;
+  siteId: string;
+  siteName: string;
+  clientName: string;
+  taskType?: string;
+  attachments: Array<{
+    id: string;
+    filename: string;
+    url: string;
+    uploadedAt: string;
+    size: number;
+    type: string;
+  }>;
+  hourlyUpdates: Array<{
+    id: string;
+    timestamp: string;
+    content: string;
+    submittedBy: string;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+
+// Memoized components
 const SiteCheckboxItem = memo(({ 
   site, 
   isSelected, 
   onToggle 
 }: { 
-  site: { id: string; name: string; clientName: string; location: string; status: string };
+  site: Site;
   isSelected: boolean;
   onToggle: (siteId: string) => void;
 }) => (
-  <div key={site.id} className="flex items-center space-x-3">
+  <div key={site._id} className="flex items-center space-x-3">
     <Checkbox 
-      id={`site-${site.id}`}
+      id={`site-${site._id}`}
       checked={isSelected}
-      onCheckedChange={() => onToggle(site.id)}
+      onCheckedChange={() => onToggle(site._id)}
     />
     <label
-      htmlFor={`site-${site.id}`}
+      htmlFor={`site-${site._id}`}
       className="flex-1 cursor-pointer"
     >
       <div className="flex flex-col">
@@ -74,28 +126,27 @@ const AssigneeCheckboxItem = memo(({
   taskCount,
   onToggle 
 }: { 
-  assignee: { id: string; name: string };
+  assignee: Assignee;
   isSelected: boolean;
   taskCount: number;
   onToggle: (assigneeId: string) => void;
 }) => {
-  const assigneeType = assignee.id.includes("manager") ? "Manager" : "Supervisor";
-  
   return (
     <div className="flex items-center space-x-3">
       <Checkbox 
-        id={`assignee-${assignee.id}`}
+        id={`assignee-${assignee._id}`}
         checked={isSelected}
-        onCheckedChange={() => onToggle(assignee.id)}
+        onCheckedChange={() => onToggle(assignee._id)}
       />
       <label
-        htmlFor={`assignee-${assignee.id}`}
+        htmlFor={`assignee-${assignee._id}`}
         className="flex-1 cursor-pointer"
       >
         <div className="flex flex-col">
           <span className="font-medium">{assignee.name}</span>
           <span className="text-xs text-muted-foreground">
-            {assigneeType}
+            {assignee.role.charAt(0).toUpperCase() + assignee.role.slice(1)}
+            {assignee.department && ` • ${assignee.department}`}
           </span>
         </div>
       </label>
@@ -111,7 +162,9 @@ AssigneeCheckboxItem.displayName = "AssigneeCheckboxItem";
 const TasksSection = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [sites, setSites] = useState<Site[]>([]);
+  const [assignees, setAssignees] = useState<Assignee[]>([]);
   const [selectedSite, setSelectedSite] = useState<string>("all");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showUpdatesDialog, setShowUpdatesDialog] = useState(false);
@@ -120,25 +173,110 @@ const TasksSection = () => {
   const [selectedSites, setSelectedSites] = useState<string[]>([]);
   const [selectedAssignee, setSelectedAssignee] = useState<string>("");
   const [assigneeType, setAssigneeType] = useState<"all" | "manager" | "supervisor">("all");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingAssignees, setIsLoadingAssignees] = useState(false);
+  const [isLoadingSites, setIsLoadingSites] = useState(false);
+
+  // Fetch data on component mount
+  useEffect(() => {
+    fetchTasks();
+    fetchSites();
+    fetchAssignees();
+  }, []);
+
+  // Fetch tasks from backend
+  const fetchTasks = async () => {
+    try {
+      setIsLoading(true);
+      console.log("Fetching tasks from:", `${API_URL}/tasks`);
+      
+      const response = await fetch(`${API_URL}/tasks`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch tasks: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log("Tasks data received:", data);
+      
+      setTasks(Array.isArray(data) ? data : []);
+    } catch (error: any) {
+      console.error("Error fetching tasks:", error);
+      toast.error(error.message || "Failed to load tasks");
+      setTasks([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch sites from backend
+  const fetchSites = async () => {
+    try {
+      setIsLoadingSites(true);
+      console.log("Fetching sites from:", `${API_URL}/sites`);
+      
+      const response = await fetch(`${API_URL}/sites`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch sites: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log("Sites data received:", data);
+      
+      setSites(Array.isArray(data) ? data : []);
+    } catch (error: any) {
+      console.error("Error fetching sites:", error);
+      toast.error("Failed to load sites");
+      setSites([]);
+    } finally {
+      setIsLoadingSites(false);
+    }
+  };
+
+  // Fetch assignees from backend
+  const fetchAssignees = async () => {
+    try {
+      setIsLoadingAssignees(true);
+      console.log("Fetching assignees from:", `${API_URL}/tasks/assignees`);
+      
+      const response = await fetch(`${API_URL}/tasks/assignees`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch assignees: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log("Assignees data received:", data);
+      
+      setAssignees(Array.isArray(data) ? data : []);
+    } catch (error: any) {
+      console.error("Error fetching assignees:", error);
+      toast.error("Failed to load assignees");
+      setAssignees([]);
+    } finally {
+      setIsLoadingAssignees(false);
+    }
+  };
 
   // Memoize filtered assignees
   const filteredAssignees = useMemo(() => {
     return assignees.filter(assignee => {
-      if (assigneeType === "all") return true;
-      if (assigneeType === "manager") return assignee.id.includes("manager");
-      if (assigneeType === "supervisor") return assignee.id.includes("supervisor");
+      if (assigneeType === "all") return assignee.role === 'manager' || assignee.role === 'supervisor';
+      if (assigneeType === "manager") return assignee.role === 'manager';
+      if (assigneeType === "supervisor") return assignee.role === 'supervisor';
       return true;
     });
-  }, [assigneeType]);
+  }, [assignees, assigneeType]);
 
   // Memoize managers and supervisors
   const managers = useMemo(() => 
-    assignees.filter(a => a.id.includes("manager")), 
-  []);
+    assignees.filter(a => a.role === 'manager'), 
+  [assignees]);
   
   const supervisorsList = useMemo(() => 
-    assignees.filter(a => a.id.includes("supervisor")), 
-  []);
+    assignees.filter(a => a.role === 'supervisor'), 
+  [assignees]);
 
   // Memoize task counts
   const taskCountsByAssignee = useMemo(() => {
@@ -149,14 +287,14 @@ const TasksSection = () => {
     return counts;
   }, [tasks]);
 
-  // Use useCallback for event handlers
-  const handleAssignTask = useCallback((e: React.FormEvent<HTMLFormElement>) => {
+  // Handle assign task
+  const handleAssignTask = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     
-    const sites = selectedSites.length > 0 ? selectedSites : [formData.get("site") as string];
+    const sitesToAssign = selectedSites.length > 0 ? selectedSites : [formData.get("site") as string];
     
-    if (sites.length === 0) {
+    if (sitesToAssign.length === 0) {
       toast.error("Please select at least one site");
       return;
     }
@@ -166,82 +304,158 @@ const TasksSection = () => {
       return;
     }
 
-    const newTasks: Task[] = sites.map((siteId, index) => {
-      const site = initialSites.find(s => s.id === siteId);
-      const siteName = site ? site.name : "Unknown Site";
-      const clientName = site ? site.clientName : "Unknown Client";
-      
+    const selectedAssigneeObj = assignees.find(a => a._id === selectedAssignee);
+    if (!selectedAssigneeObj) {
+      toast.error("Selected assignee not found");
+      return;
+    }
+
+    // Create task objects for each site
+    const tasksToCreate = sitesToAssign.map((siteId) => {
+      const site = sites.find(s => s._id === siteId);
       return {
-        id: (Date.now() + index).toString(),
         title: formData.get("task-title") as string,
         description: formData.get("description") as string,
         assignedTo: selectedAssignee,
+        assignedToName: selectedAssigneeObj.name,
         priority: formData.get("priority") as "high" | "medium" | "low",
         status: "pending",
         deadline: formData.get("deadline") as string,
         dueDateTime: formData.get("due-datetime") as string,
         siteId: siteId,
-        siteName: siteName,
-        clientName: clientName,
+        siteName: site ? site.name : "Unknown Site",
+        clientName: site ? site.clientName : "Unknown Client",
+        taskType: formData.get("task-type") as string || "routine",
         attachments: [],
-        hourlyUpdates: []
+        hourlyUpdates: [],
+        createdBy: "current-user" // This should be replaced with actual user ID
       };
     });
 
-    setTasks(prev => [...newTasks, ...prev]);
-    toast.success(`Task assigned to ${newTasks.length} site(s) successfully!`);
-    setDialogOpen(false);
-    setSelectedSites([]);
-    setSelectedAssignee("");
-    setAssigneeType("all");
-    (e.target as HTMLFormElement).reset();
-  }, [selectedSites, selectedAssignee]);
+    try {
+      console.log("Creating tasks:", tasksToCreate);
+      
+      const response = await fetch(`${API_URL}/tasks/multiple`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          tasks: tasksToCreate,
+          createdBy: "current-user"
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed to create tasks: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log("Tasks created:", data);
+      
+      toast.success(`Task assigned to ${tasksToCreate.length} site(s) successfully!`);
+      setDialogOpen(false);
+      setSelectedSites([]);
+      setSelectedAssignee("");
+      setAssigneeType("all");
+      (e.target as HTMLFormElement).reset();
+      
+      // Refresh tasks list
+      await fetchTasks();
+      
+    } catch (error: any) {
+      console.error("Error creating tasks:", error);
+      toast.error(error.message || "Failed to assign task");
+    }
+  };
 
-  const handleDeleteTask = useCallback((taskId: string) => {
-    setTasks(prev => prev.filter(task => task.id !== taskId));
-    toast.success("Task deleted successfully!");
-  }, []);
+  const handleDeleteTask = async (taskId: string) => {
+    if (!confirm("Are you sure you want to delete this task?")) {
+      return;
+    }
 
-  const handleUpdateStatus = useCallback((taskId: string, status: Task["status"]) => {
-    setTasks(prev => prev.map(task => 
-      task.id === taskId ? { ...task, status } : task
-    ));
-    toast.success("Task status updated!");
-  }, []);
+    try {
+      const response = await fetch(`${API_URL}/tasks/${taskId}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed to delete task: ${response.status}`);
+      }
+      
+      toast.success("Task deleted successfully!");
+      await fetchTasks();
+    } catch (error: any) {
+      console.error("Error deleting task:", error);
+      toast.error(error.message || "Failed to delete task");
+    }
+  };
 
-  const handleAddHourlyUpdate = useCallback((taskId: string) => {
+  const handleUpdateStatus = async (taskId: string, status: Task["status"]) => {
+    try {
+      const response = await fetch(`${API_URL}/tasks/${taskId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed to update status: ${response.status}`);
+      }
+      
+      toast.success("Task status updated!");
+      await fetchTasks();
+    } catch (error: any) {
+      console.error("Error updating task status:", error);
+      toast.error(error.message || "Failed to update task status");
+    }
+  };
+
+  const handleAddHourlyUpdate = async (taskId: string) => {
     if (!hourlyUpdateText.trim()) {
       toast.error("Please enter an update");
       return;
     }
 
-    const newUpdate: HourlyUpdate = {
-      id: Date.now().toString(),
-      timestamp: new Date().toISOString(),
-      content: hourlyUpdateText,
-      submittedBy: "current-user"
-    };
-
-    setTasks(prev => prev.map(task => {
-      if (task.id === taskId) {
-        const currentUpdates = task.hourlyUpdates || [];
-        return { 
-          ...task, 
-          hourlyUpdates: [...currentUpdates, newUpdate] 
-        };
+    try {
+      const response = await fetch(`${API_URL}/tasks/${taskId}/hourly-updates`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          content: hourlyUpdateText,
+          submittedBy: "current-user" // Replace with actual user ID
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed to add update: ${response.status}`);
       }
-      return task;
-    }));
+      
+      setHourlyUpdateText("");
+      toast.success("Hourly update added!");
+      await fetchTasks();
+      setShowUpdatesDialog(false);
+    } catch (error: any) {
+      console.error("Error adding hourly update:", error);
+      toast.error(error.message || "Failed to add update");
+    }
+  };
 
-    setHourlyUpdateText("");
-    toast.success("Hourly update added!");
-  }, [hourlyUpdateText]);
-
-  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>, taskId: string) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, taskId: string) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const newAttachments: Attachment[] = Array.from(files).map(file => ({
+    // In a real application, you would upload the file to a server first
+    // and then get the URL. For now, we'll create object URLs locally.
+    const newAttachments = Array.from(files).map(file => ({
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       filename: file.name,
       url: URL.createObjectURL(file),
@@ -250,8 +464,10 @@ const TasksSection = () => {
       type: file.type
     }));
 
+    // For demo, we'll just update local state
+    // In production, you would make API calls for each file
     setTasks(prev => prev.map(task => {
-      if (task.id === taskId) {
+      if (task._id === taskId) {
         const currentAttachments = task.attachments || [];
         return { 
           ...task, 
@@ -262,21 +478,26 @@ const TasksSection = () => {
     }));
 
     toast.success(`${files.length} file(s) uploaded successfully!`);
-  }, []);
+  };
 
-  const handleDeleteAttachment = useCallback((taskId: string, attachmentId: string) => {
-    setTasks(prev => prev.map(task => {
-      if (task.id === taskId) {
-        const currentAttachments = task.attachments || [];
-        return { 
-          ...task, 
-          attachments: currentAttachments.filter(a => a.id !== attachmentId) 
-        };
+  const handleDeleteAttachment = async (taskId: string, attachmentId: string) => {
+    try {
+      const response = await fetch(`${API_URL}/tasks/${taskId}/attachments/${attachmentId}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed to delete attachment: ${response.status}`);
       }
-      return task;
-    }));
-    toast.success("Attachment deleted!");
-  }, []);
+      
+      toast.success("Attachment deleted!");
+      await fetchTasks();
+    } catch (error: any) {
+      console.error("Error deleting attachment:", error);
+      toast.error(error.message || "Failed to delete attachment");
+    }
+  };
 
   // Filter tasks with useMemo
   const filteredTasks = useMemo(() => {
@@ -285,7 +506,7 @@ const TasksSection = () => {
       
       const matchesSearch = 
         task.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        task.assignedTo?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        task.assignedToName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         task.description?.toLowerCase().includes(searchQuery.toLowerCase());
       
       const matchesSite = selectedSite === "all" || task.siteId === selectedSite;
@@ -303,31 +524,31 @@ const TasksSection = () => {
     const colors = { 
       completed: "default", 
       "in-progress": "default", 
-      pending: "secondary" 
+      pending: "secondary",
+      cancelled: "destructive"
     };
     return colors[status as keyof typeof colors] || "outline";
   }, []);
 
   const getAssigneeName = useCallback((assigneeId: string) => {
-    const assignee = assignees.find(a => a.id === assigneeId);
+    const assignee = assignees.find(a => a._id === assigneeId);
     return assignee ? assignee.name : assigneeId;
-  }, []);
+  }, [assignees]);
 
   const getAssigneeType = useCallback((assigneeId: string) => {
-    if (assigneeId.includes("manager")) return "Manager";
-    if (assigneeId.includes("supervisor")) return "Supervisor";
-    return "Staff";
-  }, []);
+    const assignee = assignees.find(a => a._id === assigneeId);
+    return assignee ? assignee.role.charAt(0).toUpperCase() + assignee.role.slice(1) : "Unknown";
+  }, [assignees]);
 
   const getSiteName = useCallback((siteId: string) => {
-    const site = initialSites.find(s => s.id === siteId);
+    const site = sites.find(s => s._id === siteId);
     return site ? site.name : "Unknown Site";
-  }, []);
+  }, [sites]);
 
   const getClientName = useCallback((siteId: string) => {
-    const site = initialSites.find(s => s.id === siteId);
+    const site = sites.find(s => s._id === siteId);
     return site ? site.clientName : "Unknown Client";
-  }, []);
+  }, [sites]);
 
   const formatDateTime = useCallback((dateTimeString: string) => {
     if (!dateTimeString) return "No date set";
@@ -365,19 +586,19 @@ const TasksSection = () => {
 
   const handleSelectAllSites = useCallback(() => {
     setSelectedSites(prev => {
-      if (prev.length === initialSites.length) {
+      if (prev.length === sites.length) {
         return [];
       } else {
-        return initialSites.map(site => site.id);
+        return sites.map(site => site._id);
       }
     });
-  }, []);
+  }, [sites]);
 
   const handleAssigneeSelection = useCallback((assigneeId: string) => {
     setSelectedAssignee(prev => prev === assigneeId ? "" : assigneeId);
   }, []);
 
-  // Memoized AssignTaskDialog to prevent re-renders
+  // Memoized AssignTaskDialog
   const AssignTaskDialog = useMemo(() => {
     return ({ open, onOpenChange, onSubmit }: { 
       open: boolean; 
@@ -403,98 +624,107 @@ const TasksSection = () => {
                 <span className="font-medium">Select Assignee</span>
               </div>
               
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                <Button
-                  type="button"
-                  variant={assigneeType === "all" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setAssigneeType("all")}
-                  className="flex items-center gap-2"
-                >
-                  <Users className="h-3 w-3" />
-                  All
-                </Button>
-                <Button
-                  type="button"
-                  variant={assigneeType === "manager" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setAssigneeType("manager")}
-                  className="flex items-center gap-2"
-                >
-                  <Briefcase className="h-3 w-3" />
-                  Managers
-                </Button>
-                <Button
-                  type="button"
-                  variant={assigneeType === "supervisor" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setAssigneeType("supervisor")}
-                  className="flex items-center gap-2"
-                >
-                  <User className="h-3 w-3" />
-                  Supervisors
-                </Button>
-              </div>
-
-              <div className="border rounded-lg p-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Managers Column */}
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Briefcase className="h-4 w-4 text-blue-600" />
-                      <Label className="font-medium">Managers</Label>
-                    </div>
-                    {managers.map(manager => (
-                      <AssigneeCheckboxItem
-                        key={manager.id}
-                        assignee={manager}
-                        isSelected={selectedAssignee === manager.id}
-                        taskCount={taskCountsByAssignee[manager.id] || 0}
-                        onToggle={handleAssigneeSelection}
-                      />
-                    ))}
-                  </div>
-
-                  {/* Supervisors Column */}
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <User className="h-4 w-4 text-green-600" />
-                      <Label className="font-medium">Supervisors</Label>
-                    </div>
-                    {supervisorsList.map(supervisor => (
-                      <AssigneeCheckboxItem
-                        key={supervisor.id}
-                        assignee={supervisor}
-                        isSelected={selectedAssignee === supervisor.id}
-                        taskCount={taskCountsByAssignee[supervisor.id] || 0}
-                        onToggle={handleAssigneeSelection}
-                      />
-                    ))}
-                  </div>
+              {isLoadingAssignees ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <span className="ml-2">Loading assignees...</span>
                 </div>
-                
-                {!selectedAssignee && (
-                  <div className="text-center py-4 text-muted-foreground border-t mt-4">
-                    <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p>No assignee selected. Select a manager or supervisor.</p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-2 mb-4">
+                    <Button
+                      type="button"
+                      variant={assigneeType === "all" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setAssigneeType("all")}
+                      className="flex items-center gap-2"
+                    >
+                      <Users className="h-3 w-3" />
+                      All
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={assigneeType === "manager" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setAssigneeType("manager")}
+                      className="flex items-center gap-2"
+                    >
+                      <Briefcase className="h-3 w-3" />
+                      Managers
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={assigneeType === "supervisor" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setAssigneeType("supervisor")}
+                      className="flex items-center gap-2"
+                    >
+                      <User className="h-3 w-3" />
+                      Supervisors
+                    </Button>
                   </div>
-                )}
 
-                {selectedAssignee && (
-                  <div className="mt-4 p-3 bg-primary/5 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <User className="h-4 w-4 text-primary" />
-                      <span className="font-medium">Selected Assignee:</span>
-                      <span className="ml-auto font-semibold">
-                        {getAssigneeName(selectedAssignee)}
-                        <Badge variant="secondary" className="ml-2 text-xs">
-                          {getAssigneeType(selectedAssignee)}
-                        </Badge>
-                      </span>
+                  <div className="border rounded-lg p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Managers Column */}
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Briefcase className="h-4 w-4 text-blue-600" />
+                          <Label className="font-medium">Managers</Label>
+                        </div>
+                        {managers.map(manager => (
+                          <AssigneeCheckboxItem
+                            key={manager._id}
+                            assignee={manager}
+                            isSelected={selectedAssignee === manager._id}
+                            taskCount={taskCountsByAssignee[manager._id] || 0}
+                            onToggle={handleAssigneeSelection}
+                          />
+                        ))}
+                      </div>
+
+                      {/* Supervisors Column */}
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4 text-green-600" />
+                          <Label className="font-medium">Supervisors</Label>
+                        </div>
+                        {supervisorsList.map(supervisor => (
+                          <AssigneeCheckboxItem
+                            key={supervisor._id}
+                            assignee={supervisor}
+                            isSelected={selectedAssignee === supervisor._id}
+                            taskCount={taskCountsByAssignee[supervisor._id] || 0}
+                            onToggle={handleAssigneeSelection}
+                          />
+                        ))}
+                      </div>
                     </div>
+                    
+                    {!selectedAssignee && (
+                      <div className="text-center py-4 text-muted-foreground border-t mt-4">
+                        <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p>No assignee selected. Select a manager or supervisor.</p>
+                      </div>
+                    )}
+
+                    {selectedAssignee && (
+                      <div className="mt-4 p-3 bg-primary/5 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4 text-primary" />
+                          <span className="font-medium">Selected Assignee:</span>
+                          <span className="ml-auto font-semibold">
+                            {getAssigneeName(selectedAssignee)}
+                            <Badge variant="secondary" className="ml-2 text-xs">
+                              {getAssigneeType(selectedAssignee)}
+                            </Badge>
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                </>
+              )}
             </div>
 
             <FormField label="Task Title" id="task-title" required>
@@ -526,30 +756,38 @@ const TasksSection = () => {
                   variant="outline" 
                   size="sm"
                   onClick={handleSelectAllSites}
+                  disabled={isLoadingSites}
                 >
-                  {selectedSites.length === initialSites.length ? "Deselect All" : "Select All"}
+                  {selectedSites.length === sites.length ? "Deselect All" : "Select All"}
                 </Button>
               </div>
               
-              <div className="border rounded-lg p-4 max-h-60 overflow-y-auto">
-                <div className="space-y-3">
-                  {initialSites.map(site => (
-                    <SiteCheckboxItem
-                      key={site.id}
-                      site={site}
-                      isSelected={selectedSites.includes(site.id)}
-                      onToggle={handleSiteSelection}
-                    />
-                  ))}
+              {isLoadingSites ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <span className="ml-2">Loading sites...</span>
                 </div>
-                
-                {selectedSites.length === 0 && (
-                  <div className="text-center py-4 text-muted-foreground">
-                    <Building className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p>No sites selected. Select sites to assign the task.</p>
+              ) : (
+                <div className="border rounded-lg p-4 max-h-60 overflow-y-auto">
+                  <div className="space-y-3">
+                    {sites.map(site => (
+                      <SiteCheckboxItem
+                        key={site._id}
+                        site={site}
+                        isSelected={selectedSites.includes(site._id)}
+                        onToggle={handleSiteSelection}
+                      />
+                    ))}
                   </div>
-                )}
-              </div>
+                  
+                  {selectedSites.length === 0 && (
+                    <div className="text-center py-4 text-muted-foreground">
+                      <Building className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                      <p>No sites selected. Select sites to assign the task.</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -670,7 +908,7 @@ const TasksSection = () => {
             <Button 
               type="submit" 
               className="w-full" 
-              disabled={selectedSites.length === 0 || !selectedAssignee}
+              disabled={selectedSites.length === 0 || !selectedAssignee || isLoadingAssignees || isLoadingSites}
             >
               <Plus className="mr-2 h-4 w-4" />
               Assign Task to {selectedSites.length} Site(s)
@@ -680,17 +918,20 @@ const TasksSection = () => {
       </Dialog>
     );
   }, [
-    assigneeType, 
-    managers, 
-    supervisorsList, 
-    selectedAssignee, 
-    selectedSites, 
+    assigneeType,
+    managers,
+    supervisorsList,
+    selectedAssignee,
+    selectedSites,
     taskCountsByAssignee,
     getAssigneeName,
     getAssigneeType,
     handleAssigneeSelection,
     handleSelectAllSites,
-    handleSiteSelection
+    handleSiteSelection,
+    isLoadingAssignees,
+    isLoadingSites,
+    sites.length
   ]);
 
   // Memoized HourlyUpdatesDialog
@@ -716,11 +957,11 @@ const TasksSection = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">Assignee: {getAssigneeName(task.assignedTo)}</span>
+                  <span className="text-sm font-medium">Assignee: {task.assignedToName}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Building className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">Site: {getSiteName(task.siteId)}</span>
+                  <span className="text-sm font-medium">Site: {task.siteName}</span>
                 </div>
               </div>
               
@@ -763,7 +1004,7 @@ const TasksSection = () => {
                   className="mb-3"
                 />
                 <Button 
-                  onClick={() => handleAddHourlyUpdate(task.id)}
+                  onClick={() => handleAddHourlyUpdate(task._id)}
                   className="w-full"
                 >
                   Add Hourly Update
@@ -774,7 +1015,7 @@ const TasksSection = () => {
         </Dialog>
       );
     };
-  }, [hourlyUpdateText, handleAddHourlyUpdate, getAssigneeName, getSiteName, formatDateTime]);
+  }, [hourlyUpdateText, handleAddHourlyUpdate, getAssigneeName, formatDateTime]);
 
   // Memoized AttachmentsDialog
   const AttachmentsDialog = useMemo(() => {
@@ -799,11 +1040,11 @@ const TasksSection = () => {
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4" />
-                  <span className="text-sm">{getAssigneeName(task.assignedTo)}</span>
+                  <span className="text-sm">{task.assignedToName}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Building className="h-4 w-4" />
-                  <span className="text-sm">{getSiteName(task.siteId)}</span>
+                  <span className="text-sm">{task.siteName}</span>
                 </div>
               </div>
               
@@ -820,7 +1061,7 @@ const TasksSection = () => {
                         type="file"
                         multiple
                         className="hidden"
-                        onChange={(e) => handleFileUpload(e, task.id)}
+                        onChange={(e) => handleFileUpload(e, task._id)}
                       />
                     </div>
                   </Button>
@@ -868,7 +1109,7 @@ const TasksSection = () => {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleDeleteAttachment(task.id, attachment.id)}
+                            onClick={() => handleDeleteAttachment(task._id, attachment.id)}
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
@@ -883,19 +1124,29 @@ const TasksSection = () => {
         </Dialog>
       );
     };
-  }, [handleFileUpload, handleDeleteAttachment, getAssigneeName, getSiteName, formatDateTime]);
+  }, [handleFileUpload, handleDeleteAttachment, formatDateTime]);
 
   // Group tasks by assignee for summary with useMemo
   const tasksByAssignee = useMemo(() => {
     return tasks.reduce((acc, task) => {
-      const assigneeName = getAssigneeName(task.assignedTo);
-      if (!acc[assigneeName]) {
-        acc[assigneeName] = [];
+      if (!acc[task.assignedToName]) {
+        acc[task.assignedToName] = [];
       }
-      acc[assigneeName].push(task);
+      acc[task.assignedToName].push(task);
       return acc;
     }, {} as Record<string, Task[]>);
-  }, [tasks, getAssigneeName]);
+  }, [tasks]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4" />
+          <p className="text-lg">Loading tasks...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -904,7 +1155,7 @@ const TasksSection = () => {
           <div>
             <CardTitle>All Tasks</CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
-              {tasks.length} total tasks • {new Set(tasks.map(t => t.assignedTo)).size} assignees
+              {tasks.length} total tasks • {Object.keys(tasksByAssignee).length} assignees
             </p>
           </div>
           {AssignTaskDialog({
@@ -930,8 +1181,8 @@ const TasksSection = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Sites</SelectItem>
-                    {initialSites.map(site => (
-                      <SelectItem key={site.id} value={site.id}>
+                    {sites.map(site => (
+                      <SelectItem key={site._id} value={site._id}>
                         {site.name}
                       </SelectItem>
                     ))}
@@ -987,12 +1238,15 @@ const TasksSection = () => {
                 {filteredTasks.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                      No tasks found
+                      {searchQuery || selectedSite !== "all" 
+                        ? "No tasks match your search criteria" 
+                        : "No tasks found. Create your first task!"
+                      }
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredTasks.map((task) => (
-                    <TableRow key={task.id}>
+                    <TableRow key={task._id}>
                       <TableCell className="font-medium">
                         <div>
                           <div className="font-semibold">{task.title || "Untitled Task"}</div>
@@ -1005,10 +1259,10 @@ const TasksSection = () => {
                         <div className="space-y-1">
                           <div className="flex items-center gap-1">
                             <Building className="h-3 w-3" />
-                            <span className="font-medium">{getSiteName(task.siteId)}</span>
+                            <span className="font-medium">{task.siteName}</span>
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            {getClientName(task.siteId)}
+                            {task.clientName}
                           </div>
                         </div>
                       </TableCell>
@@ -1016,7 +1270,7 @@ const TasksSection = () => {
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <User className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">{getAssigneeName(task.assignedTo)}</span>
+                            <span className="font-medium">{task.assignedToName}</span>
                           </div>
                           <Badge variant="outline" className="text-xs">
                             {getAssigneeType(task.assignedTo)}
@@ -1038,7 +1292,7 @@ const TasksSection = () => {
                         <div className="flex flex-col">
                           <div className="flex items-center gap-1">
                             <Calendar className="h-3 w-3" />
-                            {task.deadline || "No deadline"}
+                            {formatDateTime(task.deadline)}
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {task.dueDateTime ? formatDateTime(task.dueDateTime) : "No due time"}
@@ -1081,7 +1335,7 @@ const TasksSection = () => {
                             <Button 
                               variant="outline" 
                               size="sm" 
-                              onClick={() => handleUpdateStatus(task.id, "in-progress")}
+                              onClick={() => handleUpdateStatus(task._id, "in-progress")}
                               disabled={task.status === "in-progress"}
                             >
                               <Edit className="h-4 w-4" />
@@ -1091,7 +1345,7 @@ const TasksSection = () => {
                             <Button 
                               variant="outline" 
                               size="sm" 
-                              onClick={() => handleUpdateStatus(task.id, "completed")}
+                              onClick={() => handleUpdateStatus(task._id, "completed")}
                             >
                               <CheckCircle className="h-4 w-4" />
                             </Button>
@@ -1099,7 +1353,7 @@ const TasksSection = () => {
                           <Button 
                             variant="destructive" 
                             size="sm" 
-                            onClick={() => handleDeleteTask(task.id)}
+                            onClick={() => handleDeleteTask(task._id)}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>

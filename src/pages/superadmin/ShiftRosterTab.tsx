@@ -20,27 +20,24 @@ interface Shift {
 }
 
 interface Employee {
-  id: number;
+  _id: string;
   employeeId: string;
   name: string;
-}
-
-interface ShiftRosterTabProps {
-  employees: Employee[];
+  department: string;
+  status: string;
 }
 
 // Use a direct URL - update this to match your backend URL
 const API_BASE_URL = "http://localhost:5001/api";
 
-// Alternative: If using Next.js, you can use relative paths
-// const API_BASE_URL = "/api"; // For Next.js API routes
-// Or for production:
-// const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001/api";
-
-const ShiftRosterTab = ({ employees }: ShiftRosterTabProps) => {
+const ShiftRosterTab = () => {
   const [shifts, setShifts] = useState<Shift[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loading, setLoading] = useState({
+    shifts: false,
+    employees: false,
+    creating: false
+  });
   const [newShift, setNewShift] = useState({
     name: "",
     startTime: "06:00",
@@ -48,13 +45,14 @@ const ShiftRosterTab = ({ employees }: ShiftRosterTabProps) => {
     employees: [] as string[]
   });
 
-  // Fetch shifts from backend
+  // Fetch shifts and employees from backend
   useEffect(() => {
     fetchShifts();
+    fetchEmployees();
   }, []);
 
   const fetchShifts = async () => {
-    setLoading(true);
+    setLoading(prev => ({ ...prev, shifts: true }));
     try {
       const response = await fetch(`${API_BASE_URL}/shifts`);
       
@@ -73,7 +71,35 @@ const ShiftRosterTab = ({ employees }: ShiftRosterTabProps) => {
       console.error("Error fetching shifts:", error);
       toast.error(`Error fetching shifts: ${error.message}. Make sure backend is running on port 5001.`);
     } finally {
-      setLoading(false);
+      setLoading(prev => ({ ...prev, shifts: false }));
+    }
+  };
+
+  const fetchEmployees = async () => {
+    setLoading(prev => ({ ...prev, employees: true }));
+    try {
+      const response = await fetch(`${API_BASE_URL}/employees`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        // Filter to show only active employees
+        const activeEmployees = data.data.filter((emp: Employee) => 
+          emp.status === 'active'
+        );
+        setEmployees(activeEmployees);
+      } else {
+        toast.error(data.message || "Failed to fetch employees");
+      }
+    } catch (error: any) {
+      console.error("Error fetching employees:", error);
+      toast.error(`Error fetching employees: ${error.message}`);
+    } finally {
+      setLoading(prev => ({ ...prev, employees: false }));
     }
   };
 
@@ -83,7 +109,7 @@ const ShiftRosterTab = ({ employees }: ShiftRosterTabProps) => {
       return;
     }
 
-    setCreating(true);
+    setLoading(prev => ({ ...prev, creating: true }));
     try {
       const response = await fetch(`${API_BASE_URL}/shifts`, {
         method: "POST",
@@ -116,7 +142,7 @@ const ShiftRosterTab = ({ employees }: ShiftRosterTabProps) => {
       console.error("Error creating shift:", error);
       toast.error(`Error creating shift: ${error.message}`);
     } finally {
-      setCreating(false);
+      setLoading(prev => ({ ...prev, creating: false }));
     }
   };
 
@@ -205,6 +231,10 @@ const ShiftRosterTab = ({ employees }: ShiftRosterTabProps) => {
     }
   };
 
+  const refreshAll = async () => {
+    await Promise.all([fetchShifts(), fetchEmployees()]);
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-IN', {
@@ -219,6 +249,11 @@ const ShiftRosterTab = ({ employees }: ShiftRosterTabProps) => {
     return emp ? emp.name : employeeId;
   };
 
+  const getEmployeeDetails = (employeeId: string) => {
+    const emp = employees.find(e => e.employeeId === employeeId);
+    return emp;
+  };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -228,15 +263,20 @@ const ShiftRosterTab = ({ employees }: ShiftRosterTabProps) => {
             <Button 
               variant="outline" 
               size="sm" 
-              onClick={fetchShifts}
-              disabled={loading}
+              onClick={refreshAll}
+              disabled={loading.shifts || loading.employees}
             >
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading.shifts ? 'animate-spin' : ''}`} />
+              Refresh All
             </Button>
-            <Badge variant="secondary">
-              {shifts.length} {shifts.length === 1 ? 'Shift' : 'Shifts'}
-            </Badge>
+            <div className="flex gap-2">
+              <Badge variant="secondary">
+                {shifts.length} {shifts.length === 1 ? 'Shift' : 'Shifts'}
+              </Badge>
+              <Badge variant="outline">
+                {employees.length} Active Employees
+              </Badge>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -256,7 +296,7 @@ const ShiftRosterTab = ({ employees }: ShiftRosterTabProps) => {
                     placeholder="Morning Shift" 
                     value={newShift.name}
                     onChange={(e) => setNewShift({...newShift, name: e.target.value})}
-                    disabled={creating}
+                    disabled={loading.creating}
                     className="bg-white"
                   />
                 </div>
@@ -269,7 +309,7 @@ const ShiftRosterTab = ({ employees }: ShiftRosterTabProps) => {
                       type="time" 
                       value={newShift.startTime}
                       onChange={(e) => setNewShift({...newShift, startTime: e.target.value})}
-                      disabled={creating}
+                      disabled={loading.creating}
                       className="bg-white"
                     />
                   </div>
@@ -280,7 +320,7 @@ const ShiftRosterTab = ({ employees }: ShiftRosterTabProps) => {
                       type="time" 
                       value={newShift.endTime}
                       onChange={(e) => setNewShift({...newShift, endTime: e.target.value})}
-                      disabled={creating}
+                      disabled={loading.creating}
                       className="bg-white"
                     />
                   </div>
@@ -297,21 +337,31 @@ const ShiftRosterTab = ({ employees }: ShiftRosterTabProps) => {
                         });
                       }
                     }}
-                    disabled={creating}
+                    disabled={loading.creating || loading.employees}
                   >
                     <SelectTrigger className="bg-white">
                       <SelectValue placeholder="Select employees" />
                     </SelectTrigger>
                     <SelectContent>
-                      {employees.map(emp => (
-                        <SelectItem 
-                          key={emp.id} 
-                          value={emp.employeeId}
-                          disabled={newShift.employees.includes(emp.employeeId)}
-                        >
-                          {emp.name} ({emp.employeeId})
-                        </SelectItem>
-                      ))}
+                      {loading.employees ? (
+                        <div className="flex justify-center p-4">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        </div>
+                      ) : employees.length === 0 ? (
+                        <div className="text-center p-4 text-sm text-gray-500">
+                          No active employees found
+                        </div>
+                      ) : (
+                        employees.map(emp => (
+                          <SelectItem 
+                            key={emp._id} 
+                            value={emp.employeeId}
+                            disabled={newShift.employees.includes(emp.employeeId)}
+                          >
+                            {emp.name} ({emp.employeeId}) - {emp.department}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                   
@@ -320,13 +370,18 @@ const ShiftRosterTab = ({ employees }: ShiftRosterTabProps) => {
                       <Label className="text-sm font-medium">Selected Employees:</Label>
                       <div className="space-y-2 max-h-40 overflow-y-auto p-2 border rounded-md">
                         {newShift.employees.map(empId => {
-                          const empName = getEmployeeName(empId);
+                          const emp = getEmployeeDetails(empId);
                           return (
                             <div key={empId} className="flex justify-between items-center p-2 border rounded bg-gray-50">
                               <div className="flex items-center gap-2">
                                 <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                                <span className="text-sm">{empName}</span>
+                                <span className="text-sm">{emp?.name || empId}</span>
                                 <span className="text-xs text-gray-500">({empId})</span>
+                                {emp?.department && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {emp.department}
+                                  </Badge>
+                                )}
                               </div>
                               <Button
                                 size="sm"
@@ -336,7 +391,7 @@ const ShiftRosterTab = ({ employees }: ShiftRosterTabProps) => {
                                   ...newShift,
                                   employees: newShift.employees.filter(id => id !== empId)
                                 })}
-                                disabled={creating}
+                                disabled={loading.creating}
                               >
                                 <Trash2 className="h-3 w-3 text-red-500" />
                               </Button>
@@ -350,10 +405,10 @@ const ShiftRosterTab = ({ employees }: ShiftRosterTabProps) => {
                 
                 <Button 
                   onClick={handleAddShift} 
-                  disabled={creating || !newShift.name.trim()}
+                  disabled={loading.creating || !newShift.name.trim()}
                   className="w-full"
                 >
-                  {creating ? (
+                  {loading.creating ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Creating Shift...
@@ -369,12 +424,19 @@ const ShiftRosterTab = ({ employees }: ShiftRosterTabProps) => {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">Current Shifts</h3>
-                <Badge variant="secondary">
-                  {loading ? "Loading..." : `${shifts.length} shifts`}
-                </Badge>
+                <div className="flex gap-2">
+                  <Badge variant="secondary">
+                    {loading.shifts ? "Loading..." : `${shifts.length} shifts`}
+                  </Badge>
+                  {loading.employees && (
+                    <Badge variant="outline" className="animate-pulse">
+                      Loading Employees...
+                    </Badge>
+                  )}
+                </div>
               </div>
               
-              {loading ? (
+              {loading.shifts ? (
                 <div className="flex justify-center items-center h-64">
                   <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
                 </div>
@@ -387,7 +449,7 @@ const ShiftRosterTab = ({ employees }: ShiftRosterTabProps) => {
                   <Button 
                     variant="outline" 
                     size="sm" 
-                    onClick={fetchShifts}
+                    onClick={refreshAll}
                     className="mt-4"
                   >
                     <RefreshCw className="h-3 w-3 mr-2" />
@@ -420,7 +482,7 @@ const ShiftRosterTab = ({ employees }: ShiftRosterTabProps) => {
                             variant="ghost"
                             className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
                             onClick={() => handleDeleteShift(shift._id)}
-                            disabled={loading}
+                            disabled={loading.shifts}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -433,20 +495,33 @@ const ShiftRosterTab = ({ employees }: ShiftRosterTabProps) => {
                           <Label className="text-sm font-medium">Assigned Employees:</Label>
                           <div className="space-y-1">
                             {shift.employees.map(empId => {
-                              const empName = getEmployeeName(empId);
+                              const emp = getEmployeeDetails(empId);
                               return (
                                 <div key={empId} className="flex justify-between items-center p-2 border rounded bg-gray-50">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                                    <span className="text-sm">{empName}</span>
-                                    <span className="text-xs text-gray-500">({empId})</span>
+                                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                                    <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0"></div>
+                                    <div className="flex flex-col min-w-0">
+                                      <span className="text-sm font-medium truncate">
+                                        {emp?.name || empId}
+                                      </span>
+                                      <div className="flex gap-2 items-center mt-1">
+                                        <span className="text-xs text-gray-500 truncate">
+                                          {empId}
+                                        </span>
+                                        {emp?.department && (
+                                          <Badge variant="outline" className="text-xs flex-shrink-0">
+                                            {emp.department}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </div>
                                   </div>
                                   <Button
                                     size="sm"
                                     variant="ghost"
-                                    className="h-6 w-6 p-0"
+                                    className="h-6 w-6 p-0 flex-shrink-0"
                                     onClick={() => handleRemoveEmployee(shift._id, empId)}
-                                    disabled={loading}
+                                    disabled={loading.shifts}
                                   >
                                     <Trash2 className="h-3 w-3 text-red-500" />
                                   </Button>
@@ -461,19 +536,29 @@ const ShiftRosterTab = ({ employees }: ShiftRosterTabProps) => {
                       <div className="pt-2">
                         <Select 
                           onValueChange={(value) => handleAssignEmployee(shift._id, value)}
-                          disabled={loading}
+                          disabled={loading.shifts || loading.employees}
                         >
                           <SelectTrigger className="bg-white">
                             <SelectValue placeholder="Add employee to this shift" />
                           </SelectTrigger>
                           <SelectContent>
-                            {employees
-                              .filter(emp => !shift.employees.includes(emp.employeeId))
-                              .map(emp => (
-                                <SelectItem key={emp.id} value={emp.employeeId}>
-                                  {emp.name} ({emp.employeeId})
-                                </SelectItem>
-                              ))}
+                            {loading.employees ? (
+                              <div className="flex justify-center p-4">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              </div>
+                            ) : employees.length === 0 ? (
+                              <div className="text-center p-4 text-sm text-gray-500">
+                                No active employees available
+                              </div>
+                            ) : (
+                              employees
+                                .filter(emp => !shift.employees.includes(emp.employeeId))
+                                .map(emp => (
+                                  <SelectItem key={emp._id} value={emp.employeeId}>
+                                    {emp.name} ({emp.employeeId}) - {emp.department}
+                                  </SelectItem>
+                                ))
+                            )}
                           </SelectContent>
                         </Select>
                       </div>
