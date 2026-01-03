@@ -1,7 +1,6 @@
 import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import connectDB from './config/database';
-<<<<<<< HEAD
 import mongoose from 'mongoose';
 import uploadRouter from './routes/upload.routes';
 import Document from './models/documents.model';
@@ -10,7 +9,7 @@ import path from 'path';
 import fs from 'fs';
 import { v2 as cloudinary } from "cloudinary";
 // Import models
-import { IUser, User } from './models/User';
+import User from './models/User'; // Fixed import - use default export
 import Shift from './models/Shift';
 import Employee from './models/Employee';
 import EPFForm from './models/EPFForm';
@@ -24,32 +23,63 @@ import siteRoutes from './routes/siteRoutes';
 import clientRoutes from './routes/clientRoutes';
 import tasksRoutes from './routes/tasksRoutes';
 import inventoryRoutes from './routes/inventoryRoutes';
+import authRoutes from './routes/authRoutes';
 
 const app: Application = express();
 
-// Middleware
-app.use(cors()); 
-=======
-import User, { IUser } from './models/User'; // Fixed import - User is default export
-import mongoose from 'mongoose';
-import clientRoutes from './routes/clientRoutes';
-import leadRoutes from './routes/leadRoutes';
-import communicationRoutes from './routes/communicationRoutes';
-import authRoutes from './routes/authRoutes'; // Import authRoutes instead of userRoutes
-import expenseRoutes from './routes/expenseRoutes';
-import serviceRoutes from './routes/serviceRoutes';
+// ==================== CORS CONFIGURATION ====================
+// Configure CORS properly
+const allowedOrigins = [
+  'http://localhost:5173',  // Vite default
+  'http://localhost:8080',  // Your frontend
+  'http://localhost:3000',  // React default
+  'http://localhost:4200',  // Angular default
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:8080',
+  'http://127.0.0.1:3000'
+];
 
-const app: Application = express();
-
-// CORS configuration
-app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:8080'],
+const corsOptions: cors.CorsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('⚠️ CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Content-Length', 'X-Requested-With']
-}));
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'Access-Control-Allow-Headers',
+    'Access-Control-Request-Headers',
+    'Access-Control-Allow-Origin'
+  ],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  optionsSuccessStatus: 200
+};
 
->>>>>>> 336fef579984e7f10a494ef8fec2b86fa7a775b2
+// Apply CORS middleware BEFORE other middleware
+app.use(cors(corsOptions));
+
+// Handle preflight requests for all routes
+app.options('*', cors(corsOptions));
+
+// Log CORS requests
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} ${req.method} ${req.url} - Origin: ${req.headers.origin}`);
+  next();
+});
+
+// Other middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -74,9 +104,18 @@ const storage = multer.diskStorage({
   }
 });
 
+// Connect to Database
+connectDB();
+
+// Add error logging
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+// ==================== ROUTES ====================
+// Mount all routes
+app.use('/api/auth', authRoutes);
 app.use('/api', deductionRoutes);
-
-
 app.use('/api/salary-structures', salaryStructureRoutes);
 app.use('/api/payroll', payrollRoutes);
 app.use('/api/salary-slips', salarySlipRoutes);
@@ -85,7 +124,10 @@ app.use('/api/sites', siteRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/tasks', tasksRoutes); 
 app.use('/api/inventory', inventoryRoutes);
+app.use('/api/upload', uploadRouter);
+app.use('/uploads', express.static('uploads'));
 
+// Configure multer for file uploads
 const upload = multer({
   storage: storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
@@ -102,54 +144,6 @@ const upload = multer({
   }
 });
 
-// Connect to Database
-connectDB();
-
-<<<<<<< HEAD
-// Add this right after middleware
-app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
-  next();
-=======
-// Disable caching middleware
-app.use((req, res, next) => {
-  if (req.path.startsWith('/api')) {
-    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-    res.set('Pragma', 'no-cache');
-    res.set('Expires', '0');
-  }
-  next();
-});
-
-// Test endpoint
-app.get('/api/test', (req: Request, res: Response) => {
-  res.json({ 
-    success: true, 
-    message: 'Backend API is working!',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Health check
-app.get('/', (req: Request, res: Response) => {
-  res.json({ 
-    message: 'Backend API is running!',
-    database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
-    version: '1.0.0',
-    services: ['auth', 'users', 'crm']
-  });
->>>>>>> 336fef579984e7f10a494ef8fec2b86fa7a775b2
-});
-
-// Add error logging
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
-
-app.use('/api/upload', uploadRouter);
-app.use('/uploads', express.static('uploads'));
-
 // ==================== HEALTH CHECKS ====================
 app.get('/', (req: Request, res: Response) => {
   res.json({ 
@@ -158,25 +152,30 @@ app.get('/', (req: Request, res: Response) => {
     version: '1.0.0',
     collections: Object.keys(mongoose.models),
     endpoints: {
+      auth: '/api/auth',
       employees: '/api/employees',
       epfForms: '/api/epf-forms',
-      // documents: '/api/documents',
       users: '/api/users',
       shifts: '/api/shifts',
       health: '/api/health'
     }
   });
 });
+
 app.get('/api/health', (req: Request, res: Response) => {
   res.json({ 
     success: true,
     status: 'OK',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    mongoConnected: mongoose.connection.readyState === 1,
+    cors: {
+      origin: req.headers.origin,
+      allowed: allowedOrigins.includes(req.headers.origin || '')
+    }
   });
 });
 
-<<<<<<< HEAD
 // ==================== EMPLOYEE ROUTES ====================
 
 // GET all employees with filters
@@ -237,6 +236,7 @@ app.get('/api/employees', async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
+    console.error('Error fetching employees:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Error fetching employees'
@@ -266,6 +266,7 @@ app.get('/api/employees/:id', async (req: Request, res: Response) => {
       data: employee
     });
   } catch (error: any) {
+    console.error('Error fetching employee:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Error fetching employee'
@@ -273,7 +274,6 @@ app.get('/api/employees/:id', async (req: Request, res: Response) => {
   }
 });
 
-// POST create new employee (with file uploads)
 // POST create new employee (with file uploads)
 app.post('/api/employees', upload.fields([
   { name: 'photo', maxCount: 1 },
@@ -460,6 +460,7 @@ app.put('/api/employees/:id', upload.fields([
       data: employee
     });
   } catch (error: any) {
+    console.error('Error updating employee:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Error updating employee'
@@ -506,6 +507,7 @@ app.patch('/api/employees/:id/status', async (req: Request, res: Response) => {
       data: employee
     });
   } catch (error: any) {
+    console.error('Error updating employee status:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Error updating employee status'
@@ -535,6 +537,7 @@ app.delete('/api/employees/:id', async (req: Request, res: Response) => {
       message: 'Employee deleted successfully'
     });
   } catch (error: any) {
+    console.error('Error deleting employee:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Error deleting employee'
@@ -601,6 +604,7 @@ app.get('/api/employees/stats', async (req: Request, res: Response) => {
       data: stats[0]
     });
   } catch (error: any) {
+    console.error('Error fetching employee statistics:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Error fetching employee statistics'
@@ -610,7 +614,6 @@ app.get('/api/employees/stats', async (req: Request, res: Response) => {
 
 // ==================== EPF FORM ROUTES ====================
 
-// POST create EPF Form
 // POST create EPF Form
 app.post('/api/epf-forms', async (req: Request, res: Response) => {
   try {
@@ -684,6 +687,7 @@ app.get('/api/epf-forms', async (req: Request, res: Response) => {
       data: forms
     });
   } catch (error: any) {
+    console.error('Error fetching EPF Forms:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Error fetching EPF Forms'
@@ -709,6 +713,7 @@ app.get('/api/epf-forms/:id', async (req: Request, res: Response) => {
       data: form
     });
   } catch (error: any) {
+    console.error('Error fetching EPF Form:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Error fetching EPF Form'
@@ -755,6 +760,7 @@ app.put('/api/epf-forms/:id/status', async (req: Request, res: Response) => {
       data: form
     });
   } catch (error: any) {
+    console.error('Error updating EPF Form status:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Error updating EPF Form status'
@@ -832,6 +838,7 @@ app.post('/api/documents', upload.single('document'), async (req: Request, res: 
       data: document
     });
   } catch (error: any) {
+    console.error('Error uploading document:', error);
     // Delete uploaded file if error occurred
     if (req.file) {
       const file = req.file as Express.Multer.File;
@@ -858,6 +865,7 @@ app.get('/api/documents/employee/:employeeId', async (req: Request, res: Respons
       data: documents
     });
   } catch (error: any) {
+    console.error('Error fetching documents:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Error fetching documents'
@@ -905,6 +913,7 @@ app.patch('/api/documents/:id/status', async (req: Request, res: Response) => {
       data: document
     });
   } catch (error: any) {
+    console.error('Error updating document status:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Error updating document status'
@@ -940,6 +949,7 @@ app.delete('/api/documents/:id', async (req: Request, res: Response) => {
       });
     });
   } catch (error: any) {
+    console.error('Error deleting document:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Error deleting document'
@@ -996,6 +1006,7 @@ app.get('/api/shifts/:id', async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
+    console.error('Error fetching shift:', error);
     res.status(500).json({ 
       success: false, 
       message: error.message || 'Error fetching shift'
@@ -1229,21 +1240,17 @@ app.get('/api/shifts/stats', async (req: Request, res: Response) => {
 });
 
 // ==================== USER ROUTES ====================
-=======
-// ============ AUTH ROUTES ============
-app.use('/api/auth', authRoutes);
 
-// ============ USER ROUTES ============
->>>>>>> 336fef579984e7f10a494ef8fec2b86fa7a775b2
-
-// CREATE - Add new user
+// CREATE - Add new user (FIXED VERSION)
 app.post('/api/users', async (req: Request, res: Response) => {
   try {
+    console.log('📝 POST /api/users called with data:', req.body);
+    
     const { 
       username, 
       email, 
       password, 
-      role, 
+      role = 'employee',
       firstName, 
       lastName,
       department,
@@ -1252,56 +1259,145 @@ app.post('/api/users', async (req: Request, res: Response) => {
       joinDate
     } = req.body;
 
-    // Check if user exists
-    const existingUser = await User.findOne({ 
-      $or: [{ email }, { username }] 
-    });
+    console.log('🔍 Validating user data...');
 
-    if (existingUser) {
-      return res.status(400).json({ 
+    // Validate required fields
+    if (!email || !password || !role) {
+      console.log('❌ Missing required fields:', { email, role });
+      return res.status(400).json({
         success: false,
-        message: 'User with this email or username already exists' 
+        message: 'Email, password, and role are required'
       });
     }
 
-    const newUser = new User({
-      username,
-      email,
-      password,
-      role: role || 'employee',
-      firstName,
-      lastName,
-      department: department || 'General',
-      site: site || 'Mumbai Office',
-      phone,
-      joinDate: joinDate ? new Date(joinDate) : new Date()
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      console.log('❌ Invalid email format:', email);
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid email address'
+      });
+    }
+
+    // Validate password length
+    if (password.length < 6) {
+      console.log('❌ Password too short');
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 6 characters long'
+      });
+    }
+
+    // Validate role
+    const validRoles = ['superadmin', 'admin', 'manager', 'supervisor', 'employee'];
+    if (!validRoles.includes(role)) {
+      console.log('❌ Invalid role:', role);
+      return res.status(400).json({
+        success: false,
+        message: `Invalid role. Must be one of: ${validRoles.join(', ')}`
+      });
+    }
+
+    // Generate username from email if not provided
+    const finalUsername = username || email.split('@')[0];
+    
+    // Check if user exists by email or username
+    const existingUser = await User.findOne({ 
+      $or: [{ email }, { username: finalUsername }] 
     });
 
+    if (existingUser) {
+      console.log('❌ User already exists:', { email, username: finalUsername });
+      return res.status(400).json({ 
+        success: false,
+        message: existingUser.email === email 
+          ? 'User with this email already exists'
+          : 'Username is already taken'
+      });
+    }
+
+    console.log('✅ All validations passed, creating user...');
+
+    const newUser = new User({
+      username: finalUsername,
+      email,
+      password, // Will be hashed by pre-save hook
+      role,
+      firstName: firstName || finalUsername,
+      lastName: lastName || '',
+      department: department || 'General',
+      site: site || 'Mumbai Office',
+      phone: phone || '',
+      joinDate: joinDate ? new Date(joinDate) : new Date(),
+      isActive: true
+    });
+
+    console.log('💾 Saving user to database...');
+    
     await newUser.save();
+    
+    console.log('✅ User created successfully:', {
+      id: newUser._id,
+      username: newUser.username,
+      email: newUser.email,
+      role: newUser.role,
+      name: newUser.name
+    });
+
+    // Return response WITHOUT password
+    const userResponse = {
+      _id: newUser._id.toString(),
+      id: newUser._id.toString().slice(-6),
+      username: newUser.username,
+      email: newUser.email,
+      name: newUser.name,
+      firstName: newUser.firstName,
+      lastName: newUser.lastName,
+      role: newUser.role,
+      department: newUser.department,
+      site: newUser.site,
+      phone: newUser.phone,
+      isActive: newUser.isActive,
+      status: newUser.isActive ? 'active' as const : 'inactive' as const,
+      joinDate: newUser.joinDate.toISOString().split('T')[0]
+    };
 
     res.status(201).json({
       success: true,
       message: 'User created successfully',
-      user: {
-        _id: newUser._id,
-        id: newUser._id.toString().slice(-6),
-        username: newUser.username,
-        email: newUser.email,
-        name: newUser.name,
-        firstName: newUser.firstName,
-        lastName: newUser.lastName,
-        role: newUser.role,
-        department: newUser.department,
-        site: newUser.site,
-        phone: newUser.phone,
-        isActive: newUser.isActive,
-        joinDate: newUser.joinDate
-      }
+      user: userResponse
     });
+
   } catch (error: any) {
+    console.error('🔥 ERROR in POST /api/users:', error);
+    
+    // Log specific error details
+    if (error.name === 'ValidationError') {
+      console.error('Validation errors:', error.errors);
+      const messages = Object.values(error.errors).map((err: any) => err.message);
+      return res.status(400).json({
+        success: false,
+        message: messages.join(', ')
+      });
+    }
+    
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      const value = error.keyValue[field];
+      console.error('Duplicate key error:', { field, value });
+      return res.status(400).json({
+        success: false,
+        message: `A user with this ${field} (${value}) already exists`
+      });
+    }
+
+    console.error('Full error stack:', error.stack);
+    
     res.status(500).json({
       success: false,
-      message: error.message || 'Error creating user'
+      message: error.message || 'Error creating user',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -1309,24 +1405,15 @@ app.post('/api/users', async (req: Request, res: Response) => {
 // READ - Get all users
 app.get('/api/users', async (req: Request, res: Response) => {
   try {
+    console.log('📋 GET /api/users called');
     const users = await User.find().sort({ createdAt: -1 });
 
-<<<<<<< HEAD
     const transformedUsers = users.map((user: any) => ({
       ...user.toObject(),
       id: user._id.toString().slice(-6)
     }));
 
     // Group by role
-=======
-    // 2️⃣ Transform users safely
-    const transformedUsers = users.map((user: IUser) => ({
-      ...user.toJSON(),
-      id: user._id.toString().slice(-6)
-    }));
-
-    // 3️⃣ Group users by role
->>>>>>> 336fef579984e7f10a494ef8fec2b86fa7a775b2
     const groupedByRole = transformedUsers.reduce((acc: any, user: any) => {
       if (!acc[user.role]) {
         acc[user.role] = [];
@@ -1344,9 +1431,52 @@ app.get('/api/users', async (req: Request, res: Response) => {
       inactive: transformedUsers.filter((u: any) => !u.isActive).length
     });
   } catch (error: any) {
+    console.error('Error fetching users:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Error fetching users'
+    });
+  }
+});
+
+// Get single user by ID
+app.get('/api/users/:id', async (req: Request, res: Response) => {
+  try {
+    const user = await User.findById(req.params.id);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    const userResponse = {
+      _id: user._id.toString(),
+      id: user._id.toString().slice(-6),
+      username: user.username,
+      email: user.email,
+      name: user.name,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      department: user.department,
+      site: user.site,
+      phone: user.phone,
+      isActive: user.isActive,
+      status: user.isActive ? 'active' as const : 'inactive' as const,
+      joinDate: user.joinDate.toISOString().split('T')[0]
+    };
+
+    res.status(200).json({
+      success: true,
+      data: userResponse
+    });
+  } catch (error: any) {
+    console.error(`Error fetching user ${req.params.id}:`, error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error fetching user'
     });
   }
 });
@@ -1368,6 +1498,7 @@ app.get('/api/users/stats', async (req: Request, res: Response) => {
       data: stats
     });
   } catch (error: any) {
+    console.error('Error fetching stats:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Error fetching stats'
@@ -1414,6 +1545,7 @@ app.patch('/api/users/:id/toggle-status', async (req: Request, res: Response) =>
       user: userResponse
     });
   } catch (error: any) {
+    console.error(`Error toggling status for user ${req.params.id}:`, error);
     res.status(500).json({
       success: false,
       message: error.message || 'Error updating status'
@@ -1470,6 +1602,7 @@ app.put('/api/users/:id', async (req: Request, res: Response) => {
       user: userResponse
     });
   } catch (error: any) {
+    console.error(`Error updating user ${req.params.id}:`, error);
     res.status(400).json({
       success: false,
       message: error.message || 'Error updating user'
@@ -1494,6 +1627,7 @@ app.delete('/api/users/:id', async (req: Request, res: Response) => {
       message: 'User deleted successfully'
     });
   } catch (error: any) {
+    console.error(`Error deleting user ${req.params.id}:`, error);
     res.status(500).json({
       success: false,
       message: error.message || 'Error deleting user'
@@ -1505,7 +1639,7 @@ app.delete('/api/users/:id', async (req: Request, res: Response) => {
 app.put('/api/users/:id/role', async (req: Request, res: Response) => {
   try {
     const { role } = req.body;
-    const validRoles = ['admin', 'manager', 'supervisor', 'employee'];
+    const validRoles = ['superadmin', 'admin', 'manager', 'supervisor', 'employee'];
 
     if (!validRoles.includes(role)) {
       return res.status(400).json({ 
@@ -1550,6 +1684,7 @@ app.put('/api/users/:id/role', async (req: Request, res: Response) => {
       user: userResponse
     });
   } catch (error: any) {
+    console.error(`Error updating role for user ${req.params.id}:`, error);
     res.status(500).json({
       success: false,
       message: error.message || 'Error updating role'
@@ -1557,445 +1692,7 @@ app.put('/api/users/:id/role', async (req: Request, res: Response) => {
   }
 });
 
-<<<<<<< HEAD
-// ======== ADD DOCUMENT ROUTES HERE ========
-
-// Helper function to format file size
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-
-// Helper function to get file type from mimetype
-function getFileTypeFromMimeType(mimeType: string): "PDF" | "XLSX" | "DOCX" | "JPG" | "PNG" | "OTHER" {
-  const typeMapping: { [key: string]: string } = {
-    'application/pdf': 'PDF',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
-    'image/jpeg': 'JPG',
-    'image/png': 'PNG',
-    'image/gif': 'JPG',
-    'image/webp': 'JPG'
-  };
-  
-  return (typeMapping[mimeType] as any) || 'OTHER';
-}
-
-// GET all documents
-app.get('/api/documents', async (req: Request, res: Response) => {
-  try {
-    console.log('📂 GET /api/documents called');
-    
-    const { category } = req.query;
-    
-    try {
-      // Use your Document model
-      const filter = category ? {} : {}; // Your Document model has different categories
-      const documents = await Document.find(filter).sort({ createdAt: -1 });
-      
-      if (documents.length > 0) {
-        // Transform to match frontend expectations
-        const transformedDocs = documents.map(doc => ({
-          id: doc._id.toString(),
-          name: doc.originalname,
-          url: doc.url,
-          publicId: doc.public_id,
-          format: getFileTypeFromMimeType(doc.mimetype),
-          size: formatFileSize(doc.size),
-          uploadedBy: doc.uploadedBy ? 'User' : 'Unknown',
-          date: doc.uploadedAt.toISOString().split('T')[0],
-          category: 'uploaded', // Map to frontend category
-          description: doc.description || '',
-          cloudinaryData: {
-            url: doc.url,
-            publicId: doc.public_id,
-            format: doc.mimetype.split('/').pop() || doc.mimetype
-          }
-        }));
-        
-        return res.json({
-          success: true,
-          message: 'Documents fetched successfully',
-          data: transformedDocs,
-          total: transformedDocs.length
-        });
-      }
-    } catch (dbError) {
-      console.log('Database empty or error, using mock data:', (dbError as Error).message);
-    }
-    
-    // If no data in database, return mock data
-    const mockDocuments = [
-      {
-        id: '1',
-        name: 'Employee Joining Form',
-        url: 'https://example.com/doc1.pdf',
-        publicId: 'doc1',
-        format: 'PDF',
-        size: '2.4 MB',
-        uploadedBy: 'Admin User',
-        date: '2024-01-15',
-        category: 'uploaded',
-        description: 'Standard employee joining form',
-        cloudinaryData: {
-          url: 'https://example.com/doc1.pdf',
-          publicId: 'doc1',
-          format: 'pdf'
-        }
-      },
-      {
-        id: '2',
-        name: 'Monthly Salary Report',
-        url: 'https://example.com/doc2.xlsx',
-        publicId: 'doc2',
-        format: 'XLSX',
-        size: '1.8 MB',
-        uploadedBy: 'HR Manager',
-        date: '2024-01-14',
-        category: 'generated',
-        description: 'Automated salary report for January',
-        cloudinaryData: {
-          url: 'https://example.com/doc2.xlsx',
-          publicId: 'doc2',
-          format: 'xlsx'
-        }
-      },
-      {
-        id: '3',
-        name: 'Invoice Template',
-        url: 'https://example.com/doc3.docx',
-        publicId: 'doc3',
-        format: 'DOCX',
-        size: '0.8 MB',
-        uploadedBy: 'Finance Team',
-        date: '2024-01-13',
-        category: 'template',
-        description: 'Standard invoice template',
-        cloudinaryData: {
-          url: 'https://example.com/doc3.docx',
-          publicId: 'doc3',
-          format: 'docx'
-        }
-      }
-    ];
-    
-    let filteredDocs = mockDocuments;
-    
-    if (category) {
-      filteredDocs = mockDocuments.filter(doc => doc.category === category);
-    }
-    
-    res.json({
-      success: true,
-      message: 'Documents fetched successfully',
-      data: filteredDocs,
-      total: filteredDocs.length
-    });
-    
-  } catch (error: any) {
-    console.error('Error in /api/documents:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching documents',
-      data: []
-    });
-  }
-});
-
-// POST save document metadata
-app.post('/api/documents', async (req: Request, res: Response) => {
-  try {
-    console.log('💾 POST /api/documents called:', req.body);
-    
-    const documentData = {
-      ...req.body,
-      date: req.body.date || new Date().toISOString().split('T')[0]
-    };
-    
-    // Try to save to your Document model
-    try {
-      // Convert data to match your Document model
-      const docModelData = {
-        url: req.body.url,
-        public_id: req.body.publicId,
-        originalname: req.body.name || 'document',
-        mimetype: `image/${req.body.format}`,
-        size: 0, // Default size
-        folder: req.body.folder || 'documents',
-        category: 'document',
-        description: req.body.description || '',
-        tags: []
-      };
-      
-      const document = new Document(docModelData);
-      await document.save();
-      
-      return res.status(201).json({
-        success: true,
-        message: 'Document saved to database',
-        data: {
-          id: document._id.toString(),
-          name: document.originalname,
-          url: document.url,
-          publicId: document.public_id,
-          format: getFileTypeFromMimeType(document.mimetype),
-          size: formatFileSize(document.size),
-          uploadedBy: 'Unknown',
-          date: document.uploadedAt.toISOString().split('T')[0],
-          category: 'uploaded',
-          description: document.description
-        }
-      });
-    } catch (dbError) {
-      console.log('Database save failed:', (dbError as Error).message);
-      // Continue to return success anyway
-    }
-    
-    // If database save fails, still return success (document is in Cloudinary)
-    res.status(201).json({
-      success: true,
-      message: 'Document saved successfully',
-      data: {
-        id: Date.now().toString(),
-        ...documentData
-      }
-    });
-    
-  } catch (error: any) {
-    console.error('Error saving document:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error saving document'
-    });
-  }
-});
-
-// GET search documents
-app.get('/api/documents/search', async (req: Request, res: Response) => {
-  try {
-    const { q } = req.query;
-    console.log('🔍 Searching documents for:', q);
-    
-    // First, try database search
-    try {
-      if (q && q.toString().trim() !== '') {
-        const searchRegex = new RegExp(q.toString(), 'i');
-        const documents = await Document.find({
-          $or: [
-            { originalname: searchRegex },
-            { description: searchRegex },
-            { category: searchRegex }
-          ]
-        }).sort({ createdAt: -1 });
-        
-        if (documents.length > 0) {
-          const transformedDocs = documents.map(doc => ({
-            id: doc._id.toString(),
-            name: doc.originalname,
-            url: doc.url,
-            publicId: doc.public_id,
-            format: getFileTypeFromMimeType(doc.mimetype),
-            size: formatFileSize(doc.size),
-            uploadedBy: 'Unknown',
-            date: doc.uploadedAt.toISOString().split('T')[0],
-            category: 'uploaded',
-            description: doc.description || ''
-          }));
-          
-          return res.json({
-            success: true,
-            message: 'Search completed',
-            data: transformedDocs
-          });
-        }
-      } else {
-        // If no search query, return all
-        const documents = await Document.find().sort({ createdAt: -1 });
-        const transformedDocs = documents.map(doc => ({
-          id: doc._id.toString(),
-          name: doc.originalname,
-          url: doc.url,
-          publicId: doc.public_id,
-          format: getFileTypeFromMimeType(doc.mimetype),
-          size: formatFileSize(doc.size),
-          uploadedBy: 'Unknown',
-          date: doc.uploadedAt.toISOString().split('T')[0],
-          category: 'uploaded',
-          description: doc.description || ''
-        }));
-        
-        return res.json({
-          success: true,
-          message: 'All documents',
-          data: transformedDocs
-        });
-      }
-    } catch (dbError) {
-      console.log('Database search failed, using mock:', (dbError as Error).message);
-    }
-    
-    // Fallback to mock data
-    const mockDocuments = [
-      {
-        id: '1',
-        name: 'Employee Joining Form',
-        url: 'https://example.com/doc1.pdf',
-        publicId: 'doc1',
-        format: 'PDF',
-        size: '2.4 MB',
-        uploadedBy: 'Admin User',
-        date: '2024-01-15',
-        category: 'uploaded',
-        description: 'Standard employee joining form'
-      },
-      {
-        id: '2',
-        name: 'Monthly Salary Report',
-        url: 'https://example.com/doc2.xlsx',
-        publicId: 'doc2',
-        format: 'XLSX',
-        size: '1.8 MB',
-        uploadedBy: 'HR Manager',
-        date: '2024-01-14',
-        category: 'generated',
-        description: 'Automated salary report for January'
-      }
-    ];
-    
-    let filteredDocs = mockDocuments;
-    
-    if (q && q.toString().trim() !== '') {
-      const query = q.toString().toLowerCase();
-      filteredDocs = mockDocuments.filter(doc => 
-        doc.name.toLowerCase().includes(query) ||
-        doc.description.toLowerCase().includes(query)
-      );
-    }
-    
-    res.json({
-      success: true,
-      message: 'Search completed',
-      data: filteredDocs
-    });
-    
-  } catch (error: any) {
-    console.error('Error searching documents:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error searching documents',
-      data: []
-    });
-  }
-});
-
-// GET single document by ID
-app.get('/api/documents/:id', async (req: Request, res: Response) => {
-  try {
-    const document = await Document.findById(req.params.id);
-    
-    if (!document) {
-      return res.status(404).json({
-        success: false,
-        message: 'Document not found',
-        data: null
-      });
-    }
-    
-    const transformedDoc = {
-      id: document._id.toString(),
-      name: document.originalname,
-      url: document.url,
-      publicId: document.public_id,
-      format: getFileTypeFromMimeType(document.mimetype),
-      size: formatFileSize(document.size),
-      uploadedBy: 'Unknown',
-      date: document.uploadedAt.toISOString().split('T')[0],
-      category: 'uploaded',
-      description: document.description || ''
-    };
-    
-    res.json({
-      success: true,
-      message: 'Document fetched successfully',
-      data: transformedDoc
-    });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching document',
-      data: null
-    });
-  }
-});
-
-// PATCH update document
-app.patch('/api/documents/:id', async (req: Request, res: Response) => {
-  try {
-    const updates = req.body;
-    
-    const document = await Document.findByIdAndUpdate(
-      req.params.id,
-      updates,
-      { new: true, runValidators: true }
-    );
-    
-    if (!document) {
-      return res.status(404).json({
-        success: false,
-        message: 'Document not found'
-      });
-    }
-    
-    res.json({
-      success: true,
-      message: 'Document updated successfully',
-      data: {
-        id: document._id.toString(),
-        name: document.originalname,
-        url: document.url,
-        publicId: document.public_id,
-        format: getFileTypeFromMimeType(document.mimetype),
-        size: formatFileSize(document.size),
-        uploadedBy: 'Unknown',
-        date: document.uploadedAt.toISOString().split('T')[0],
-        category: 'uploaded',
-        description: document.description || ''
-      }
-    });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating document'
-    });
-  }
-});
-
-// DELETE document
-app.delete('/api/documents/:id', async (req: Request, res: Response) => {
-  try {
-    const document = await Document.findByIdAndDelete(req.params.id);
-    
-    if (!document) {
-      return res.status(404).json({
-        success: false,
-        message: 'Document not found'
-      });
-    }
-    
-    res.json({
-      success: true,
-      message: 'Document deleted successfully'
-    });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: 'Error deleting document'
-    });
-  }
-});
+// ==================== TEST ROUTES ====================
 
 // Test endpoint to verify all routes
 app.get('/api/test', (req: Request, res: Response) => {
@@ -2004,23 +1701,76 @@ app.get('/api/test', (req: Request, res: Response) => {
     message: 'All routes are working!',
     availableEndpoints: [
       'GET    /api/health',
-      'GET    /api/documents',
-      'POST   /api/documents',
-      'GET    /api/documents/search?q=query',
-      'GET    /api/documents/:id',
-      'PATCH  /api/documents/:id',
-      'DELETE /api/documents/:id',
-      'POST   /api/upload/single',
       'GET    /api/users',
       'POST   /api/users',
+      'GET    /api/users/:id',
+      'PUT    /api/users/:id',
+      'DELETE /api/users/:id',
+      'PATCH  /api/users/:id/toggle-status',
+      'PUT    /api/users/:id/role',
+      'GET    /api/users/stats',
+      'POST   /api/auth/signup',
+      'POST   /api/auth/login',
+      'GET    /api/employees',
+      'POST   /api/employees',
       'GET    /api/test'
     ]
   });
 });
 
-// ======== END DOCUMENT ROUTES ========
+// Test user creation route
+app.post('/api/users/test', async (req: Request, res: Response) => {
+  try {
+    console.log('🧪 TEST: Creating user with data:', req.body);
+    
+    const testUserData = {
+      username: req.body.username || `testuser_${Date.now()}`,
+      email: req.body.email || `test${Date.now()}@example.com`,
+      password: req.body.password || 'test123456',
+      role: req.body.role || 'employee',
+      firstName: req.body.firstName || 'Test',
+      lastName: req.body.lastName || 'User',
+      isActive: true,
+      joinDate: new Date()
+    };
+    
+    console.log('📝 Test user data:', testUserData);
+    
+    const user = new User(testUserData);
+    await user.save();
+    
+    console.log('✅ Test user saved successfully:', user._id);
+    
+    res.status(201).json({
+      success: true,
+      message: 'Test user created successfully',
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        name: user.name
+      }
+    });
+    
+  } catch (error: any) {
+    console.error('❌ Test route error:', error);
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+      errors: error.errors
+    });
+    
+    res.status(500).json({
+      success: false,
+      message: 'Test failed',
+      error: error.message,
+      details: error.toString()
+    });
+  }
+});
 
-// 404 handler (MUST BE LAST)
 // ==================== 404 HANDLER ====================
 app.use('*', (req: Request, res: Response) => {
   console.log(`❌ 404: ${req.method} ${req.url}`);
@@ -2029,324 +1779,6 @@ app.use('*', (req: Request, res: Response) => {
     message: 'Route not found',
     path: req.originalUrl
   });
-});
-=======
-// ============ CRM ROUTES ============
-
-// Use imported CRM routes
-app.use('/api/crm/clients', clientRoutes);
-app.use('/api/crm/leads', leadRoutes);
-app.use('/api/crm/communications', communicationRoutes);
-
-// CRM Dashboard Stats
-app.get('/api/crm/stats', async (req: Request, res: Response) => {
-  try {
-    // Dynamically import models to avoid circular dependencies
-    const Client = (await import('./models/Client')).default;
-    const Lead = (await import('./models/Lead')).default;
-    const Communication = (await import('./models/Communication')).default;
-    
-    // Get counts
-    const [clientsCount, leadsCount, communicationsCount] = await Promise.all([
-      Client.countDocuments(),
-      Lead.countDocuments({ status: { $nin: ['closed-won', 'closed-lost'] } }),
-      Communication.countDocuments()
-    ]);
-
-    // Calculate total value from clients
-    const allClients = await Client.find({}, 'value');
-    const totalValue = allClients.reduce((sum: number, client: any) => {
-      const valueStr = client.value || '0';
-      const numericValue = parseFloat(valueStr.replace(/[₹,]/g, '')) || 0;
-      return sum + numericValue;
-    }, 0);
-    
-    // Format total value
-    let formattedValue = '₹0';
-    if (totalValue >= 10000000) { // 1 crore or more
-      formattedValue = `₹${(totalValue / 10000000).toFixed(1)}Cr`;
-    } else if (totalValue >= 100000) { // 1 lakh or more
-      formattedValue = `₹${(totalValue / 100000).toFixed(1)}L`;
-    } else {
-      formattedValue = `₹${totalValue.toLocaleString('en-IN')}`;
-    }
-
-    res.status(200).json({
-      success: true,
-      data: {
-        totalClients: clientsCount,
-        activeLeads: leadsCount,
-        totalValue: formattedValue,
-        communications: communicationsCount
-      }
-    });
-  } catch (error: any) {
-    console.error('CRM stats error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Error fetching CRM stats',
-      data: {
-        totalClients: 0,
-        activeLeads: 0,
-        totalValue: '₹0',
-        communications: 0
-      }
-    });
-  }
-});
-// ============ EXPENSE ROUTES ============
-app.use('/api/expenses', expenseRoutes);
-// ============ SERVICE ROUTES ============
-app.use('/api/services', serviceRoutes);
-
-// ============ 404 HANDLER ============
-
-// 404 handler for undefined routes
-app.use((req: Request, res: Response) => {
-  res.status(404).json({
-    success: false,
-    message: 'Route not found'
-  });
-});
-
-const PORT = process.env.PORT || 5001;
->>>>>>> 336fef579984e7f10a494ef8fec2b86fa7a775b2
-
-// In your app.ts, update the POST /api/employees route:
-app.post('/api/employees', upload.fields([
-  { name: 'photo', maxCount: 1 },
-  { name: 'employeeSignature', maxCount: 1 },
-  { name: 'authorizedSignature', maxCount: 1 },
-  { name: 'documents', maxCount: 10 }
-]), async (req: Request, res: Response) => {
-  try {
-    console.log('📝 Creating new employee...');
-    
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-    const employeeData = req.body;
-    
-    // Parse numeric fields
-    if (typeof employeeData.salary === 'string') {
-      employeeData.salary = parseFloat(employeeData.salary) || 0;
-    }
-    if (typeof employeeData.numberOfChildren === 'string') {
-      employeeData.numberOfChildren = parseInt(employeeData.numberOfChildren) || 0;
-    }
-    
-    // Handle date fields - only convert if they have values
-    const dateFields = ['dateOfBirth', 'dateOfJoining', 'dateOfExit'];
-    dateFields.forEach(field => {
-      if (employeeData[field] && employeeData[field].trim() !== '') {
-        employeeData[field] = new Date(employeeData[field]);
-      } else {
-        delete employeeData[field]; // Remove empty date fields
-      }
-    });
-    
-    // Handle boolean fields
-    const booleanFields = ['idCardIssued', 'westcoatIssued', 'apronIssued'];
-    booleanFields.forEach(field => {
-      if (employeeData[field] !== undefined) {
-        employeeData[field] = employeeData[field] === 'true' || employeeData[field] === true;
-      } else {
-        employeeData[field] = false; // Default to false if not provided
-      }
-    });
-    
-    // FIX: Handle blood group format (convert "B +ve" to "B+")
-    if (employeeData.bloodGroup) {
-      // Clean up blood group format
-      employeeData.bloodGroup = employeeData.bloodGroup
-        .replace(/\s+/g, '')  // Remove spaces
-        .replace(/\+ve/g, '+') // Replace "+ve" with "+"
-        .replace(/\-ve/g, '-'); // Replace "-ve" with "-"
-      
-      // Validate against allowed values
-      const allowedBloodGroups = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
-      if (!allowedBloodGroups.includes(employeeData.bloodGroup)) {
-        employeeData.bloodGroup = null; // Set to null if invalid
-      }
-    }
-    
-    // Clean up string fields - convert empty strings to undefined
-    const stringFields = [
-      'panNumber', 'esicNumber', 'uanNumber', 'siteName', 'bloodGroup',
-      'permanentAddress', 'permanentPincode', 'localAddress', 'localPincode',
-      'bankName', 'accountNumber', 'ifscCode', 'branchName', 'fatherName',
-      'motherName', 'spouseName', 'emergencyContactName', 'emergencyContactPhone',
-      'emergencyContactRelation', 'nomineeName', 'nomineeRelation',
-      'pantSize', 'shirtSize', 'capSize', 'gender', 'maritalStatus',
-      'position' // ADDED: Make sure position is included
-    ];
-    
-    stringFields.forEach(field => {
-      if (employeeData[field] === '' || employeeData[field] === null) {
-        delete employeeData[field];
-      } else if (employeeData[field]) {
-        // Trim and uppercase certain fields
-        employeeData[field] = employeeData[field].toString().trim();
-        if (field === 'panNumber' || field === 'ifscCode') {
-          employeeData[field] = employeeData[field].toUpperCase();
-        }
-      }
-    });
-    
-    // FIX: Validate required fields before proceeding
-    if (!employeeData.position) {
-      return res.status(400).json({
-        success: false,
-        message: 'Position is required'
-      });
-    }
-    
-    // Handle file uploads - UPLOAD TO CLOUDINARY
-    const uploadToCloudinary = async (file: Express.Multer.File, folder: string, transformations: any[] = []): Promise<string> => {
-      return new Promise((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
-          {
-            folder: folder,
-            transformation: transformations,
-            format: 'jpg'
-          },
-          (error: any, result: any) => {
-            if (error) {
-              reject(error);
-            } else {
-              resolve(result.secure_url);
-            }
-          }
-        );
-        
-        // Read file buffer and upload to Cloudinary
-        const fileBuffer = fs.readFileSync(file.path);
-        uploadStream.end(fileBuffer);
-        
-        // Clean up local file after Cloudinary upload
-        fs.unlink(file.path, (err) => {
-          if (err) console.error('Error deleting local file:', err);
-        });
-      });
-    };
-    
-    // Upload photo to Cloudinary
-    if (files?.photo?.[0]) {
-      try {
-        employeeData.photo = await uploadToCloudinary(
-          files.photo[0],
-          'employee-photos',
-          [{ width: 400, height: 400, crop: 'fill', gravity: 'face' }, { quality: 'auto:good' }]
-        );
-        console.log('✅ Photo uploaded to Cloudinary:', employeeData.photo);
-      } catch (error) {
-        console.error('❌ Error uploading photo to Cloudinary:', error);
-        // Don't fail the whole request if photo upload fails
-        delete employeeData.photo;
-      }
-    }
-    
-    // Upload signatures to Cloudinary
-    if (files?.employeeSignature?.[0]) {
-      try {
-        employeeData.employeeSignature = await uploadToCloudinary(
-          files.employeeSignature[0],
-          'signatures',
-          [{ width: 300, crop: 'scale' }, { quality: 'auto' }]
-        );
-        console.log('✅ Employee signature uploaded to Cloudinary');
-      } catch (error) {
-        console.error('❌ Error uploading employee signature:', error);
-        delete employeeData.employeeSignature;
-      }
-    }
-    
-    if (files?.authorizedSignature?.[0]) {
-      try {
-        employeeData.authorizedSignature = await uploadToCloudinary(
-          files.authorizedSignature[0],
-          'signatures',
-          [{ width: 300, crop: 'scale' }, { quality: 'auto' }]
-        );
-        console.log('✅ Authorized signature uploaded to Cloudinary');
-      } catch (error) {
-        console.error('❌ Error uploading authorized signature:', error);
-        delete employeeData.authorizedSignature;
-      }
-    }
-    
-    // Set default status
-    if (!employeeData.status) {
-      employeeData.status = 'active';
-    }
-    
-    // Set default role
-    if (!employeeData.role) {
-      employeeData.role = 'employee';
-    }
-    
-    console.log('📋 Employee data to save:', employeeData);
-    
-    // Create employee
-    const employee = new Employee(employeeData);
-    await employee.save();
-    
-    console.log('✅ Employee created:', employee.employeeId);
-    
-    // Handle document uploads if any
-    if (files?.documents) {
-      const documentPromises = files.documents.map(async (file) => {
-        try {
-          const documentUrl = await uploadToCloudinary(
-            file,
-            'employee-documents'
-          );
-          
-          const doc = new Document({
-            employeeId: employee.employeeId,
-            employee: employee._id,
-            documentType: 'other',
-            documentName: file.originalname,
-            fileName: file.filename,
-            filePath: documentUrl, // Cloudinary URL
-            fileSize: file.size,
-            fileType: file.mimetype,
-            uploadedBy: 'system'
-          });
-          await doc.save();
-          return doc;
-        } catch (error) {
-          console.error('Error uploading document:', error);
-          return null;
-        }
-      });
-      
-      await Promise.all(documentPromises);
-    }
-    
-    res.status(201).json({
-      success: true,
-      message: 'Employee created successfully',
-      data: employee
-    });
-  } catch (error: any) {
-    console.error('❌ Error creating employee:', error);
-    
-    // Clean up uploaded files if error occurred
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-    if (files) {
-      Object.values(files).forEach(fileArray => {
-        fileArray.forEach(file => {
-          fs.unlink(file.path, (err) => {
-            if (err) console.error('Error deleting file:', err);
-          });
-        });
-      });
-    }
-    
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Error creating employee'
-    });
-  }
 });
 
 // ==================== ERROR HANDLER ====================
@@ -2360,4 +1792,15 @@ app.use((error: Error, req: Request, res: Response, next: Function) => {
 });
 
 const PORT = process.env.PORT || 5001;
+
+// Only start server if this file is run directly
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
+    console.log(`🔗 Test route: http://localhost:${PORT}/api/test`);
+    console.log(`🌐 CORS allowed origins: ${allowedOrigins.join(', ')}`);
+  });
+}
+
 export default app;

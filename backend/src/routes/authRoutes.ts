@@ -1,4 +1,3 @@
-// routes/authRoutes.ts
 import express, { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
@@ -6,8 +5,7 @@ import User, { IUser } from '../models/User';
 
 const router = express.Router();
 
-// routes/authRoutes.ts - Update the signup function
-// routes/authRoutes.ts - Update the signup function
+// Signup route
 router.post('/signup', async (req: Request, res: Response) => {
   try {
     const { name, email, password, role } = req.body;
@@ -157,7 +155,6 @@ router.post('/signup', async (req: Request, res: Response) => {
 });
 
 // Login route
-// routes/authRoutes.ts - Update the login function
 router.post('/login', async (req: Request, res: Response) => {
   try {
     const { email, password, role } = req.body;
@@ -243,6 +240,164 @@ router.post('/login', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: error.message || 'Error logging in'
+    });
+  }
+});
+
+// Get current user
+router.get('/me', async (req: Request, res: Response) => {
+  try {
+    // This is a simplified version - in production, you'd use JWT token
+    const token = req.headers.authorization?.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'No token provided'
+      });
+    }
+
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any;
+    
+    // Find user
+    const user = await User.findById(decoded.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const userResponse = {
+      _id: user._id.toString(),
+      id: user._id.toString().slice(-6),
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      isActive: user.isActive,
+      joinDate: user.joinDate.toISOString().split('T')[0]
+    };
+
+    res.status(200).json({
+      success: true,
+      user: userResponse
+    });
+  } catch (error: any) {
+    console.error('Get user error:', error);
+    res.status(401).json({
+      success: false,
+      message: 'Invalid token'
+    });
+  }
+});
+
+// Verify token
+router.post('/verify', async (req: Request, res: Response) => {
+  try {
+    const { token } = req.body;
+    
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token is required'
+      });
+    }
+
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any;
+    
+    res.status(200).json({
+      success: true,
+      message: 'Token is valid',
+      user: {
+        userId: decoded.userId,
+        role: decoded.role
+      }
+    });
+  } catch (error: any) {
+    res.status(401).json({
+      success: false,
+      message: 'Invalid token'
+    });
+  }
+});
+
+// Get user statistics (admin only)
+router.get('/stats', async (req: Request, res: Response) => {
+  try {
+    const stats = await User.aggregate([
+      {
+        $group: {
+          _id: '$role',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      stats
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error fetching stats'
+    });
+  }
+});
+
+// Create default admin (for initial setup)
+router.post('/create-default-admin', async (req: Request, res: Response) => {
+  try {
+    // Check if admin already exists
+    const existingAdmin = await User.findOne({ email: 'admin@example.com' });
+    if (existingAdmin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Admin user already exists'
+      });
+    }
+
+    const admin = new User({
+      name: 'Super Admin',
+      email: 'admin@example.com',
+      password: 'admin123', // Will be hashed by pre-save hook
+      role: 'superadmin',
+      username: 'admin',
+      firstName: 'Super',
+      lastName: 'Admin',
+      isActive: true,
+      site: 'Mumbai Office',
+      joinDate: new Date()
+    });
+
+    await admin.save();
+
+    // Generate token
+    const token = jwt.sign(
+      { userId: admin._id, role: admin.role },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '7d' }
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Default admin created successfully',
+      user: {
+        _id: admin._id.toString(),
+        id: admin._id.toString().slice(-6),
+        name: admin.name,
+        email: admin.email,
+        role: admin.role
+      },
+      token
+    });
+  } catch (error: any) {
+    console.error('Create admin error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error creating admin'
     });
   }
 });

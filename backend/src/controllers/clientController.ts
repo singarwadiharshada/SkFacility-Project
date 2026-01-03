@@ -2,7 +2,6 @@ import { Request, Response } from 'express';
 import Client from '../models/Client';
 
 // Get all clients
-<<<<<<< HEAD
 export const getAllClients = async (req: Request, res: Response) => {
   try {
     const { search, status } = req.query;
@@ -38,37 +37,10 @@ export const getAllClients = async (req: Request, res: Response) => {
       success: false,
       message: 'Error fetching clients', 
       error: error.message 
-=======
-export const getClients = async (req: Request, res: Response) => {
-  try {
-    const { search } = req.query;
-    
-    const query = search 
-      ? {
-          $or: [
-            { name: { $regex: search, $options: 'i' } },
-            { company: { $regex: search, $options: 'i' } },
-            { email: { $regex: search, $options: 'i' } }
-          ]
-        }
-      : {};
-    
-    const clients = await Client.find(query).sort({ createdAt: -1 });
-    
-    res.status(200).json({
-      success: true,
-      data: clients
-    });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Error fetching clients'
->>>>>>> 336fef579984e7f10a494ef8fec2b86fa7a775b2
     });
   }
 };
 
-<<<<<<< HEAD
 // Get client by ID
 export const getClientById = async (req: Request, res: Response) => {
   try {
@@ -169,22 +141,6 @@ export const createClient = async (req: Request, res: Response) => {
       success: false,
       message: 'Error creating client', 
       error: error.message 
-=======
-// Create client
-export const createClient = async (req: Request, res: Response) => {
-  try {
-    const client = await Client.create(req.body);
-    
-    res.status(201).json({
-      success: true,
-      data: client,
-      message: 'Client created successfully'
-    });
-  } catch (error: any) {
-    res.status(400).json({
-      success: false,
-      message: error.message || 'Error creating client'
->>>>>>> 336fef579984e7f10a494ef8fec2b86fa7a775b2
     });
   }
 };
@@ -193,7 +149,6 @@ export const createClient = async (req: Request, res: Response) => {
 export const updateClient = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-<<<<<<< HEAD
     const updateData = req.body;
 
     // Remove _id from update data if present
@@ -202,31 +157,18 @@ export const updateClient = async (req: Request, res: Response) => {
     const client = await Client.findByIdAndUpdate(
       id,
       updateData,
-=======
-    
-    const client = await Client.findByIdAndUpdate(
-      id,
-      { ...req.body, updatedAt: new Date() },
->>>>>>> 336fef579984e7f10a494ef8fec2b86fa7a775b2
       { new: true, runValidators: true }
     );
     
     if (!client) {
-<<<<<<< HEAD
       return res.status(404).json({ 
         success: false,
         message: 'Client not found' 
-=======
-      return res.status(404).json({
-        success: false,
-        message: 'Client not found'
->>>>>>> 336fef579984e7f10a494ef8fec2b86fa7a775b2
       });
     }
     
     res.status(200).json({
       success: true,
-<<<<<<< HEAD
       message: 'Client updated successfully',
       data: client
     });
@@ -244,15 +186,6 @@ export const updateClient = async (req: Request, res: Response) => {
       success: false,
       message: 'Error updating client', 
       error: error.message 
-=======
-      data: client,
-      message: 'Client updated successfully'
-    });
-  } catch (error: any) {
-    res.status(400).json({
-      success: false,
-      message: error.message || 'Error updating client'
->>>>>>> 336fef579984e7f10a494ef8fec2b86fa7a775b2
     });
   }
 };
@@ -265,15 +198,9 @@ export const deleteClient = async (req: Request, res: Response) => {
     const client = await Client.findByIdAndDelete(id);
     
     if (!client) {
-<<<<<<< HEAD
       return res.status(404).json({ 
         success: false,
         message: 'Client not found' 
-=======
-      return res.status(404).json({
-        success: false,
-        message: 'Client not found'
->>>>>>> 336fef579984e7f10a494ef8fec2b86fa7a775b2
       });
     }
     
@@ -282,7 +209,6 @@ export const deleteClient = async (req: Request, res: Response) => {
       message: 'Client deleted successfully'
     });
   } catch (error: any) {
-<<<<<<< HEAD
     res.status(500).json({ 
       success: false,
       message: 'Error deleting client', 
@@ -389,11 +315,6 @@ export const getClientStats = async (req: Request, res: Response) => {
       success: false,
       message: 'Error fetching client statistics', 
       error: error.message 
-=======
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Error deleting client'
->>>>>>> 336fef579984e7f10a494ef8fec2b86fa7a775b2
     });
   }
 };

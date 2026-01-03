@@ -1,4 +1,3 @@
-// models/User.ts
 import mongoose, { Schema, Document } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
@@ -23,7 +22,7 @@ export interface IUser extends Document {
 const UserSchema = new Schema({
   name: {
     type: String,
-    required: true,
+    required: false, // Make it optional since we'll auto-generate it
     trim: true
   },
   email: {
@@ -59,7 +58,8 @@ const UserSchema = new Schema({
   },
   department: {
     type: String,
-    trim: true
+    trim: true,
+    default: 'General'
   },
   site: {
     type: String,
@@ -94,16 +94,32 @@ UserSchema.pre('save', async function(next) {
   }
 });
 
+// Auto-generate name from firstName and lastName if not provided
+UserSchema.pre('save', function(next) {
+  if (!this.name) {
+    if (this.firstName || this.lastName) {
+      this.name = `${this.firstName || ''} ${this.lastName || ''}`.trim();
+    } else if (this.username) {
+      this.name = this.username;
+    } else {
+      this.name = this.email.split('@')[0];
+    }
+  }
+  next();
+});
+
 // Method to compare password
 UserSchema.methods.comparePassword = async function(candidatePassword: string): Promise<boolean> {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
-<<<<<<< HEAD
-export const User = mongoose.model<IUser>("User", userSchema);
+// Remove password when converting to JSON
+UserSchema.methods.toJSON = function() {
+  const user = this.toObject();
+  delete user.password;
+  delete user.__v;
+  return user;
+};
+
+export const User = mongoose.model<IUser>("User", UserSchema);
 export default User; // ✅ Add this line for default export
-=======
-// Create and export the model
-const User = mongoose.model<IUser>('User', UserSchema);
-export default User;
->>>>>>> 336fef579984e7f10a494ef8fec2b86fa7a775b2
