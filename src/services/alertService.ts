@@ -3,7 +3,7 @@ import axios, { AxiosInstance, AxiosError } from 'axios';
 import { Alert } from '@/types/alert';
 
 // Your working backend URL
-const API_URL = 'http://localhost:5001/api';
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 console.log('🔧 Using alerts backend at:', API_URL);
 

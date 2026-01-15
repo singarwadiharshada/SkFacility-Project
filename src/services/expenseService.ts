@@ -1,8 +1,6 @@
+import { Expense } from "@/pages/superadmin/Billing";
 
-
-import { Expense } from '../Billing';
-
-const API_URL = 'http://localhost:5001/api';
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 // API Service for Expenses
 export const expenseService = {

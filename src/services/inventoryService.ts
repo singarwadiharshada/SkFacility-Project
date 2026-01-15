@@ -1,5 +1,5 @@
 // src/services/inventoryService.ts
-const API_BASE_URL = "http://localhost:5001/api";
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 // InventoryItem Interface - matches backend model
 export interface InventoryItem {
@@ -76,7 +76,7 @@ const convertToFrontendItem = (item: InventoryItem): FrontendInventoryItem => {
 class InventoryService {
   // Private helper for API calls
   private async fetchAPI<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const url = `${API_BASE_URL}${endpoint}`;
+    const url = `${API_URL}${endpoint}`;
     
     try {
       const response = await fetch(url, {

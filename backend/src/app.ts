@@ -37,6 +37,7 @@ import managerLeaveRoutes from './routes/managerLeaveRoutes';
 import attendanceRoutes from './routes/attendanceRoutes';
 import supervisorRoutes from './routes/supervisorRoutes';
 
+
 const app: Application = express();
 
 // ==================== CORS CONFIGURATION ====================

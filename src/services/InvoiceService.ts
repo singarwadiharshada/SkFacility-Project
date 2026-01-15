@@ -1,6 +1,5 @@
 
-
-const API_BASE_URL = 'http://localhost:5001/api';
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 export interface InvoiceItem {
   description: string;
@@ -106,7 +105,7 @@ class InvoiceService {
   // Helper function for API calls
   private static async fetchApi(endpoint: string, options?: RequestInit) {
     try {
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      const response = await fetch(`${API_URL}${endpoint}`, {
         headers: {
           'Content-Type': 'application/json',
         },

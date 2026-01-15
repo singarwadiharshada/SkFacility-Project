@@ -53,14 +53,14 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({ userId = "user-001" }) => {
   const [siteWiseExpenses, setSiteWiseExpenses] = useState<{ [key: string]: { operational: number, office: number, other: number, total: number } }>({});
 
   // API Base URL
-  const API_BASE_URL = "http://localhost:5001/api";
+  const API_URL = `http://${window.location.hostname}:5001/api`;
 
   // Fetch expenses from backend
   const fetchExpenses = async () => {
     try {
       setLoading(true);
       const response = await fetch(
-        `${API_BASE_URL}/expenses?page=${currentPage}&limit=${itemsPerPage}&expenseType=${expenseTypeFilter === 'all' ? '' : expenseTypeFilter}&search=${searchTerm}`
+        `${API_URL}/expenses?page=${currentPage}&limit=${itemsPerPage}&expenseType=${expenseTypeFilter === 'all' ? '' : expenseTypeFilter}&search=${searchTerm}`
       );
       
       if (!response.ok) throw new Error('Failed to fetch expenses');
@@ -82,7 +82,7 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({ userId = "user-001" }) => {
   const fetchExpenseStats = async () => {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/expenses/stats?period=${reportPeriod}`
+        `${API_URL}/expenses/stats?period=${reportPeriod}`
       );
       
       if (!response.ok) throw new Error('Failed to fetch expense stats');
@@ -140,7 +140,7 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({ userId = "user-001" }) => {
         createdBy: userId
       };
       
-      const response = await fetch(`${API_BASE_URL}/expenses`, {
+      const response = await fetch(`${API_URL}/expenses`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -183,7 +183,7 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({ userId = "user-001" }) => {
         expenseType: expenseType
       };
       
-      const response = await fetch(`${API_BASE_URL}/expenses/${selectedExpense._id}`, {
+      const response = await fetch(`${API_URL}/expenses/${selectedExpense._id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -211,7 +211,7 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({ userId = "user-001" }) => {
     if (!confirm("Are you sure you want to delete this expense?")) return;
     
     try {
-      const response = await fetch(`${API_BASE_URL}/expenses/${expenseId}`, {
+      const response = await fetch(`${API_URL}/expenses/${expenseId}`, {
         method: 'DELETE'
       });
       
@@ -231,7 +231,7 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({ userId = "user-001" }) => {
 
   const handleUpdateStatus = async (expenseId: string, status: "pending" | "approved" | "rejected") => {
     try {
-      const response = await fetch(`${API_BASE_URL}/expenses/${expenseId}/status`, {
+      const response = await fetch(`${API_URL}/expenses/${expenseId}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

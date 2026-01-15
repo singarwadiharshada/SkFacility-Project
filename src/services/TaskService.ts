@@ -108,7 +108,7 @@ export interface TaskStats {
   siteCount: number;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 class TaskService {
   // Sites - Updated method to ensure counts exist

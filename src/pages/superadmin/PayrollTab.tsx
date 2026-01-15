@@ -40,6 +40,7 @@ import {
   Users,
   FileSpreadsheet,
   AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 
 // Dialog Components
@@ -342,279 +343,194 @@ const PayrollTab = ({ selectedMonth, setSelectedMonth }: PayrollTabProps) => {
     mlwf: "",
   });
 
-  // Fetch data on component mount and when selectedMonth changes
+  // Fetch all data in one consolidated function
   useEffect(() => {
-    fetchData();
-    fetchData2();
+    fetchAllData();
   }, [selectedMonth]);
 
-  const fetchData2 = async () => {
+  // Debug logging for state changes
+  useEffect(() => {
+    console.log('Current state values:', {
+      employees: employees.length,
+      payroll: payroll.length,
+      payrollData: payroll,
+      salaryStructures: salaryStructures.length,
+      selectedMonth,
+    });
+  }, [employees, payroll, salaryStructures, selectedMonth]);
+
+  const fetchAllData = async () => {
     try {
-      console.log("Fetching payroll data for month:", selectedMonth);
-
-      // TEMPORARY: Use simple fetch to avoid CORS issues
-      const response = await fetch(
-        `http://localhost:5001/api/payroll?month=${selectedMonth}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            // Minimal headers
-          },
-          mode: "cors", // Explicitly set CORS mode
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log("Payroll data received:", data);
-
-      if (data.success) {
-        console.log("Setting payroll data:", data.data);
-        setPayroll(data.data || []);
-      } else {
-        console.error("API returned success false:", data.message);
-      }
-    } catch (error: any) {
-      console.error("Error fetching payroll:", error);
-    }
-  };
-
-  // const fetchData = async () => {
-  //   try {
-  //     setLoading((prev) => ({
-  //       ...prev,
-  //       employees: true,
-  //       payroll: true,
-  //       structures: true,
-  //       slips: true,
-  //       summary: true,
-  //     }));
-
-  //     // Fetch employees
-  //     // const employeesResponse = await employeeApi.getAll({ status: "active" });
-  //     // console.log("Employees response:", employeesResponse);
-  //     // if (employeesResponse.success) {
-  //     //   setEmployees(employeesResponse.data || []);
-  //     // } else {
-  //     //   toast.error(
-  //     //     "Failed to fetch employees: " +
-  //     //       (employeesResponse.message || "Unknown error")
-  //     //   );
-  //     // }
-
-  //     // TEMPORARY: Use fetch for employees API too
-  //     const employeesResponse = await fetch(
-  //       `http://localhost:5001/api/employees?status=active`,
-  //       {
-  //         method: "GET",
-  //         headers: {
-  //           "Content-Type": "application/json",
-  //         },
-  //         mode: "cors",
-  //       }
-  //     );
-
-  //     if (employeesResponse.ok) {
-  //       const employeesData = await employeesResponse.json();
-  //       if (employeesData.success) {
-  //         setEmployees(employeesData.data || []);
-  //       }
-  //     }
-
-  //     // Fetch payroll for selected month
-  //     const payrollResponse = await payrollApi.getAll({ month: selectedMonth });
-  //     console.log("Payroll response:", payrollResponse);
-  //     if (payrollResponse.success) {
-  //       setPayroll(payrollResponse.data || []);
-  //     } else {
-  //       toast.error(
-  //         "Failed to fetch payroll: " +
-  //           (payrollResponse.message || "Unknown error")
-  //       );
-  //     }
-
-  //     // Fetch salary structures
-  //     const structuresResponse = await salaryStructureApi.getAll({
-  //       isActive: true,
-  //     });
-  //     console.log("Structures response:", structuresResponse);
-  //     if (structuresResponse.success) {
-  //       const structuresData = structuresResponse.data || [];
-  //       console.log("Structures data:", structuresData);
-  //       setSalaryStructures(structuresData);
-  //     } else {
-  //       toast.error(
-  //         "Failed to fetch salary structures: " +
-  //           (structuresResponse.message || "Unknown error")
-  //       );
-  //     }
-
-  //     // Fetch salary slips
-  //     const slipsResponse = await salarySlipApi.getAll({
-  //       month: selectedMonth,
-  //     });
-  //     console.log("Slips response:", slipsResponse);
-  //     if (slipsResponse.success) {
-  //       setSalarySlips(slipsResponse.data || []);
-  //     } else {
-  //       toast.error(
-  //         "Failed to fetch salary slips: " +
-  //           (slipsResponse.message || "Unknown error")
-  //       );
-  //     }
-
-  //     // Fetch payroll summary
-  //     const summaryResponse = await payrollApi.getSummary({
-  //       month: selectedMonth,
-  //     });
-  //     console.log("Summary response:", summaryResponse);
-  //     if (summaryResponse.success) {
-  //       setPayrollSummary(
-  //         summaryResponse.data || {
-  //           totalAmount: 0,
-  //           paidAmount: 0,
-  //           pendingAmount: 0,
-  //           holdAmount: 0,
-  //           partPaidAmount: 0,
-  //           processedCount: 0,
-  //           pendingCount: 0,
-  //           paidCount: 0,
-  //           holdCount: 0,
-  //           partPaidCount: 0,
-  //           totalEmployees: 0,
-  //           totalRecords: 0,
-  //           activeEmployees: 0,
-  //           employeesWithStructure: 0,
-  //           employeesWithoutStructure: 0,
-  //           payrollMonth: selectedMonth,
-  //         }
-  //       );
-  //     } else {
-  //       toast.error(
-  //         "Failed to fetch summary: " +
-  //           (summaryResponse.message || "Unknown error")
-  //       );
-  //     }
-
-  //     toast.success("Data loaded successfully");
-  //   } catch (error: any) {
-  //     console.error("Error fetching data:", error);
-  //     toast.error("Failed to fetch data. Please try again.");
-  //   } finally {
-  //     setLoading((prev) => ({
-  //       ...prev,
-  //       employees: false,
-  //       payroll: false,
-  //       structures: false,
-  //       slips: false,
-  //       summary: false,
-  //     }));
-  //   }
-  // };
-
-  // Get employees with salary structure
-
-  const fetchData = async () => {
-    try {
-      setLoading((prev) => ({
-        ...prev,
+      setLoading({
         employees: true,
         payroll: true,
         structures: true,
         slips: true,
         summary: true,
-      }));
+      });
 
-      // Use the SIMPLIFIED API calls
-      const [employeesRes, payrollRes, structuresRes, slipsRes, summaryRes] =
-        await Promise.all([
-          employeeApi.getAll({ status: "active" }),
-          payrollApi.getAll({ month: selectedMonth }),
-          salaryStructureApi.getAll({ isActive: true }),
-          salarySlipApi.getAll({ month: selectedMonth }),
-          payrollApi.getSummary({ month: selectedMonth }),
-        ]);
+      console.log("Fetching data for month:", selectedMonth);
+
+      // TEMPORARY: Test with hardcoded data first
+      // Uncomment this to test with sample data:
+      // const testPayrollData = [{
+      //   _id: 'test-1',
+      //   employeeId: 'EMP001',
+      //   month: selectedMonth,
+      //   basicSalary: 25000,
+      //   allowances: 5000,
+      //   deductions: 2000,
+      //   netSalary: 28000,
+      //   status: 'processed',
+      //   presentDays: 22,
+      //   absentDays: 0,
+      //   halfDays: 0,
+      //   leaves: 0,
+      //   paidAmount: 0,
+      //   paymentStatus: 'pending',
+      //   employee: {
+      //     _id: 'emp-1',
+      //     employeeId: 'EMP001',
+      //     name: 'John Doe',
+      //     department: 'Engineering',
+      //     salary: 30000,
+      //     status: 'active',
+      //     accountNumber: '1234567890',
+      //     ifscCode: 'SBIN0001234',
+      //     bankBranch: 'Main Branch',
+      //     bankName: 'SBI'
+      //   }
+      // }];
+      // setPayroll(testPayrollData);
+      // setLoading(prev => ({ ...prev, payroll: false }));
+      // return;
+
+      // Fetch all data with simple fetch calls
+      const [employeesRes, payrollRes, structuresRes] = await Promise.all([
+        // Employees
+        fetch('http://localhost:5001/api/employees?status=active')
+          .then(res => {
+            if (!res.ok) throw new Error(`Employees API error: ${res.status}`);
+            return res.json();
+          })
+          .catch(error => {
+            console.error('Error fetching employees:', error);
+            return { success: false, data: [], message: error.message };
+          }),
+        
+        // Payroll for selected month
+        fetch(`http://localhost:5001/api/payroll?month=${selectedMonth}`)
+          .then(res => {
+            if (!res.ok) throw new Error(`Payroll API error: ${res.status}`);
+            return res.json();
+          })
+          .catch(error => {
+            console.error('Error fetching payroll:', error);
+            return { success: false, data: [], message: error.message };
+          }),
+        
+        // Salary structures
+        fetch('http://localhost:5001/api/salary-structures?isActive=true')
+          .then(res => {
+            if (!res.ok) throw new Error(`Structures API error: ${res.status}`);
+            return res.json();
+          })
+          .catch(error => {
+            console.error('Error fetching structures:', error);
+            return { success: false, data: [], message: error.message };
+          }),
+      ]);
+
+      console.log('API Responses:', {
+        employeesRes,
+        payrollRes,
+        structuresRes
+      });
 
       // Set data from responses
-      if (employeesRes.success) setEmployees(employeesRes.data || []);
-      if (payrollRes.success) setPayroll(payrollRes.data || []);
-      if (structuresRes.success) setSalaryStructures(structuresRes.data || []);
-      if (slipsRes.success) setSalarySlips(slipsRes.data || []);
-      if (summaryRes.success) {
-        setPayrollSummary(summaryRes.data || calculateLocalSummary());
+      if (employeesRes?.success !== false && employeesRes?.data) {
+        setEmployees(employeesRes.data || []);
       } else {
-        setPayrollSummary(calculateLocalSummary());
+        console.warn('No employee data received');
+        setEmployees([]);
       }
 
-      console.log("✅ All data loaded successfully");
-    } catch (error: any) {
-      console.error("❌ Error fetching data:", error);
+      if (payrollRes?.success !== false && payrollRes?.data) {
+        setPayroll(payrollRes.data || []);
+      } else {
+        console.warn('No payroll data received');
+        setPayroll([]);
+      }
 
-      // Try fallback with fetch if axios fails
-      await fetchDataWithFallback();
+      if (structuresRes?.success !== false && structuresRes?.data) {
+        setSalaryStructures(structuresRes.data || []);
+      } else {
+        console.warn('No structures data received');
+        setSalaryStructures([]);
+      }
+
+      // Calculate summary
+      const summary = calculateLocalSummary();
+      setPayrollSummary(summary);
+
+      console.log("✅ Data loaded successfully");
+      console.log("Final state:", {
+        employeesCount: employeesRes?.data?.length || 0,
+        payrollCount: payrollRes?.data?.length || 0,
+        structuresCount: structuresRes?.data?.length || 0,
+        summary
+      });
+
+    } catch (error: any) {
+      console.error("❌ Error in main fetch:", error);
+      toast.error("Failed to fetch some data. Please check your API connection.");
     } finally {
-      setLoading((prev) => ({
-        ...prev,
+      setLoading({
         employees: false,
         payroll: false,
         structures: false,
         slips: false,
         summary: false,
-      }));
+      });
     }
   };
 
-  // Fallback function using fetch if axios still has issues
-  const fetchDataWithFallback = async () => {
-    try {
-      console.log("🔄 Trying fallback fetch method...");
+  // Helper function to calculate summary locally
+  const calculateLocalSummary = (): PayrollSummary => {
+    const totalAmount = payroll.reduce((sum, item) => sum + (item.netSalary || 0), 0);
+    const paidAmount = payroll.reduce((sum, item) => sum + (item.paidAmount || 0), 0);
+    
+    const pending = payroll.filter(p => p.status === 'pending');
+    const processed = payroll.filter(p => p.status === 'processed');
+    const paid = payroll.filter(p => p.status === 'paid');
+    const hold = payroll.filter(p => p.status === 'hold');
+    const partPaid = payroll.filter(p => p.status === 'part-paid');
 
-      // Fetch employees
-      const employeesRes = await fetch(
-        `http://localhost:5001/api/employees?status=active`
-      );
-      if (employeesRes.ok) {
-        const data = await employeesRes.json();
-        if (data.success) setEmployees(data.data || []);
-      }
+    const employeesWithStructureCount = employees.filter(emp =>
+      salaryStructures.some(s => s.employeeId === emp.employeeId)
+    ).length;
 
-      // Fetch payroll
-      const payrollRes = await fetch(
-        `http://localhost:5001/api/payroll?month=${selectedMonth}`
-      );
-      if (payrollRes.ok) {
-        const data = await payrollRes.json();
-        if (data.success) setPayroll(data.data || []);
-      }
-
-      // Fetch salary structures (most problematic)
-      const structuresRes = await fetch(
-        `http://localhost:5001/api/salary-structures?isActive=true`
-      );
-      if (structuresRes.ok) {
-        const data = await structuresRes.json();
-        if (data.success) setSalaryStructures(data.data || []);
-      }
-
-      // Fetch salary slips
-      const slipsRes = await fetch(
-        `http://localhost:5001/api/salary-slips?month=${selectedMonth}`
-      );
-      if (slipsRes.ok) {
-        const data = await slipsRes.json();
-        if (data.success) setSalarySlips(data.data || []);
-      }
-
-      console.log("✅ Fallback fetch completed");
-    } catch (fallbackError) {
-      console.error("❌ Fallback fetch also failed:", fallbackError);
-      toast.error("Failed to load data. Please check your connection.");
-    }
+    return {
+      totalAmount,
+      paidAmount,
+      pendingAmount: pending.reduce((sum, p) => sum + (p.netSalary || 0), 0),
+      holdAmount: hold.reduce((sum, p) => sum + (p.netSalary || 0), 0),
+      partPaidAmount: partPaid.reduce((sum, p) => sum + (p.netSalary || 0), 0),
+      processedCount: processed.length,
+      pendingCount: pending.length,
+      paidCount: paid.length,
+      holdCount: hold.length,
+      partPaidCount: partPaid.length,
+      totalEmployees: employees.length,
+      totalRecords: payroll.length,
+      activeEmployees: employees.filter(e => e.status === 'active').length,
+      employeesWithStructure: employeesWithStructureCount,
+      employeesWithoutStructure: employees.length - employeesWithStructureCount,
+      payrollMonth: selectedMonth,
+    };
   };
+
+  // Get employees with salary structure
   const employeesWithStructure = useMemo(() => {
     return employees.filter((emp) =>
       salaryStructures.some((s) => s.employeeId === emp.employeeId)
@@ -886,7 +802,7 @@ const PayrollTab = ({ selectedMonth, setSelectedMonth }: PayrollTabProps) => {
         }
 
         setProcessDialog({ open: false, employee: null });
-        fetchData(); // Refresh data
+        fetchAllData(); // Refresh data
       } else {
         toast.error(response.message || "Failed to process payroll");
       }
@@ -965,7 +881,7 @@ const PayrollTab = ({ selectedMonth, setSelectedMonth }: PayrollTabProps) => {
           notes: "",
           paymentDate: new Date().toISOString().split("T")[0],
         });
-        fetchData(); // Refresh summary
+        fetchAllData(); // Refresh summary
       } else {
         toast.error(response.message || "Failed to update payment status");
       }
@@ -1014,7 +930,7 @@ const PayrollTab = ({ selectedMonth, setSelectedMonth }: PayrollTabProps) => {
           `Payroll processed for ${response.results?.length || 0} employees`
         );
         setProcessAllDialog(false);
-        fetchData(); // Refresh data
+        fetchAllData(); // Refresh data
       } else {
         toast.error(response.message || "Failed to process payroll");
       }
@@ -1077,7 +993,7 @@ const PayrollTab = ({ selectedMonth, setSelectedMonth }: PayrollTabProps) => {
         setSalaryStructures((prev) => [...prev, response.data!]);
         setIsAddingStructure(false);
         resetStructureForm();
-        fetchData(); // Refresh summary
+        fetchAllData(); // Refresh summary
       } else {
         toast.error(response.message || "Failed to add salary structure");
       }
@@ -1157,7 +1073,7 @@ const PayrollTab = ({ selectedMonth, setSelectedMonth }: PayrollTabProps) => {
         toast.success("Salary structure deleted successfully");
         setSalaryStructures((prev) => prev.filter((s) => getItemId(s) !== id));
         setDeleteDialog({ open: false, structure: null });
-        fetchData(); // Refresh summary
+        fetchAllData(); // Refresh summary
       } else {
         toast.error(response.message || "Failed to delete salary structure");
       }
@@ -1701,32 +1617,8 @@ const PayrollTab = ({ selectedMonth, setSelectedMonth }: PayrollTabProps) => {
 
   // Refresh data
   const handleRefreshData = () => {
-    fetchData();
+    fetchAllData();
   };
-
-  // Debug logging
-  useEffect(() => {
-    console.log("Salary Structures Updated:", {
-      count: salaryStructures.length,
-      data: salaryStructures,
-      firstStructure: salaryStructures[0],
-    });
-  }, [salaryStructures]);
-
-  useEffect(() => {
-    console.log("Employees Updated:", {
-      count: employees.length,
-      data: employees,
-    });
-  }, [employees]);
-
-  useEffect(() => {
-    console.log("Payroll data loaded:", {
-      count: payroll.length,
-      firstRecord: payroll[0],
-      ids: payroll.map((p) => ({ id: getItemId(p), employeeId: p.employeeId })),
-    });
-  }, [payroll]);
 
   if (
     loading.employees &&
@@ -2346,6 +2238,20 @@ const PayrollTab = ({ selectedMonth, setSelectedMonth }: PayrollTabProps) => {
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={fetchAllData}
+              disabled={loading.payroll}
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading.payroll ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Badge variant={payroll.length > 0 ? "default" : "secondary"}>
+              {payroll.length} Records
+            </Badge>
+          </div>
           <Select value={selectedMonth} onValueChange={setSelectedMonth}>
             <SelectTrigger className="w-full sm:w-[180px]">
               <Calendar className="mr-2 h-4 w-4" />
@@ -2366,14 +2272,6 @@ const PayrollTab = ({ selectedMonth, setSelectedMonth }: PayrollTabProps) => {
           >
             <Sheet className="mr-2 h-4 w-4" />
             Export Excel
-          </Button>
-          <Button variant="outline" onClick={handleRefreshData}>
-            <Loader2
-              className={`mr-2 h-4 w-4 ${
-                loading.payroll ? "animate-spin" : ""
-              }`}
-            />
-            Refresh
           </Button>
         </div>
       </div>
@@ -3405,398 +3303,96 @@ const PayrollTab = ({ selectedMonth, setSelectedMonth }: PayrollTabProps) => {
                 <div className="flex justify-center items-center h-64">
                   <Loader2 className="h-8 w-8 animate-spin" />
                 </div>
+              ) : payroll.length === 0 ? (
+                <div className="text-center py-8">
+                  <AlertCircle className="h-12 w-12 mx-auto mb-4 text-yellow-500" />
+                  <p className="text-lg font-medium">No payroll records found</p>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Try selecting a different month or check your API connection
+                  </p>
+                  <Button onClick={fetchAllData} variant="outline">
+                    <Loader2 className="mr-2 h-4 w-4" />
+                    Retry Loading Data
+                  </Button>
+                </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <div className="min-w-[1400px]">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-12">SR</TableHead>
-                          <TableHead>BANK AC</TableHead>
-                          <TableHead>BRANCH</TableHead>
-                          <TableHead>IFSC CODE</TableHead>
-                          <TableHead>NAMES</TableHead>
-                          <TableHead className="w-8">G</TableHead>
-                          <TableHead>MONTH</TableHead>
-                          <TableHead>DEP</TableHead>
-                          <TableHead>STATUS</TableHead>
-                          <TableHead>IN HAND</TableHead>
-                          <TableHead>DESG</TableHead>
-                          <TableHead>DAYS</TableHead>
-                          <TableHead>OT</TableHead>
-                          <TableHead>BASIC</TableHead>
-                          <TableHead>DA</TableHead>
-                          <TableHead>HRA</TableHead>
-                          <TableHead>OTHER</TableHead>
-                          <TableHead>LEAVE</TableHead>
-                          <TableHead>BONUS</TableHead>
-                          <TableHead>OT AMOUNT</TableHead>
-                          <TableHead>GROSS</TableHead>
-                          <TableHead>PF</TableHead>
-                          <TableHead>ESIC</TableHead>
-                          <TableHead>PT</TableHead>
-                          <TableHead>MLWF</TableHead>
-                          <TableHead>ADVANCE</TableHead>
-                          <TableHead>UNI & ID</TableHead>
-                          <TableHead>FINE</TableHead>
-                          <TableHead>DED</TableHead>
-                          <TableHead>OTHER DED</TableHead>
-                          <TableHead>NET</TableHead>
-                          <TableHead>ACTIONS</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      {/* <TableBody>
-                        {payroll.length === 0 ? (
-                          <TableRow>
-                            <TableCell
-                              colSpan={32}
-                              className="text-center py-8 text-muted-foreground"
-                            >
-                              No payroll records found for {selectedMonth}
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          payroll.map((record, index) => {
-                            const employee = employees.find(
-                              (e) => e.employeeId === record.employeeId
-                            );
-                            if (!employee) return null;
-
-                            const grossSalary =
-                              (record.basicSalary || 0) +
-                              (record.allowances || 0);
-
-                            return (
-                              <TableRow
-                                key={
-                                  record._id || record.id || `payroll-${index}`
-                                }
+                <div className="space-y-4">
+                  {/* Simple Card View */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {payroll.slice(0, 6).map((record, index) => {
+                      const employee = employees.find(e => e.employeeId === record.employeeId);
+                      return (
+                        <Card key={record._id || index}>
+                          <CardContent className="pt-6">
+                            <div className="font-medium">{employee?.name || 'Unknown'}</div>
+                            <div className="text-sm text-muted-foreground">{record.employeeId}</div>
+                            <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+                              <div>
+                                <div className="text-gray-600">Department</div>
+                                <div className="font-medium">{employee?.department || 'N/A'}</div>
+                              </div>
+                              <div>
+                                <div className="text-gray-600">Status</div>
+                                <div>{getStatusBadge(record.status)}</div>
+                              </div>
+                            </div>
+                            <div className="mt-4 flex justify-between items-center border-t pt-4">
+                              <span className="text-gray-700">Net Salary:</span>
+                              <span className="font-bold text-lg">₹{record.netSalary?.toLocaleString()}</span>
+                            </div>
+                            <div className="mt-2 flex justify-between items-center">
+                              <span className="text-gray-700">Paid:</span>
+                              <span className="font-medium text-green-600">₹{record.paidAmount?.toLocaleString()}</span>
+                            </div>
+                            <div className="mt-4 flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex-1"
+                                onClick={() => handleOpenPaymentStatus(record)}
                               >
-                                <TableCell className="font-medium">
-                                  {index + 1}
-                                </TableCell>
-                                <TableCell>
-                                  {employee.accountNumber || "N/A"}
-                                </TableCell>
-                                <TableCell>
-                                  {employee.bankBranch || "N/A"}
-                                </TableCell>
-                                <TableCell>
-                                  {employee.ifscCode || "N/A"}
-                                </TableCell>
-                                <TableCell className="font-medium">
-                                  {employee.name}
-                                </TableCell>
-                                <TableCell>
-                                  {employee.gender?.charAt(0) || "N/A"}
-                                </TableCell>
-                                <TableCell>{record.month}</TableCell>
-                                <TableCell>{employee.department}</TableCell>
-                                <TableCell>
-                                  {getStatusBadge(record.status)}
-                                </TableCell>
-                                <TableCell className="font-medium">
-                                  <div className="flex items-center">
-                                    <IndianRupee className="h-3 w-3 mr-1" />
-                                    {(record.paidAmount || 0).toLocaleString()}
-                                  </div>
-                                </TableCell>
-                                <TableCell>{employee.position}</TableCell>
-                                <TableCell>{record.presentDays || 0}</TableCell>
-                                <TableCell>
-                                  {record.overtimeHours || 0}
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center">
-                                    <IndianRupee className="h-3 w-3 mr-1" />
-                                    {(record.basicSalary || 0).toLocaleString()}
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center">
-                                    <IndianRupee className="h-3 w-3 mr-1" />
-                                    {(record.da || 0).toLocaleString()}
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center">
-                                    <IndianRupee className="h-3 w-3 mr-1" />
-                                    {(record.hra || 0).toLocaleString()}
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center">
-                                    <IndianRupee className="h-3 w-3 mr-1" />
-                                    {(
-                                      record.otherAllowances || 0
-                                    ).toLocaleString()}
-                                  </div>
-                                </TableCell>
-                                <TableCell>{record.leaves || 0}</TableCell>
-                                <TableCell>
-                                  <div className="flex items-center">
-                                    <IndianRupee className="h-3 w-3 mr-1" />
-                                    {(record.bonus || 0).toLocaleString()}
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center">
-                                    <IndianRupee className="h-3 w-3 mr-1" />
-                                    {(
-                                      record.overtimeAmount || 0
-                                    ).toLocaleString()}
-                                  </div>
-                                </TableCell>
-                                <TableCell className="font-medium">
-                                  <div className="flex items-center">
-                                    <IndianRupee className="h-3 w-3 mr-1" />
-                                    {grossSalary.toLocaleString()}
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center">
-                                    <IndianRupee className="h-3 w-3 mr-1" />
-                                    {(
-                                      record.providentFund || 0
-                                    ).toLocaleString()}
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center">
-                                    <IndianRupee className="h-3 w-3 mr-1" />
-                                    {(record.esic || 0).toLocaleString()}
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center">
-                                    <IndianRupee className="h-3 w-3 mr-1" />
-                                    {(
-                                      record.professionalTax || 0
-                                    ).toLocaleString()}
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center">
-                                    <IndianRupee className="h-3 w-3 mr-1" />
-                                    {(record.mlwf || 0).toLocaleString()}
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center">
-                                    <IndianRupee className="h-3 w-3 mr-1" />
-                                    {(record.advance || 0).toLocaleString()}
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center">
-                                    <IndianRupee className="h-3 w-3 mr-1" />
-                                    {(
-                                      record.uniformAndId || 0
-                                    ).toLocaleString()}
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center">
-                                    <IndianRupee className="h-3 w-3 mr-1" />
-                                    {(record.fine || 0).toLocaleString()}
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center">
-                                    <IndianRupee className="h-3 w-3 mr-1" />
-                                    {(record.deductions || 0).toLocaleString()}
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center">
-                                    <IndianRupee className="h-3 w-3 mr-1" />
-                                    {(
-                                      record.otherDeductions || 0
-                                    ).toLocaleString()}
-                                  </div>
-                                </TableCell>
-                                <TableCell className="font-medium">
-                                  <div className="flex items-center">
-                                    <IndianRupee className="h-4 w-4 mr-1" />
-                                    {(record.netSalary || 0).toLocaleString()}
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="sm">
-                                        <MoreHorizontal className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem
-                                        onClick={() =>
-                                          handleOpenPaymentStatus(record)
-                                        }
-                                      >
-                                        Update Status
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        onClick={() => {
-                                          const payrollId = getItemId(record);
-                                          if (!payrollId) {
-                                            toast.error(
-                                              "Cannot generate slip: Payroll ID missing"
-                                            );
-                                            return;
-                                          }
-
-                                          const slip = salarySlips.find(
-                                            (s) => s.payrollId === payrollId
-                                          );
-                                          if (slip) {
-                                            handleViewSalarySlip(slip);
-                                          } else {
-                                            handleGenerateSalarySlip(payrollId);
-                                          }
-                                        }}
-                                      >
-                                        {salarySlips.find(
-                                          (s) =>
-                                            s.payrollId === getItemId(record)
-                                        )
-                                          ? "View Slip"
-                                          : "Generate Slip"}
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })
-                        )}
-                      </TableBody> */}
-                      // In PayrollTab.tsx, modify the table rendering in
-                      "Salary Processing Tab"
-                      <TableBody>
-                        {payroll.length > 0 ? (
-                          // Show payroll records instead of employees
-                          payroll.map((record, index) => {
-                            const employee = record.employee; // Use employee data from payroll record
-                            const structure = salaryStructures.find(
-                              (s) => s.employeeId === record.employeeId
-                            );
-
-                            return (
-                              <TableRow key={record._id || `payroll-${index}`}>
-                                <TableCell>
-                                  <div>
-                                    <div className="font-medium">
-                                      {employee?.name || record.employeeId}
-                                    </div>
-                                    <div className="text-sm text-muted-foreground">
-                                      {record.employeeId}
-                                    </div>
-                                    {employee?.accountNumber && (
-                                      <div className="text-xs text-gray-500">
-                                        Bank: XXXX
-                                        {employee.accountNumber.slice(-4)}
-                                      </div>
-                                    )}
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  {employee?.department || "N/A"}
-                                </TableCell>
-                                <TableCell>
-                                  {structure ? (
-                                    <Badge
-                                      variant="secondary"
-                                      className="bg-green-100 text-green-800"
-                                    >
-                                      Configured
-                                    </Badge>
-                                  ) : (
-                                    <Badge
-                                      variant="secondary"
-                                      className="bg-red-100 text-red-800"
-                                    >
-                                      Not Configured
-                                    </Badge>
-                                  )}
-                                </TableCell>
-                                <TableCell>
-                                  <div className="text-sm">
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-green-600">
-                                        P: {record.presentDays || 0}
-                                      </span>
-                                      <span className="text-red-600">
-                                        A: {record.absentDays || 0}
-                                      </span>
-                                      <span className="text-yellow-600">
-                                        H: {record.halfDays || 0}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <Badge variant="secondary">
-                                    {record.leaves || 0} days
-                                  </Badge>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="font-medium flex items-center">
-                                    <IndianRupee className="h-4 w-4 mr-1" />
-                                    {record.netSalary.toFixed(2)}
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex gap-2">
-                                    {getStatusBadge(record.status)}
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() =>
-                                        handleOpenPaymentStatus(record)
-                                      }
-                                    >
-                                      Status
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => {
-                                        const payrollId = getItemId(record);
-                                        if (!payrollId) return;
-
-                                        const slip = salarySlips.find(
-                                          (s) => s.payrollId === payrollId
-                                        );
-                                        if (slip) {
-                                          handleViewSalarySlip(slip);
-                                        } else {
-                                          handleGenerateSalarySlip(payrollId);
-                                        }
-                                      }}
-                                    >
-                                      <Eye className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })
-                        ) : (
-                          <TableRow>
-                            <TableCell
-                              colSpan={7}
-                              className="text-center py-8 text-muted-foreground"
-                            >
-                              {searchTerm
-                                ? "No payroll records found matching your search"
-                                : "No payroll records found for " +
-                                  selectedMonth}
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
+                                Update Status
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex-1"
+                                onClick={() => {
+                                  const payrollId = getItemId(record);
+                                  const slip = salarySlips.find(s => s.payrollId === payrollId);
+                                  if (slip) {
+                                    handleViewSalarySlip(slip);
+                                  } else {
+                                    handleGenerateSalarySlip(payrollId);
+                                  }
+                                }}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Show total count and link to full table */}
+                  <div className="text-center">
+                    <p className="text-sm text-muted-foreground">
+                      Showing {Math.min(payroll.length, 6)} of {payroll.length} records
+                    </p>
+                    {payroll.length > 6 && (
+                      <Button
+                        variant="link"
+                        onClick={() => {
+                          // You can implement a full table view here
+                          toast.info("Full table view coming soon!");
+                        }}
+                        className="mt-2"
+                      >
+                        View All Records →
+                      </Button>
+                    )}
                   </div>
                 </div>
               )}

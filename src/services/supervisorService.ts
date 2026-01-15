@@ -16,6 +16,7 @@ export interface Supervisor {
   joinDate: string;
   createdAt: string;
   updatedAt: string;
+  assignedManagers?: string[]; // ADD THIS LINE
 }
 
 export interface CreateSupervisorData {
@@ -26,6 +27,7 @@ export interface CreateSupervisorData {
   department?: string;
   site?: string;
   reportsTo?: string;
+  assignedManagers?: string[]; // ADD THIS LINE
 }
 
 export interface UpdateSupervisorData {
@@ -39,6 +41,7 @@ export interface UpdateSupervisorData {
   tasks?: number;
   assignedProjects?: string[];
   isActive?: boolean;
+  assignedManagers?: string[]; // ADD THIS LINE
 }
 
 export interface SupervisorStats {
@@ -47,7 +50,7 @@ export interface SupervisorStats {
   inactive: number;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 const api = axios.create({
   baseURL: API_URL,
@@ -167,6 +170,43 @@ export const supervisorService = {
       return response.data.stats;
     } catch (error) {
       console.error('Error fetching supervisor stats:', error);
+      throw error;
+    }
+  },
+
+  // NEW: Get supervisors by manager ID
+  async getSupervisorsByManager(managerId: string): Promise<Supervisor[]> {
+    try {
+      const response = await api.get(`/supervisors/manager/${managerId}`);
+      return response.data.supervisors || [];
+    } catch (error) {
+      console.error(`Error fetching supervisors for manager ${managerId}:`, error);
+      return [];
+    }
+  },
+
+  // NEW: Assign supervisors to manager
+  async assignSupervisorsToManager(managerId: string, supervisorIds: string[]): Promise<Supervisor[]> {
+    try {
+      const response = await api.post(`/supervisors/assign-to-manager/${managerId}`, {
+        supervisorIds
+      });
+      return response.data.supervisors;
+    } catch (error) {
+      console.error(`Error assigning supervisors to manager ${managerId}:`, error);
+      throw error;
+    }
+  },
+
+  // NEW: Remove supervisors from manager
+  async removeSupervisorsFromManager(managerId: string, supervisorIds: string[]): Promise<Supervisor[]> {
+    try {
+      const response = await api.post(`/supervisors/remove-from-manager/${managerId}`, {
+        supervisorIds
+      });
+      return response.data.supervisors;
+    } catch (error) {
+      console.error(`Error removing supervisors from manager ${managerId}:`, error);
       throw error;
     }
   }

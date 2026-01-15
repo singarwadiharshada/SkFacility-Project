@@ -21,6 +21,7 @@ import {
   SalaryStructure, 
   SalarySlip 
 } from "./types";
+import { Deduction } from "@/services/DeductionService";
 
 // Initial Data (moved from original file)
 const initialEmployees: Employee[] = [

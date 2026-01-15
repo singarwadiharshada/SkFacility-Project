@@ -1,1415 +1,2318 @@
-"use client";
-
-import { useState, useEffect } from "react";
-import { DashboardHeader } from "@/components/shared/DashboardHeader";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState, useEffect } from 'react';
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  CardDescription,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
-import { 
-  Search, Plus, Edit, Package, ShoppingCart, Trash2, Eye, 
-  IndianRupee, Building, Users, MapPin, Download, Upload,
-  UserCheck, Phone, Mail, Home, Shield, Car, Trash, Droplets, ShoppingBasket,
-  Wrench, Settings, AlertTriangle, Cpu, BarChart3, Loader2, RefreshCw
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Upload,
+  Plus,
+  Search,
+  Package,
+  UserCheck,
+  AlertTriangle,
+  Eye,
+  Trash2,
+  Download,
+  Edit,
+  History,
+  Building,
+  Shield,
+  Wrench,
+  Printer,
+  Palette,
+  ShoppingBag,
+  Coffee,
+  BarChart3,
+  Tag,
+  MapPin,
+  RefreshCw,
+  Cpu,
+  Settings,
+  Calendar,
+  TrendingUp,
+  AlertCircle,
+  CheckCircle,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { motion } from "framer-motion";
-import { erpApi } from "../../services/erpApi";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { inventoryService, type FrontendInventoryItem } from '@/services/inventoryService';
+import { machineService, type FrontendMachine, type MachineStats, type MaintenanceRecordDTO } from '@/services/machineService';
 
 // Types
-interface Product {
-  _id: string;
-  id: string;
-  name: string;
-  category: string;
-  subCategory: string;
-  department: string;
-  quantity: number;
-  price: number;
-  costPrice: number;
-  status: "in-stock" | "low-stock" | "out-of-stock";
-  supplier: string;
-  sku: string;
-  reorderLevel: number;
-  description?: string;
-  site: string;
-  assignedManager: string;
-  changeHistory: ChangeHistory[];
-  brushCount?: number;
-  squeegeeCount?: number;
-}
-
-interface ChangeHistory {
-  _id?: string;
-  date: string;
-  changeType: "maintenance" | "repair" | "replacement" | "inspection";
-  description: string;
-  cost: number;
-  performedBy: string;
-}
-
 interface Site {
-  _id: string;
   id: string;
   name: string;
-  location: string;
-  city: string;
-  status: "active" | "inactive";
-  manager: string;
-  totalEmployees: number;
-  contact: string;
 }
 
-interface Employee {
-  _id: string;
-  id: string;
-  name: string;
-  role: string;
-  phone: string;
-  site: string;
-  status: "active" | "inactive";
-  salary: number;
+interface Department {
+  value: string;
+  label: string;
+  icon: React.ComponentType<any>;
 }
 
-interface Vendor {
-  _id: string;
-  id: string;
-  name: string;
-  category: string;
-  contactPerson: string;
-  phone: string;
-  city: string;
-  status: "active" | "inactive";
+interface InventoryStats {
+  totalItems: number;
+  lowStockItems: number;
+  totalValue: number;
 }
 
-// Department Categories
-const departments = [
-  { value: "housekeeping", label: "🧼 Housekeeping Management", icon: Home },
-  { value: "security", label: "🛡️ Security Management", icon: Shield },
-  { value: "parking", label: "🚗 Parking Management", icon: Car },
-  { value: "waste", label: "♻️ Waste Management", icon: Trash },
-  { value: "stp", label: "🏭 STP Tank Cleaning", icon: Droplets },
-  { value: "consumables", label: "🛒 Consumables", icon: ShoppingBasket },
-];
+// Use the FrontendInventoryItem type from service
+type InventoryItem = FrontendInventoryItem;
 
-// Category-wise Product Lists
-const departmentCategories = {
-  housekeeping: {
-    "Machines": [
-      "Single disc machine",
-      "Auto scrubber dryer (walk-behind / ride-on)",
-      "Wet & dry vacuum cleaner",
-      "Carpet extraction machine",
-      "High pressure jet machine",
-      "Steam cleaner",
-      "Floor polisher / burnisher"
-    ],
-    "Tools & Material": [
-      "Mop (dry & wet)",
-      "Mop wringer trolley",
-      "Bucket & squeezer",
-      "Microfiber cloths",
-      "Dusters",
-      "Brooms & brushes",
-      "Floor squeegee",
-      "Cobweb brush",
-      "Window cleaning kit (squeegee + washer)",
-      "Spray bottles",
-      "Garbage bins (Indoor/Outdoor)",
-      "Scrubbing pads & sponge scrubs",
-      "Dustpan set",
-      "Cleaning trolley"
-    ],
-    "Chemicals & Consumables": [
-      "Floor cleaner",
-      "Toilet cleaner",
-      "Glass cleaner",
-      "Carpet shampoo",
-      "Disinfectant (bleach / hypo / bio enzyme)",
-      "Hand wash liquid",
-      "Air freshener",
-      "Garbage bags",
-      "Tissue papers"
-    ],
-    "PPE": [
-      "Gloves",
-      "Apron",
-      "Mask",
-      "Shoes"
-    ]
-  },
-  security: {
-    "Equipment": [
-      "CCTV Cameras (IP/HD)",
-      "NVR/DVR",
-      "Gate metal detector",
-      "Handheld metal detector",
-      "Walkie-talkies",
-      "Biometric attendance machine",
-      "RFID cards & access control system",
-      "Boom barrier (if gate management)",
-      "Torch / rechargeable flashlight",
-      "Guard patrol device",
-      "Under-vehicle inspection mirror",
-      "Body camera (optional)"
-    ],
-    "Tools & Safety": [
-      "Barricades / caution tape",
-      "Traffic cones",
-      "Emergency whistle",
-      "First aid kit"
-    ],
-    "Uniform & Accessories": [
-      "Security uniforms",
-      "Cap, belt, shoes",
-      "ID cards",
-      "Lanyard"
-    ],
-    "Registers": [
-      "Visitor logbook",
-      "Material In/Out register",
-      "Key register",
-      "Incident log book",
-      "Vehicle entry register"
-    ]
-  },
-  parking: {
-    "Equipment": [
-      "Boom barrier",
-      "Ticket machine / QR system",
-      "RFID scanner",
-      "ANPR camera (optional)",
-      "Traffic cones",
-      "Wheel stoppers",
-      "Safety barricades",
-      "Speed breakers",
-      "Traffic baton (light stick)",
-      "Walkie-talkies"
-    ],
-    "Signage & Marking": [
-      "Entry/Exit signboards",
-      "Parking zone boards",
-      "Direction arrow boards",
-      "Number plates for slots",
-      "Paint for floor marking"
-    ],
-    "Registers / Digital Logs": [
-      "Visitor vehicle register",
-      "Parking pass register"
-    ],
-    "Uniform & Safety": [
-      "Parking uniform/Jacket",
-      "Whistle",
-      "Reflective vest"
-    ]
-  },
-  waste: {
-    "Bins & Storage": [
-      "Color-coded bins (Dry/Wet/Bio/Plastic/Glass)",
-      "Collection trolleys",
-      "Big waste collection drums",
-      "Wheelbarrow / push cart"
-    ],
-    "Tools": [
-      "Shovel",
-      "Garbage lifter",
-      "Tongs",
-      "Rake",
-      "Disinfectant sprayer",
-      "Broom & mops"
-    ],
-    "Equipment": [
-      "Waste compactor (if large facility)",
-      "Garbage lifter/loader machine (industrial)"
-    ],
-    "Consumables": [
-      "Garbage bags",
-      "Disinfectant chemical",
-      "Gloves / PPE",
-      "Mask / face shield"
-    ]
-  },
-  stp: {
-    "Machines & Tools": [
-      "Submersible pump",
-      "Jetting machine",
-      "Sludge suction pump",
-      "Desludging tanker (external vendor)",
-      "Scraper rods",
-      "High-pressure washer"
-    ],
-    "Safety Equipment": [
-      "Full body safety harness",
-      "Tripod & rope set",
-      "Ventilation blower",
-      "Gas detector (H2S, methane)",
-      "Oxygen cylinder (for confined entry)",
-      "First aid kit"
-    ],
-    "PPE": [
-      "Chemical-resistant gloves",
-      "Gumboots",
-      "Safety goggles",
-      "Helmet",
-      "Respirator mask / SCBA (Self-Contained Breathing Device)"
-    ]
-  },
-  consumables: {
-    "Office Supplies": [
-      "Pens & Stationery",
-      "Notepads & Registers",
-      "Printing Paper",
-      "Toner & Cartridges"
-    ],
-    "Maintenance Items": [
-      "Lubricants & Oils",
-      "Spare Parts",
-      "Tools & Equipment"
-    ],
-    "Safety Equipment": [
-      "First Aid Kits",
-      "Fire Extinguishers",
-      "Safety Signage"
-    ]
-  }
-};
+// Use the FrontendMachine type from service
+type Machine = FrontendMachine;
 
-const ERP = () => {
-  // State Management
-  const [products, setProducts] = useState<Product[]>([]);
-  const [sites, setSites] = useState<Site[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [vendors, setVendors] = useState<Vendor[]>([]);
+const InventoryPage = () => {
+  // State
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [machines, setMachines] = useState<Machine[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("all");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedSite, setSelectedSite] = useState("all");
-  const [customProductName, setCustomProductName] = useState("");
-  
-  // Loading and Error States
-  const [loadingSites, setLoadingSites] = useState(true);
-  const [loadingProducts, setLoadingProducts] = useState(true);
-  const [loadingEmployees, setLoadingEmployees] = useState(false);
-  const [loadingVendors, setLoadingVendors] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  
-  // Dialog States
-  const [productDialogOpen, setProductDialogOpen] = useState(false);
-  const [changeHistoryDialogOpen, setChangeHistoryDialogOpen] = useState<string | null>(null);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [itemDialogOpen, setItemDialogOpen] = useState(false);
+  const [changeHistoryDialogOpen, setChangeHistoryDialogOpen] = useState<string | null>(null);
+  const [editItem, setEditItem] = useState<InventoryItem | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [stats, setStats] = useState<InventoryStats>({
+    totalItems: 0,
+    lowStockItems: 0,
+    totalValue: 0,
+  });
   
-  // Form States
-  const [selectedDept, setSelectedDept] = useState("housekeeping");
-  const [selectedProdCategory, setSelectedProdCategory] = useState("");
-  const [selectedProduct, setSelectedProduct] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Machine states
+  const [machineDialogOpen, setMachineDialogOpen] = useState(false);
+  const [editMachine, setEditMachine] = useState<Machine | null>(null);
+  const [viewMachine, setViewMachine] = useState<Machine | null>(null);
+  const [machineSearchQuery, setMachineSearchQuery] = useState("");
+  const [machineStats, setMachineStats] = useState<MachineStats | null>(null);
+  const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState(false);
+  const [selectedMachineForMaintenance, setSelectedMachineForMaintenance] = useState<string | null>(null);
+  const [maintenanceLoading, setMaintenanceLoading] = useState(false);
+  
+  // New item form state - UNCHANGED
+  const [newItem, setNewItem] = useState<Partial<InventoryItem>>({
+    name: "",
+    sku: "",
+    department: "cleaning",
+    category: "",
+    site: "1",
+    assignedManager: "",
+    quantity: 0,
+    price: 0,
+    costPrice: 0,
+    supplier: "",
+    reorderLevel: 10,
+    description: "",
+  });
 
-  // Fetch data on component mount
-  useEffect(() => {
-    fetchSites();
-    fetchProducts();
-    fetchEmployees();
-    fetchVendors();
-  }, []);
+  // New machine form state - FIXED: Changed machineModel to model
+  const [newMachine, setNewMachine] = useState<Partial<Machine>>({
+    name: "",
+    cost: 0,
+    purchaseDate: new Date().toISOString().split('T')[0],
+    quantity: 1,
+    description: "",
+    status: 'operational',
+    location: "",
+    manufacturer: "",
+    model: "", // CHANGED FROM machineModel to model
+    serialNumber: "",
+    department: "",
+    assignedTo: "",
+  });
 
-  // Data fetching functions
-  const fetchSites = async () => {
-    try {
-      setLoadingSites(true);
-      setError(null);
-      console.log("🟡 Fetching sites from API...");
-      const sitesData = await erpApi.getSites();
-      console.log("🟢 Sites fetched:", sitesData);
-      setSites(sitesData);
-    } catch (error) {
-      console.error('🔴 Error fetching sites:', error);
-      setError('Failed to load sites. Please try again.');
-      toast.error('Failed to load sites');
-    } finally {
-      setLoadingSites(false);
-    }
+  // Maintenance form state
+  const [maintenanceRecord, setMaintenanceRecord] = useState<MaintenanceRecordDTO>({
+    type: "Routine",
+    description: "",
+    cost: 0,
+    performedBy: "",
+  });
+
+  // Data - UNCHANGED
+  const departments: Department[] = [
+    { value: "cleaning", label: "Cleaning", icon: Shield },
+    { value: "maintenance", label: "Maintenance", icon: Wrench },
+    { value: "office", label: "Office Supplies", icon: Printer },
+    { value: "paint", label: "Paint", icon: Palette },
+    { value: "tools", label: "Tools", icon: ShoppingBag },
+    { value: "canteen", label: "Canteen", icon: Coffee },
+  ];
+
+  const sites: Site[] = [
+    { id: "1", name: "Main Site" },
+    { id: "2", name: "Branch Office" },
+    { id: "3", name: "Warehouse A" },
+    { id: "4", name: "Construction Site B" },
+  ];
+
+  const managers = ["John Doe", "Jane Smith", "Robert Johnson", "Sarah Wilson", "Michael Brown"];
+  
+  const categories = {
+    cleaning: ["Tools", "Chemicals", "Equipment", "Supplies"],
+    maintenance: ["Tools", "Safety", "Equipment", "Parts"],
+    office: ["Furniture", "Stationery", "Electronics", "Supplies"],
+    paint: ["Paints", "Brushes", "Rollers", "Accessories"],
+    tools: ["Power Tools", "Hand Tools", "Safety Gear", "Consumables"],
+    canteen: ["Food Items", "Beverages", "Utensils", "Cleaning"],
   };
 
-  const fetchProducts = async () => {
-    try {
-      setLoadingProducts(true);
-      setError(null);
-      console.log("🟡 Fetching products from API...");
-      const { products: productsData } = await erpApi.getProducts({
-        department: selectedDepartment !== "all" ? selectedDepartment : undefined,
-        category: selectedCategory !== "all" ? selectedCategory : undefined,
-        site: selectedSite !== "all" ? selectedSite : undefined,
-        search: searchQuery || undefined,
-      });
-      console.log("🟢 Products fetched:", productsData);
-      setProducts(productsData);
-    } catch (error) {
-      console.error('🔴 Error fetching products:', error);
-      setError('Failed to load products. Please try again.');
-      toast.error('Failed to load products');
-    } finally {
-      setLoadingProducts(false);
-    }
-  };
+  const machineStatusOptions = [
+    { value: 'operational', label: 'Operational', color: 'bg-green-100 text-green-800', icon: CheckCircle },
+    { value: 'maintenance', label: 'Under Maintenance', color: 'bg-yellow-100 text-yellow-800', icon: AlertCircle },
+    { value: 'out-of-service', label: 'Out of Service', color: 'bg-red-100 text-red-800', icon: XCircle },
+  ];
 
-  const fetchEmployees = async () => {
-    try {
-      setLoadingEmployees(true);
-      const employeesData = await erpApi.getEmployees();
-      setEmployees(employeesData);
-    } catch (error) {
-      console.error('Error fetching employees:', error);
-      toast.error('Failed to load employees');
-    } finally {
-      setLoadingEmployees(false);
-    }
-  };
+  const maintenanceTypes = [
+    "Routine",
+    "Preventive",
+    "Corrective",
+    "Emergency",
+    "Scheduled",
+    "Overhaul"
+  ];
 
-  const fetchVendors = async () => {
-    try {
-      setLoadingVendors(true);
-      const vendorsData = await erpApi.getVendors();
-      setVendors(vendorsData);
-    } catch (error) {
-      console.error('Error fetching vendors:', error);
-      toast.error('Failed to load vendors');
-    } finally {
-      setLoadingVendors(false);
-    }
-  };
-
-  const refreshData = () => {
-    fetchSites();
-    fetchProducts();
-    fetchEmployees();
-    fetchVendors();
-    toast.success('Data refreshed successfully');
-  };
-
-  // Utility Functions
-  const getStatusColor = (status: string) => {
-    const statusColors: { [key: string]: "default" | "secondary" | "destructive" | "outline" } = {
-      "active": "default", "in-stock": "default",
-      "pending": "secondary", "inactive": "outline", "draft": "outline",
-      "low-stock": "secondary", "out-of-stock": "destructive"
+  // Helper function to calculate stats from items - UNCHANGED
+  const calculateStats = (itemsList: InventoryItem[]): InventoryStats => {
+    const totalItems = itemsList.length;
+    const lowStockItems = itemsList.filter(item => item.quantity <= item.reorderLevel).length;
+    const totalValue = itemsList.reduce((sum, item) => sum + (item.quantity * item.costPrice), 0);
+    
+    return {
+      totalItems,
+      lowStockItems,
+      totalValue
     };
-    return statusColors[status] || "outline";
   };
 
+  // Format currency
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
+    return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0,
+      currency: 'USD'
     }).format(amount);
   };
 
-  const getDepartmentIcon = (dept: string) => {
-    const deptObj = departments.find(d => d.value === dept);
-    return deptObj ? deptObj.icon : Package;
+  // Format date
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
   };
 
-  // Product Functions
-  const handleAddProduct = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  // Calculate machine statistics locally if API fails - FIXED
+  const calculateLocalMachineStats = () => {
+    const totalMachines = machines.length;
+    const totalMachineValue = machines.reduce((sum, machine) => sum + (machine.cost * machine.quantity), 0);
+    const operationalMachines = machines.filter(m => m.status === 'operational').length;
+    const maintenanceMachines = machines.filter(m => m.status === 'maintenance').length;
+    const outOfServiceMachines = machines.filter(m => m.status === 'out-of-service').length;
+    const averageMachineCost = totalMachines > 0 ? totalMachineValue / totalMachines : 0;
     
-    const productName = selectedProduct === "custom" ? customProductName : selectedProduct;
+    // Count machines needing maintenance soon (within next 30 days)
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
     
-    if (!productName) {
-      toast.error("Please select or enter a product name");
+    const upcomingMaintenanceCount = machines.filter(machine => 
+      machine.nextMaintenanceDate && 
+      new Date(machine.nextMaintenanceDate) <= thirtyDaysFromNow
+    ).length;
+
+    // Calculate machines by department
+    const machinesByDepartment = machines.reduce((acc, machine) => {
+      const dept = machine.department || 'Unassigned';
+      acc[dept] = (acc[dept] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    // Calculate machines by location
+    const machinesByLocation = machines.reduce((acc, machine) => {
+      const location = machine.location || 'Unassigned';
+      acc[location] = (acc[location] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return {
+      totalMachines,
+      totalMachineValue,
+      operationalMachines,
+      maintenanceMachines,
+      outOfServiceMachines,
+      averageMachineCost,
+      machinesByDepartment,
+      machinesByLocation,
+      upcomingMaintenanceCount
+    };
+  };
+
+  // Fetch data from backend on component mount - UPDATED with better error handling
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch items and machines in parallel
+      const [itemsData, machinesData] = await Promise.all([
+        inventoryService.getItems(),
+        machineService.getMachines()
+      ]);
+      
+      setItems(itemsData || []);
+      setMachines(machinesData || []);
+      
+      // Try to fetch machine stats, fall back to local calculation
+      try {
+        const statsData = await machineService.getMachineStats();
+        setMachineStats(statsData);
+      } catch (statsError) {
+        console.warn('Failed to fetch machine stats from API, calculating locally:', statsError);
+        const localStats = calculateLocalMachineStats();
+        setMachineStats(localStats);
+      }
+      
+      // Calculate inventory stats locally
+      const calculatedStats = calculateStats(itemsData || []);
+      setStats(calculatedStats);
+      
+    } catch (error) {
+      console.error('Failed to fetch data from backend:', error);
+      // Error toast is shown by service interceptors
+      
+      // Set empty arrays if backend fails
+      setItems([]);
+      setMachines([]);
+      // Calculate local machine stats even if machines array is empty
+      setMachineStats(calculateLocalMachineStats());
+      setStats({ totalItems: 0, lowStockItems: 0, totalValue: 0 });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const refreshData = async () => {
+    try {
+      setRefreshing(true);
+      await fetchData();
+      toast.success("Data refreshed successfully!");
+    } catch (error) {
+      console.error('Failed to refresh data:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Functions - UNCHANGED
+  const getDepartmentIcon = (department: string) => {
+    const dept = departments.find(d => d.value === department);
+    return dept ? dept.icon : Package;
+  };
+
+  const getCategoriesForDepartment = (dept: string) => {
+    return categories[dept as keyof typeof categories] || [];
+  };
+
+  // Filter items - UNCHANGED
+  const filteredItems = items.filter(item => {
+    const matchesSearch = 
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.supplier.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesDept = selectedDepartment === "all" || item.department === selectedDepartment;
+    const matchesCategory = selectedCategory === "all" || item.category === selectedCategory;
+    const matchesSite = selectedSite === "all" || item.site === selectedSite;
+    
+    return matchesSearch && matchesDept && matchesCategory && matchesSite;
+  });
+
+  // Filter machines - FIXED: Changed machineModel to model
+  const filteredMachines = machines.filter(machine => {
+    const matchesSearch = 
+      machine.name.toLowerCase().includes(machineSearchQuery.toLowerCase()) ||
+      machine.manufacturer?.toLowerCase().includes(machineSearchQuery.toLowerCase()) ||
+      machine.model?.toLowerCase().includes(machineSearchQuery.toLowerCase()) || // FIXED
+      machine.location?.toLowerCase().includes(machineSearchQuery.toLowerCase()) ||
+      machine.serialNumber?.toLowerCase().includes(machineSearchQuery.toLowerCase());
+    
+    return matchesSearch;
+  });
+
+  // Handle item actions - UNCHANGED
+  const handleDeleteItem = async (itemId: string) => {
+    try {
+      await inventoryService.deleteItem(itemId);
+      const updatedItems = items.filter(item => item.id !== itemId);
+      setItems(updatedItems);
+      
+      // Recalculate stats from updated items
+      setStats(calculateStats(updatedItems));
+      
+      toast.success("Item deleted successfully!");
+    } catch (error) {
+      console.error('Failed to delete item:', error);
+    }
+  };
+
+  const handleAddItem = async () => {
+    if (!newItem.name || !newItem.sku) {
+      toast.error("Please fill in required fields");
       return;
     }
 
-    setIsSubmitting(true);
-
     try {
-      const formData = new FormData(e.currentTarget);
-      
-      const productData = {
-        name: productName,
-        category: selectedProdCategory,
-        subCategory: selectedProdCategory,
-        department: selectedDept,
-        quantity: parseInt(formData.get("quantity") as string) || 0,
-        price: parseInt(formData.get("price") as string) || 0,
-        costPrice: parseInt(formData.get("costPrice") as string) || 0,
-        status: "in-stock" as const,
-        supplier: formData.get("supplier") as string,
-        reorderLevel: parseInt(formData.get("reorderLevel") as string) || 0,
-        description: formData.get("description") as string,
-        site: formData.get("site") as string,
-        brushCount: parseInt(formData.get("brushCount") as string) || 0,
-        squeegeeCount: parseInt(formData.get("squeegeeCount") as string) || 0,
+      const itemData: Omit<InventoryItem, 'id' | '_id' | 'createdAt' | 'updatedAt'> = {
+        sku: newItem.sku.toUpperCase(),
+        name: newItem.name,
+        department: newItem.department || "cleaning",
+        category: newItem.category || "Tools",
+        site: newItem.site || "1",
+        assignedManager: newItem.assignedManager || "John Doe",
+        quantity: newItem.quantity || 0,
+        price: newItem.price || 0,
+        costPrice: newItem.costPrice || 0,
+        supplier: newItem.supplier || "",
+        reorderLevel: newItem.reorderLevel || 10,
+        description: newItem.description,
+        changeHistory: [{
+          date: new Date().toISOString().split('T')[0],
+          change: "Created",
+          user: "Supervisor",
+          quantity: newItem.quantity || 0
+        }],
       };
 
-      console.log("🟡 Creating product with data:", productData);
-      const newProduct = await erpApi.createProduct(productData);
-      console.log("🟢 Product created:", newProduct);
+      const createdItem = await inventoryService.createItem(itemData);
+    
+      // Add to local state
+      const updatedItems = [...items, createdItem];
+      setItems(updatedItems);
       
-      setProducts(prev => [newProduct, ...prev]);
-      toast.success("Product added successfully!");
-      setProductDialogOpen(false);
+      // Recalculate stats from updated items
+      setStats(calculateStats(updatedItems));
       
-      // Reset form
-      setSelectedDept("housekeeping");
-      setSelectedProdCategory("");
-      setSelectedProduct("");
-      setCustomProductName("");
-    } catch (error: any) {
-      console.error('🔴 Error adding product:', error);
-      toast.error(error.response?.data?.message || 'Failed to add product');
-    } finally {
-      setIsSubmitting(false);
+      setItemDialogOpen(false);
+      resetNewItemForm();
+    } catch (error) {
+      console.error('Failed to add item:', error);
     }
   };
 
-  const handleAddChangeHistory = async (productId: string, e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    
-    try {
-      const formData = new FormData(e.currentTarget);
-      
-      const changeData = {
-        date: formData.get("date") as string,
-        changeType: formData.get("changeType") as "maintenance" | "repair" | "replacement" | "inspection",
-        description: formData.get("description") as string,
-        cost: parseInt(formData.get("cost") as string),
-        performedBy: formData.get("performedBy") as string,
-      };
+  const handleEditItem = async () => {
+    if (!editItem) return;
 
-      console.log("🟡 Adding change history:", changeData);
-      await erpApi.addChangeHistory(productId, changeData);
+    try {
+      // Create a clean update object without id and timestamps
+      const { id, createdAt, updatedAt, ...updateData } = editItem;
+      
+      // Add change history entry for quantity changes
+      const originalItem = items.find(item => item.id === editItem.id);
+      if (originalItem && editItem.quantity !== originalItem.quantity) {
+        updateData.changeHistory = [
+          ...(editItem.changeHistory || []),
+          {
+            date: new Date().toISOString().split('T')[0],
+            change: "Updated",
+            user: "Supervisor",
+            quantity: editItem.quantity - originalItem.quantity
+          }
+        ];
+      }
+
+      const updatedItem = await inventoryService.updateItem(editItem.id, updateData);
       
       // Update local state
-      setProducts(prev => prev.map(product => 
-        product._id === productId 
-          ? { ...product, changeHistory: [...product.changeHistory, changeData] }
-          : product
-      ));
+      const updatedItems = items.map(item => 
+        item.id === updatedItem.id ? updatedItem : item
+      );
+      setItems(updatedItems);
       
-      toast.success("Change history added successfully!");
+      // Recalculate stats from updated items
+      setStats(calculateStats(updatedItems));
+      
+      setEditItem(null);
+      setItemDialogOpen(false);
     } catch (error) {
-      console.error('🔴 Error adding change history:', error);
-      toast.error('Failed to add change history');
+      console.error('Failed to update item:', error);
     }
   };
 
-  const handleDeleteProduct = async (productId: string) => {
+  // Machine functions - FIXED: Changed machineModel to model
+  const handleAddMachine = async () => {
+    if (!newMachine.name || !newMachine.cost || !newMachine.purchaseDate) {
+      toast.error("Please fill in required fields");
+      return;
+    }
+
     try {
-      console.log("🟡 Deleting product:", productId);
-      await erpApi.deleteProduct(productId);
-      setProducts(prev => prev.filter(p => p._id !== productId));
-      toast.success("Product deleted successfully!");
+      const machineData = {
+        name: newMachine.name,
+        cost: newMachine.cost || 0,
+        purchaseDate: newMachine.purchaseDate,
+        quantity: newMachine.quantity || 1,
+        description: newMachine.description,
+        status: newMachine.status || 'operational',
+        location: newMachine.location,
+        manufacturer: newMachine.manufacturer,
+        model: newMachine.model, // FIXED
+        serialNumber: newMachine.serialNumber,
+        department: newMachine.department,
+        assignedTo: newMachine.assignedTo,
+        lastMaintenanceDate: newMachine.lastMaintenanceDate,
+        nextMaintenanceDate: newMachine.nextMaintenanceDate,
+      };
+
+      if (editMachine) {
+        // Update existing machine
+        const updatedMachine = await machineService.updateMachine(editMachine.id, machineData);
+        const updatedMachines = machines.map(machine => 
+          machine.id === editMachine.id ? updatedMachine : machine
+        );
+        setMachines(updatedMachines);
+        toast.success("Machine updated successfully!");
+      } else {
+        // Add new machine
+        const createdMachine = await machineService.createMachine(machineData);
+        setMachines([...machines, createdMachine]);
+        toast.success("Machine added successfully!");
+      }
+
+      // Refresh machine stats
+      const statsData = await machineService.getMachineStats().catch(() => calculateLocalMachineStats());
+      setMachineStats(statsData);
+      
+      setMachineDialogOpen(false);
+      resetNewMachineForm();
+      setEditMachine(null);
     } catch (error) {
-      console.error('🔴 Error deleting product:', error);
-      toast.error('Failed to delete product');
+      console.error('Failed to save machine:', error);
+      toast.error("Failed to save machine");
     }
   };
 
-  const handleImportData = async (file: File) => {
+  const handleEditMachine = (machine: Machine) => {
+    setEditMachine(machine);
+    setNewMachine({
+      name: machine.name,
+      cost: machine.cost,
+      purchaseDate: machine.purchaseDate,
+      quantity: machine.quantity,
+      description: machine.description,
+      status: machine.status,
+      location: machine.location,
+      manufacturer: machine.manufacturer,
+      model: machine.model, // FIXED
+      serialNumber: machine.serialNumber,
+      department: machine.department,
+      assignedTo: machine.assignedTo,
+      lastMaintenanceDate: machine.lastMaintenanceDate,
+      nextMaintenanceDate: machine.nextMaintenanceDate,
+    });
+    setMachineDialogOpen(true);
+  };
+
+  const handleViewMachine = async (machineId: string) => {
     try {
-      // Create form data
-      const formData = new FormData();
-      formData.append('file', file);
+      const machine = await machineService.getMachineById(machineId);
+      setViewMachine(machine);
+    } catch (error) {
+      console.error('Failed to fetch machine details:', error);
+      toast.error("Failed to fetch machine details");
+    }
+  };
+
+  const handleDeleteMachine = async (machineId: string) => {
+    try {
+      await machineService.deleteMachine(machineId);
+      const updatedMachines = machines.filter(machine => machine.id !== machineId);
+      setMachines(updatedMachines);
       
-      // You'll need to implement this API endpoint
-      const response = await fetch('http://localhost:5001/api/import', {
-        method: 'POST',
-        body: formData,
+      // Refresh machine stats
+      const statsData = await machineService.getMachineStats().catch(() => calculateLocalMachineStats());
+      setMachineStats(statsData);
+      
+      toast.success("Machine deleted successfully!");
+    } catch (error) {
+      console.error('Failed to delete machine:', error);
+      toast.error("Failed to delete machine");
+    }
+  };
+
+  const handleAddMaintenance = async () => {
+    if (!selectedMachineForMaintenance || !maintenanceRecord.type || !maintenanceRecord.description || !maintenanceRecord.performedBy) {
+      toast.error("Please fill in all maintenance record fields");
+      return;
+    }
+
+    try {
+      setMaintenanceLoading(true);
+      const updatedMachine = await machineService.addMaintenanceRecord(
+        selectedMachineForMaintenance,
+        maintenanceRecord
+      );
+      
+      // Update local state
+      const updatedMachines = machines.map(machine => 
+        machine.id === selectedMachineForMaintenance ? updatedMachine : machine
+      );
+      setMachines(updatedMachines);
+      
+      // Refresh machine stats
+      const statsData = await machineService.getMachineStats().catch(() => calculateLocalMachineStats());
+      setMachineStats(statsData);
+      
+      // Reset form
+      setMaintenanceRecord({
+        type: "Routine",
+        description: "",
+        cost: 0,
+        performedBy: "",
       });
+      setSelectedMachineForMaintenance(null);
+      setMaintenanceDialogOpen(false);
+      toast.success("Maintenance record added successfully!");
+    } catch (error) {
+      console.error('Failed to add maintenance record:', error);
+      toast.error("Failed to add maintenance record");
+    } finally {
+      setMaintenanceLoading(false);
+    }
+  };
+
+  const resetNewMachineForm = () => {
+    setNewMachine({
+      name: "",
+      cost: 0,
+      purchaseDate: new Date().toISOString().split('T')[0],
+      quantity: 1,
+      description: "",
+      status: 'operational',
+      location: "",
+      manufacturer: "",
+      model: "", // FIXED
+      serialNumber: "",
+      department: "",
+      assignedTo: "",
+    });
+  };
+
+  const resetNewItemForm = () => {
+    setNewItem({
+      name: "",
+      sku: "",
+      department: "cleaning",
+      category: "",
+      site: "1",
+      assignedManager: "",
+      quantity: 0,
+      price: 0,
+      costPrice: 0,
+      supplier: "",
+      reorderLevel: 10,
+      description: "",
+    });
+  };
+
+  const openEditDialog = (item: InventoryItem) => {
+    setEditItem(item);
+    setItemDialogOpen(true);
+  };
+
+  // Handle import - UNCHANGED
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const lines = text.split('\n');
       
-      if (!response.ok) {
-        throw new Error('Import failed');
+      // Skip header row
+      const dataLines = lines.slice(1);
+      
+      let importedCount = 0;
+      let failedCount = 0;
+      
+      for (const line of dataLines) {
+        if (!line.trim()) continue;
+        
+        const columns = line.split(',');
+        if (columns.length < 10) {
+          failedCount++;
+          continue;
+        }
+        
+        try {
+          const itemData: Omit<InventoryItem, 'id' | '_id' | 'createdAt' | 'updatedAt'> = {
+            sku: columns[0].trim().toUpperCase(),
+            name: columns[1].trim(),
+            department: columns[2].trim().toLowerCase(),
+            category: columns[3].trim(),
+            site: columns[4].trim(),
+            assignedManager: columns[5].trim(),
+            quantity: parseInt(columns[6].trim()) || 0,
+            price: parseFloat(columns[7].trim()) || 0,
+            costPrice: parseFloat(columns[8].trim()) || 0,
+            supplier: columns[9].trim(),
+            reorderLevel: parseInt(columns[10]?.trim()) || 10,
+            description: columns[11]?.trim() || "",
+            changeHistory: [{
+              date: new Date().toISOString().split('T')[0],
+              change: "Created",
+              user: "Supervisor",
+              quantity: parseInt(columns[6].trim()) || 0
+            }]
+          };
+          
+          await inventoryService.createItem(itemData);
+          importedCount++;
+          
+        } catch (error) {
+          failedCount++;
+          console.error('Failed to import row:', line, error);
+        }
       }
       
-      toast.success("Data imported successfully!");
-      setImportDialogOpen(false);
+      toast.success(`Imported ${importedCount} items successfully!`);
+      if (failedCount > 0) {
+        toast.error(`${failedCount} items failed to import`);
+      }
       
-      // Refresh data after import
-      fetchProducts();
-      fetchSites();
+      setImportDialogOpen(false);
+      await fetchData(); // Refresh data
+      
     } catch (error) {
-      console.error('Error importing data:', error);
-      toast.error('Failed to import data');
+      console.error('Failed to parse CSV:', error);
+      toast.error("Failed to import items. Check CSV format.");
     }
   };
 
-  // ADDED: Export Data Function
-  const handleExportData = () => {
+  const handleExport = () => {
+    if (items.length === 0) {
+      toast.error("No items to export");
+      return;
+    }
+
+    const csvContent = [
+      ["SKU", "Name", "Department", "Category", "Site", "Manager", "Quantity", "Price", "Supplier", "Reorder Level"],
+      ...items.map(item => [
+        item.sku,
+        item.name,
+        departments.find(d => d.value === item.department)?.label || item.department,
+        item.category,
+        sites.find(s => s.id === item.site)?.name || item.site,
+        item.assignedManager,
+        item.quantity.toString(),
+        item.price.toString(),
+        item.supplier,
+        item.reorderLevel.toString()
+      ])
+    ].map(row => row.join(",")).join("\n");
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `inventory-export-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    
+    toast.success("Inventory exported successfully!");
+  };
+
+  // Export machines to CSV - FIXED: Simple implementation
+  const handleExportMachines = async () => {
     try {
-      // Check if there's data to export
-      if (products.length === 0) {
-        toast.error('No data available to export');
+      if (machines.length === 0) {
+        toast.error("No machines to export");
         return;
       }
 
-      // Create CSV header
-      const headers = [
-        'SKU',
-        'Product Name', 
-        'Category', 
-        'Department', 
-        'Quantity', 
-        'Price', 
-        'Cost Price', 
-        'Site', 
-        'Manager',
-        'Supplier',
-        'Reorder Level',
-        'Status'
-      ];
-      
-      // Create CSV rows
-      const rows = products.map(product => [
-        product.sku || 'N/A',
-        product.name,
-        product.category,
-        product.department,
-        product.quantity.toString(),
-        product.price.toString(),
-        product.costPrice.toString(),
-        sites.find(s => s.id === product.site)?.name || product.site,
-        product.assignedManager || 'N/A',
-        product.supplier || 'N/A',
-        product.reorderLevel?.toString() || '0',
-        product.status
-      ]);
-      
-      // Combine header and rows
       const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-      ].join('\n');
+        ["Name", "Cost", "Purchase Date", "Quantity", "Status", "Location", "Manufacturer", "Model", "Serial Number", "Department", "Assigned To"],
+        ...machines.map(machine => [
+          machine.name,
+          machine.cost.toString(),
+          new Date(machine.purchaseDate).toISOString().split('T')[0],
+          machine.quantity.toString(),
+          machine.status,
+          machine.location || '',
+          machine.manufacturer || '',
+          machine.model || '', // FIXED
+          machine.serialNumber || '',
+          machine.department || '',
+          machine.assignedTo || ''
+        ])
+      ].map(row => row.join(",")).join("\n");
+
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `machines-export-${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
       
-      // Create download link
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      
-      // Generate filename with current date
-      const today = new Date().toISOString().split('T')[0];
-      link.setAttribute('download', `erp_products_export_${today}.csv`);
-      
-      // Trigger download
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      toast.success('Data exported successfully!');
+      toast.success("Machines exported successfully!");
     } catch (error) {
-      console.error('Error exporting data:', error);
-      toast.error('Failed to export data');
+      console.error('Failed to export machines:', error);
+      toast.error("Failed to export machines");
     }
   };
 
-  // Calculations
-  const getTotalMachineCost = () => {
-    const machines = products.filter(p => 
-      p.department === "housekeeping" && p.category === "Machines"
-    );
-    return machines.reduce((total, machine) => total + (machine.costPrice * machine.quantity), 0);
-  };
+  // Import machines from CSV - Simple implementation
+  const handleImportMachines = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
-  const getTotalBrushCount = () => {
-    const machines = products.filter(p => 
-      p.department === "housekeeping" && p.category === "Machines"
-    );
-    return machines.reduce((total, machine) => total + (machine.brushCount || 0), 0);
-  };
-
-  const getTotalSqueegeeCount = () => {
-    const machines = products.filter(p => 
-      p.department === "housekeeping" && p.category === "Machines"
-    );
-    return machines.reduce((total, machine) => total + (machine.squeegeeCount || 0), 0);
-  };
-
-  const getSiteWiseMachineStats = () => {
-    const stats: { [key: string]: { 
-      siteName: string; 
-      manager: string; 
-      machineCount: number; 
-      totalChanges: number;
-      totalCost: number;
-      brushCount: number;
-      squeegeeCount: number;
-    } } = {};
-    
-    products
-      .filter(p => p.department === "housekeeping" && p.category === "Machines")
-      .forEach(machine => {
-        if (!stats[machine.site]) {
-          const site = sites.find(s => s.id === machine.site);
-          stats[machine.site] = {
-            siteName: site?.name || "Unknown Site",
-            manager: machine.assignedManager,
-            machineCount: 0,
-            totalChanges: 0,
-            totalCost: 0,
-            brushCount: 0,
-            squeegeeCount: 0
-          };
-        }
-        
-        stats[machine.site].machineCount += machine.quantity;
-        stats[machine.site].totalChanges += machine.changeHistory.length;
-        stats[machine.site].totalCost += machine.costPrice * machine.quantity;
-        stats[machine.site].brushCount += machine.brushCount || 0;
-        stats[machine.site].squeegeeCount += machine.squeegeeCount || 0;
-      });
-    
-    return stats;
-  };
-
-  // Get categories for selected department
-  const getCategoriesForDepartment = (dept: string) => {
-    const deptCategories = departmentCategories[dept as keyof typeof departmentCategories];
-    return deptCategories ? Object.keys(deptCategories) : [];
-  };
-
-  // Get products for selected department and category
-  const getProductsForCategory = (dept: string, category: string) => {
-    const deptCategories = departmentCategories[dept as keyof typeof departmentCategories];
-    if (!deptCategories) return [];
-    
-    const categoryProducts = deptCategories[category as keyof typeof deptCategories];
-    return Array.isArray(categoryProducts) ? categoryProducts : [];
-  };
-
-  // Filtered Data
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         product.sku?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesDepartment = selectedDepartment === "all" || product.department === selectedDepartment;
-    const matchesCategory = selectedCategory === "all" || product.category === selectedCategory;
-    const matchesSite = selectedSite === "all" || product.site === selectedSite;
-    return matchesSearch && matchesDepartment && matchesCategory && matchesSite;
-  });
-
-  const siteWiseStats = getSiteWiseMachineStats();
-
-  // Refresh products when filters change
-  useEffect(() => {
-    if (!loadingProducts) {
-      fetchProducts();
+    try {
+      toast.info("Machine import functionality coming soon!");
+      // For now, just show a message and refresh
+      await fetchData();
+    } catch (error) {
+      console.error('Failed to import machines:', error);
     }
-  }, [selectedDepartment, selectedCategory, selectedSite, searchQuery]);
+  };
+
+  // Calculate machine age
+  const calculateMachineAge = (purchaseDate: string) => {
+    const purchase = new Date(purchaseDate);
+    const today = new Date();
+    const diffTime = Math.abs(today.getTime() - purchase.getTime());
+    const diffYears = diffTime / (1000 * 60 * 60 * 24 * 365.25);
+    return Math.floor(diffYears);
+  };
+
+  // Get machine stats for display
+  const machineStatsDisplay = machineStats || calculateLocalMachineStats();
+
+  // Loading state - UNCHANGED
+  if (loading) {
+    return (
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-center h-96">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-muted-foreground">Loading data from backend...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-background">
-      <DashboardHeader title="ERP Management System" />
-      
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="p-6 space-y-6"
-      >
-        {/* Error Display */}
-        {error && (
-          <div className="p-4 bg-destructive/10 border border-destructive rounded-lg">
-            <p className="text-destructive flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4" />
-              {error}
-            </p>
-          </div>
-        )}
-
-        {/* Refresh Button */}
-        <div className="flex justify-end">
+    <div className="container mx-auto p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-3xl font-bold">Inventory Management</h1>
+          <p className="text-muted-foreground">Manage and track your inventory and machinery across all sites</p>
+        </div>
+        <div className="flex items-center gap-2">
           <Button 
             variant="outline" 
             onClick={refreshData}
-            disabled={loadingSites || loadingProducts}
+            disabled={refreshing}
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loadingSites || loadingProducts ? 'animate-spin' : ''}`} />
-            Refresh Data
+            <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <Button 
+            variant="outline" 
+            onClick={handleExport}
+            disabled={items.length === 0}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Export
+          </Button>
+          <Button 
+            variant="outline" 
+            onClick={() => setImportDialogOpen(true)}
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            Import
+          </Button>
+          <Button onClick={() => {
+            setEditItem(null);
+            setItemDialogOpen(true);
+          }}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Item
           </Button>
         </div>
+      </div>
 
-        {/* Machine Statistics Cards */}
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Cpu className="h-4 w-4" />
-                Total Machines
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {loadingProducts ? (
-                  <Loader2 className="h-6 w-6 animate-spin" />
-                ) : (
-                  products.filter(p => p.department === "housekeeping" && p.category === "Machines")
-                    .reduce((total, machine) => total + machine.quantity, 0)
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">Across all sites</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <IndianRupee className="h-4 w-4" />
-                Total Machine Cost
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-primary">
-                {loadingProducts ? (
-                  <Loader2 className="h-6 w-6 animate-spin" />
-                ) : (
-                  formatCurrency(getTotalMachineCost())
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">Total investment</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Wrench className="h-4 w-4" />
-                Total Brushes
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {loadingProducts ? (
-                  <Loader2 className="h-6 w-6 animate-spin" />
-                ) : (
-                  getTotalBrushCount()
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">Brush count</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Droplets className="h-4 w-4" />
-                Total Squeegees
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {loadingProducts ? (
-                  <Loader2 className="h-6 w-6 animate-spin" />
-                ) : (
-                  getTotalSqueegeeCount()
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">Squeegee count</p>
-            </CardContent>
-          </Card>
-        </div>
+      {/* Stats Cards - UNCHANGED */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Items</CardTitle>
+            <Package className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.totalItems}</div>
+            <p className="text-xs text-muted-foreground">Across all departments</p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Low Stock</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-amber-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-amber-600">{stats.lowStockItems}</div>
+            <p className="text-xs text-muted-foreground">Need reordering</p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Value</CardTitle>
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(stats.totalValue)}</div>
+            <p className="text-xs text-muted-foreground">Current inventory value</p>
+          </CardContent>
+        </Card>
+      </div>
 
-        <Tabs defaultValue="inventory" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="inventory">Inventory Management</TabsTrigger>
-            <TabsTrigger value="machine-stats">Machine Statistics</TabsTrigger>
-          </TabsList>
+      <Tabs defaultValue="inventory" className="w-full">
+        <TabsList className="mb-4">
+          <TabsTrigger value="inventory">
+            <Package className="mr-2 h-4 w-4" />
+            Inventory ({items.length})
+          </TabsTrigger>
+          <TabsTrigger value="low-stock">
+            <AlertTriangle className="mr-2 h-4 w-4" />
+            Low Stock ({stats.lowStockItems})
+          </TabsTrigger>
+          <TabsTrigger value="machine-statistics">
+            <Cpu className="mr-2 h-4 w-4" />
+            Machine Statistics ({machines.length})
+          </TabsTrigger>
+          <TabsTrigger value="categories">
+            <Tag className="mr-2 h-4 w-4" />
+            Categories
+          </TabsTrigger>
+          <TabsTrigger value="sites">
+            <MapPin className="mr-2 h-4 w-4" />
+            Sites
+          </TabsTrigger>
+        </TabsList>
 
-          {/* Inventory Tab */}
-          <TabsContent value="inventory">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <CardTitle>Inventory Management</CardTitle>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
-                    <Upload className="mr-2 h-4 w-4" />
-                    Import
-                  </Button>
-                  <Button onClick={() => setProductDialogOpen(true)}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Product
-                  </Button>
+        {/* INVENTORY TAB - UNCHANGED */}
+        <TabsContent value="inventory">
+          <Card>
+            <CardContent className="pt-6">
+              {/* Filters */}
+              <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search items..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className="mb-4 flex gap-4 flex-wrap">
-                  <div className="relative flex-1 min-w-[200px]">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search products..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                  <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="All Departments" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Departments</SelectItem>
-                      {departments.map(dept => (
+                
+                <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Departments" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Departments</SelectItem>
+                    {departments.map(dept => {
+                      const Icon = dept.icon;
+                      return (
                         <SelectItem key={dept.value} value={dept.value}>
-                          {dept.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="All Categories" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Categories</SelectItem>
-                      {selectedDepartment !== "all" && 
-                        getCategoriesForDepartment(selectedDepartment).map(cat => (
-                          <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                        ))
-                      }
-                    </SelectContent>
-                  </Select>
-                  <Select value={selectedSite} onValueChange={setSelectedSite}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="All Sites" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Sites</SelectItem>
-                      {loadingSites ? (
-                        <SelectItem value="loading" disabled>
                           <div className="flex items-center gap-2">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            Loading sites...
+                            <Icon className="h-4 w-4" />
+                            {dept.label}
                           </div>
                         </SelectItem>
-                      ) : (
-                        sites.map(site => (
-                          <SelectItem key={site.id} value={site.id}>{site.name}</SelectItem>
-                        ))
-                      )}
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+                
+                <Select 
+                  value={selectedCategory} 
+                  onValueChange={setSelectedCategory}
+                  disabled={selectedDepartment === "all"}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Categories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    {selectedDepartment !== "all" && 
+                      getCategoriesForDepartment(selectedDepartment).map(cat => (
+                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                      ))
+                    }
+                  </SelectContent>
+                </Select>
+                
+                <Select value={selectedSite} onValueChange={setSelectedSite}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Sites" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sites</SelectItem>
+                    {sites.map(site => (
+                      <SelectItem key={site.id} value={site.id}>
+                        <div className="flex items-center gap-2">
+                          <Building className="h-4 w-4" />
+                          {site.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Table */}
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>SKU</TableHead>
+                      <TableHead>Item Name</TableHead>
+                      <TableHead>Department</TableHead>
+                      <TableHead>Site</TableHead>
+                      <TableHead>Manager</TableHead>
+                      <TableHead>Quantity</TableHead>
+                      <TableHead>Price</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredItems.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={9} className="text-center py-8">
+                          <Package className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+                          <p className="text-lg font-medium">No items found</p>
+                          <p className="text-muted-foreground">
+                            {items.length === 0 
+                              ? "No items in database. Add your first item!" 
+                              : "Try adjusting your search or filters"}
+                          </p>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredItems.map((item) => {
+                        const DeptIcon = getDepartmentIcon(item.department);
+                        const isLowStock = item.quantity <= item.reorderLevel;
+                        const siteName = sites.find(s => s.id === item.site)?.name;
+                        
+                        return (
+                          <TableRow key={item.id}>
+                            <TableCell className="font-mono font-medium">{item.sku}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Package className="h-4 w-4 text-muted-foreground" />
+                                <span className="font-medium">{item.name}</span>
+                              </div>
+                              {item.description && (
+                                <p className="text-xs text-muted-foreground truncate max-w-[200px]">
+                                  {item.description}
+                                </p>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="flex items-center gap-1 w-fit">
+                                <DeptIcon className="h-3 w-3" />
+                                {departments.find(d => d.value === item.department)?.label}
+                              </Badge>
+                              <div className="text-xs text-muted-foreground mt-1">{item.category}</div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Building className="h-3 w-3" />
+                                {siteName || `Site ${item.site}`}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <UserCheck className="h-3 w-3" />
+                                {item.assignedManager}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <span className={`font-medium ${isLowStock ? 'text-amber-600' : ''}`}>
+                                  {item.quantity}
+                                </span>
+                                {isLowStock && (
+                                  <Badge variant="outline" className="text-xs border-amber-200 bg-amber-50 text-amber-700">
+                                    <AlertTriangle className="h-3 w-3 mr-1" />
+                                    Low
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Reorder: {item.reorderLevel}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="font-medium">{formatCurrency(item.price)}</div>
+                              <div className="text-xs text-muted-foreground">
+                                Cost: {formatCurrency(item.costPrice)}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {isLowStock ? (
+                                <Badge variant="destructive" className="text-xs">
+                                  Low Stock
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                                  In Stock
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => openEditDialog(item)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                
+                                <Dialog>
+                                  <DialogTrigger asChild>
+                                    <Button variant="ghost" size="icon">
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                  </DialogTrigger>
+                                  <DialogContent className="max-w-2xl">
+                                    <DialogHeader>
+                                      <DialogTitle>Item Details</DialogTitle>
+                                    </DialogHeader>
+                                    <div className="space-y-4">
+                                      <div className="grid grid-cols-2 gap-4">
+                                        <div><strong>SKU:</strong> {item.sku}</div>
+                                        <div><strong>Name:</strong> {item.name}</div>
+                                        <div><strong>Department:</strong> {departments.find(d => d.value === item.department)?.label}</div>
+                                        <div><strong>Category:</strong> {item.category}</div>
+                                        <div><strong>Quantity:</strong> {item.quantity}</div>
+                                        <div><strong>Price:</strong> {formatCurrency(item.price)}</div>
+                                        <div><strong>Cost Price:</strong> {formatCurrency(item.costPrice)}</div>
+                                        <div><strong>Supplier:</strong> {item.supplier}</div>
+                                        <div><strong>Reorder Level:</strong> {item.reorderLevel}</div>
+                                        <div><strong>Site:</strong> {siteName || `Site ${item.site}`}</div>
+                                        <div><strong>Manager:</strong> {item.assignedManager}</div>
+                                        {item.description && (
+                                          <div className="col-span-2">
+                                            <strong>Description:</strong> {item.description}
+                                          </div>
+                                        )}
+                                      </div>
+                                      
+                                      {/* Change History */}
+                                      <div>
+                                        <h4 className="font-semibold mb-2">Change History</h4>
+                                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                                          {item.changeHistory && item.changeHistory.length > 0 ? (
+                                            item.changeHistory.map((change, index) => (
+                                              <div key={index} className="flex items-center justify-between text-sm p-2 bg-muted/50 rounded">
+                                                <span>{change.date}</span>
+                                                <span>{change.change}</span>
+                                                <span>by {change.user}</span>
+                                                <span className={`font-medium ${change.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                  {change.quantity > 0 ? '+' : ''}{change.quantity}
+                                                </span>
+                                              </div>
+                                            ))
+                                          ) : (
+                                            <p className="text-sm text-muted-foreground text-center py-2">
+                                              No change history available
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </DialogContent>
+                                </Dialog>
+                                
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => setChangeHistoryDialogOpen(item.id)}
+                                >
+                                  <History className="h-4 w-4" />
+                                </Button>
+                                
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleDeleteItem(item.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        {/* LOW STOCK TAB - UNCHANGED */}
+        <TabsContent value="low-stock">
+          <Card>
+            <CardHeader>
+              <CardTitle>Low Stock Items</CardTitle>
+              <CardDescription>Items that need reordering</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {stats.lowStockItems === 0 ? (
+                <div className="text-center py-8">
+                  <AlertTriangle className="h-12 w-12 mx-auto text-green-500 mb-2" />
+                  <p className="text-lg font-medium">All items are in stock!</p>
+                  <p className="text-muted-foreground">No items need reordering at this time.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {items
+                    .filter(item => item.quantity <= item.reorderLevel)
+                    .map(item => (
+                      <div key={item.id} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <Package className="h-5 w-5" />
+                          <div>
+                            <div className="font-medium">{item.name}</div>
+                            <div className="text-sm text-muted-foreground">{item.sku}</div>
+                            <div className="text-sm">{item.supplier}</div>
+                          </div>
+                        </div>
+                        <div className="text-amber-600 font-medium">
+                          {item.quantity} / {item.reorderLevel}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* MACHINE STATISTICS TAB - UPDATED with more stats cards */}
+        <TabsContent value="machine-statistics">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Machine Statistics</CardTitle>
+                  <CardDescription>Manage and track machinery equipment</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    onClick={handleExportMachines}
+                    disabled={machines.length === 0}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Export Machines
+                  </Button>
+                  <Button onClick={() => {
+                    setEditMachine(null);
+                    resetNewMachineForm();
+                    setMachineDialogOpen(true);
+                  }}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Machine
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {/* Machine Stats Cards - UPDATED with more cards */}
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Total Machines</CardTitle>
+                    <Cpu className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{machineStatsDisplay.totalMachines}</div>
+                    <p className="text-xs text-muted-foreground">Across all locations</p>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Total Value</CardTitle>
+                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{formatCurrency(machineStatsDisplay.totalMachineValue)}</div>
+                    <p className="text-xs text-muted-foreground">Machinery value</p>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Operational</CardTitle>
+                    <div className="h-4 w-4 rounded-full bg-green-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-green-600">{machineStatsDisplay.operationalMachines}</div>
+                    <p className="text-xs text-muted-foreground">Ready for use</p>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Under Maintenance</CardTitle>
+                    <div className="h-4 w-4 rounded-full bg-yellow-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-yellow-600">{machineStatsDisplay.maintenanceMachines}</div>
+                    <p className="text-xs text-muted-foreground">Currently in maintenance</p>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Out of Service</CardTitle>
+                    <div className="h-4 w-4 rounded-full bg-red-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-red-600">{machineStatsDisplay.outOfServiceMachines}</div>
+                    <p className="text-xs text-muted-foreground">Not operational</p>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Maintenance Due</CardTitle>
+                    <div className="h-4 w-4 rounded-full bg-orange-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-orange-600">{machineStatsDisplay.upcomingMaintenanceCount}</div>
+                    <p className="text-xs text-muted-foreground">Within 30 days</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Machine Search and Actions */}
+              <div className="flex flex-col md:flex-row gap-4 mb-6">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search machines by name, manufacturer, model, or location..."
+                    value={machineSearchQuery}
+                    onChange={(e) => setMachineSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setMaintenanceDialogOpen(true)}
+                  disabled={machines.length === 0}
+                >
+                  <Wrench className="mr-2 h-4 w-4" />
+                  Add Maintenance
+                </Button>
+              </div>
+
+              {/* Machines Table - FIXED: Changed machineModel to model */}
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Machine Name</TableHead>
+                      <TableHead>Model</TableHead>
+                      <TableHead>Quantity</TableHead>
+                      <TableHead>Cost</TableHead>
+                      <TableHead>Purchase Date</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredMachines.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-8">
+                          <Cpu className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+                          <p className="text-lg font-medium">No machines found</p>
+                          <p className="text-muted-foreground">
+                            {machines.length === 0 
+                              ? "No machines in database. Add your first machine!" 
+                              : "Try adjusting your search"}
+                          </p>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredMachines.map((machine) => {
+                        const statusOption = machineStatusOptions.find(s => s.value === machine.status);
+                        const StatusIcon = statusOption?.icon || CheckCircle;
+                        const machineAge = calculateMachineAge(machine.purchaseDate);
+                        
+                        return (
+                          <TableRow key={machine.id}>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Cpu className="h-4 w-4 text-muted-foreground" />
+                                <div>
+                                  <span className="font-medium">{machine.name}</span>
+                                  {machine.manufacturer && (
+                                    <div className="text-xs text-muted-foreground">{machine.manufacturer}</div>
+                                  )}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div>{machine.model || 'N/A'}</div> {/* FIXED */}
+                              {machine.serialNumber && (
+                                <div className="text-xs text-muted-foreground">SN: {machine.serialNumber}</div>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="font-medium">{machine.quantity}</div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="font-medium">{formatCurrency(machine.cost)}</div>
+                              <div className="text-xs text-muted-foreground">
+                                Total: {formatCurrency(machine.cost * machine.quantity)}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3 text-muted-foreground" />
+                                {formatDate(machine.purchaseDate)}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Age: {machineAge} year{machineAge !== 1 ? 's' : ''}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge className={`${statusOption?.color} border-0 flex items-center gap-1`}>
+                                <StatusIcon className="h-3 w-3" />
+                                {statusOption?.label}
+                              </Badge>
+                              {machine.nextMaintenanceDate && (
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  Next: {formatDate(machine.nextMaintenanceDate)}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleViewMachine(machine.id)}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleEditMachine(machine)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => {
+                                    setSelectedMachineForMaintenance(machine.id);
+                                    setMaintenanceDialogOpen(true);
+                                  }}
+                                >
+                                  <Wrench className="h-4 w-4" />
+                                </Button>
+                                
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleDeleteMachine(machine.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        {/* CATEGORIES TAB - UNCHANGED */}
+        <TabsContent value="categories">
+          <Card>
+            <CardHeader>
+              <CardTitle>Categories</CardTitle>
+              <CardDescription>Item categories by department</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {departments.map(dept => {
+                  const Icon = dept.icon;
+                  const deptItems = items.filter(item => item.department === dept.value);
+                  const deptCategories = [...new Set(deptItems.map(item => item.category))];
+                  
+                  return (
+                    <Card key={dept.value}>
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center gap-2">
+                          <Icon className="h-5 w-5" />
+                          <CardTitle className="text-lg">{dept.label}</CardTitle>
+                        </div>
+                        <CardDescription>
+                          {deptItems.length} items • {deptCategories.length} categories
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2">
+                          {deptCategories.length > 0 ? (
+                            deptCategories.map(category => {
+                              const categoryItems = deptItems.filter(item => item.category === category);
+                              return (
+                                <div key={category} className="flex justify-between items-center">
+                                  <span>{category}</span>
+                                  <Badge variant="secondary">{categoryItems.length}</Badge>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No items in this department</p>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        {/* SITES TAB - UNCHANGED */}
+        <TabsContent value="sites">
+          <Card>
+            <CardHeader>
+              <CardTitle>Sites</CardTitle>
+              <CardDescription>Inventory distribution across sites</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {sites.map(site => {
+                  const siteItems = items.filter(item => item.site === site.id);
+                  const siteValue = siteItems.reduce((sum, item) => sum + (item.quantity * item.costPrice), 0);
+                  
+                  return (
+                    <Card key={site.id}>
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center gap-2">
+                          <Building className="h-5 w-5" />
+                          <CardTitle className="text-lg">{site.name}</CardTitle>
+                        </div>
+                        <CardDescription>
+                          {siteItems.length} items • Value: {formatCurrency(siteValue)}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2">
+                          {siteItems.length > 0 ? (
+                            <div className="text-sm">
+                              <div className="grid grid-cols-2 gap-2 mb-2">
+                                <div className="font-medium">Department</div>
+                                <div className="font-medium text-right">Items</div>
+                              </div>
+                              {Object.entries(
+                                siteItems.reduce((acc, item) => {
+                                  acc[item.department] = (acc[item.department] || 0) + 1;
+                                  return acc;
+                                }, {} as Record<string, number>)
+                              ).map(([dept, count]) => (
+                                <div key={dept} className="flex justify-between items-center">
+                                  <span className="capitalize">{dept}</span>
+                                  <Badge variant="secondary">{count}</Badge>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No items at this site</p>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* ADD/EDIT ITEM DIALOG - UNCHANGED */}
+      <Dialog open={itemDialogOpen} onOpenChange={setItemDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {editItem ? 'Edit Item' : 'Add New Item'}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Item Name *</Label>
+              <Input
+                id="name"
+                value={editItem ? editItem.name : newItem.name}
+                onChange={(e) => 
+                  editItem 
+                    ? setEditItem({...editItem, name: e.target.value})
+                    : setNewItem({...newItem, name: e.target.value})
+                }
+                placeholder="Enter item name"
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="sku">SKU *</Label>
+              <Input
+                id="sku"
+                value={editItem ? editItem.sku : newItem.sku}
+                onChange={(e) => 
+                  editItem 
+                    ? setEditItem({...editItem, sku: e.target.value.toUpperCase()})
+                    : setNewItem({...newItem, sku: e.target.value.toUpperCase()})
+                }
+                placeholder="Enter SKU (e.g., INV-001)"
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="department">Department *</Label>
+              <Select
+                value={editItem ? editItem.department : newItem.department}
+                onValueChange={(value) => 
+                  editItem 
+                    ? setEditItem({...editItem, department: value, category: ''})
+                    : setNewItem({...newItem, department: value, category: ''})
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select department" />
+                </SelectTrigger>
+                <SelectContent>
+                  {departments.map(dept => {
+                    const Icon = dept.icon;
+                    return (
+                      <SelectItem key={dept.value} value={dept.value}>
+                        <div className="flex items-center gap-2">
+                          <Icon className="h-4 w-4" />
+                          {dept.label}
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="category">Category *</Label>
+              <Select
+                value={editItem ? editItem.category : newItem.category}
+                onValueChange={(value) => 
+                  editItem 
+                    ? setEditItem({...editItem, category: value})
+                    : setNewItem({...newItem, category: value})
+                }
+                disabled={!editItem?.department && !newItem.department}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(editItem ? getCategoriesForDepartment(editItem.department) : 
+                    getCategoriesForDepartment(newItem.department || '')).map(cat => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="site">Site *</Label>
+              <Select
+                value={editItem ? editItem.site : newItem.site}
+                onValueChange={(value) => 
+                  editItem 
+                    ? setEditItem({...editItem, site: value})
+                    : setNewItem({...newItem, site: value})
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select site" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sites.map(site => (
+                    <SelectItem key={site.id} value={site.id}>
+                      <div className="flex items-center gap-2">
+                        <Building className="h-4 w-4" />
+                        {site.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="assignedManager">Assigned Manager *</Label>
+              <Select
+                value={editItem ? editItem.assignedManager : newItem.assignedManager}
+                onValueChange={(value) => 
+                  editItem 
+                    ? setEditItem({...editItem, assignedManager: value})
+                    : setNewItem({...newItem, assignedManager: value})
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select manager" />
+                </SelectTrigger>
+                <SelectContent>
+                  {managers.map(manager => (
+                    <SelectItem key={manager} value={manager}>{manager}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="quantity">Quantity *</Label>
+              <Input
+                id="quantity"
+                type="number"
+                min="0"
+                value={editItem ? editItem.quantity : newItem.quantity}
+                onChange={(e) => 
+                  editItem 
+                    ? setEditItem({...editItem, quantity: parseInt(e.target.value) || 0})
+                    : setNewItem({...newItem, quantity: parseInt(e.target.value) || 0})
+                }
+                placeholder="Enter quantity"
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="reorderLevel">Reorder Level *</Label>
+              <Input
+                id="reorderLevel"
+                type="number"
+                min="0"
+                value={editItem ? editItem.reorderLevel : newItem.reorderLevel}
+                onChange={(e) => 
+                  editItem 
+                    ? setEditItem({...editItem, reorderLevel: parseInt(e.target.value) || 0})
+                    : setNewItem({...newItem, reorderLevel: parseInt(e.target.value) || 0})
+                }
+                placeholder="Enter reorder level"
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="price">Price *</Label>
+              <Input
+                id="price"
+                type="number"
+                step="0.01"
+                min="0"
+                value={editItem ? editItem.price : newItem.price}
+                onChange={(e) => 
+                  editItem 
+                    ? setEditItem({...editItem, price: parseFloat(e.target.value) || 0})
+                    : setNewItem({...newItem, price: parseFloat(e.target.value) || 0})
+                }
+                placeholder="Enter price"
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="costPrice">Cost Price *</Label>
+              <Input
+                id="costPrice"
+                type="number"
+                step="0.01"
+                min="0"
+                value={editItem ? editItem.costPrice : newItem.costPrice}
+                onChange={(e) => 
+                  editItem 
+                    ? setEditItem({...editItem, costPrice: parseFloat(e.target.value) || 0})
+                    : setNewItem({...newItem, costPrice: parseFloat(e.target.value) || 0})
+                }
+                placeholder="Enter cost price"
+                required
+              />
+            </div>
+            
+            <div className="space-y-2 col-span-2">
+              <Label htmlFor="supplier">Supplier *</Label>
+              <Input
+                id="supplier"
+                value={editItem ? editItem.supplier : newItem.supplier}
+                onChange={(e) => 
+                  editItem 
+                    ? setEditItem({...editItem, supplier: e.target.value})
+                    : setNewItem({...newItem, supplier: e.target.value})
+                }
+                placeholder="Enter supplier name"
+                required
+              />
+            </div>
+            
+            <div className="space-y-2 col-span-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                value={editItem ? editItem.description : newItem.description}
+                onChange={(e) => 
+                  editItem 
+                    ? setEditItem({...editItem, description: e.target.value})
+                    : setNewItem({...newItem, description: e.target.value})
+                }
+                placeholder="Enter item description"
+                rows={3}
+              />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setItemDialogOpen(false);
+              setEditItem(null);
+              resetNewItemForm();
+            }}>
+              Cancel
+            </Button>
+            <Button onClick={editItem ? handleEditItem : handleAddItem}>
+              {editItem ? 'Update Item' : 'Add Item'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ADD/EDIT MACHINE DIALOG - FIXED: Changed machineModel to model */}
+      <Dialog open={machineDialogOpen} onOpenChange={(open) => {
+        setMachineDialogOpen(open);
+        if (!open) {
+          setEditMachine(null);
+          resetNewMachineForm();
+        }
+      }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {editMachine ? 'Edit Machine' : 'Add New Machine'}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="machineName">Machine Name *</Label>
+              <Input
+                id="machineName"
+                value={newMachine.name}
+                onChange={(e) => setNewMachine({...newMachine, name: e.target.value})}
+                placeholder="Enter machine name"
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="model">Model</Label> {/* FIXED: Changed from machineModel to model */}
+              <Input
+                id="model"
+                value={newMachine.model} 
+                onChange={(e) => setNewMachine({...newMachine, model: e.target.value})} 
+                placeholder="Enter model"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="manufacturer">Manufacturer</Label>
+              <Input
+                id="manufacturer"
+                value={newMachine.manufacturer}
+                onChange={(e) => setNewMachine({...newMachine, manufacturer: e.target.value})}
+                placeholder="Enter manufacturer"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="serialNumber">Serial Number</Label>
+              <Input
+                id="serialNumber"
+                value={newMachine.serialNumber}
+                onChange={(e) => setNewMachine({...newMachine, serialNumber: e.target.value})}
+                placeholder="Enter serial number"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="machineCost">Cost/Price *</Label>
+              <Input
+                id="machineCost"
+                type="number"
+                step="0.01"
+                min="0"
+                value={newMachine.cost}
+                onChange={(e) => setNewMachine({...newMachine, cost: parseFloat(e.target.value) || 0})}
+                placeholder="Enter cost"
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="purchaseDate">Purchase Date *</Label>
+              <Input
+                id="purchaseDate"
+                type="date"
+                value={newMachine.purchaseDate}
+                onChange={(e) => setNewMachine({...newMachine, purchaseDate: e.target.value})}
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="machineQuantity">Quantity *</Label>
+              <Input
+                id="machineQuantity"
+                type="number"
+                min="1"
+                value={newMachine.quantity}
+                onChange={(e) => setNewMachine({...newMachine, quantity: parseInt(e.target.value) || 1})}
+                placeholder="Enter quantity"
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="machineStatus">Status *</Label>
+              <Select
+                value={newMachine.status}
+                onValueChange={(value: 'operational' | 'maintenance' | 'out-of-service') => 
+                  setNewMachine({...newMachine, status: value})
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {machineStatusOptions.map(status => (
+                    <SelectItem key={status.value} value={status.value}>
+                      {status.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="department">Department</Label>
+              <Input
+                id="department"
+                value={newMachine.department}
+                onChange={(e) => setNewMachine({...newMachine, department: e.target.value})}
+                placeholder="Enter department"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="machineLocation">Location</Label>
+              <Input
+                id="machineLocation"
+                value={newMachine.location}
+                onChange={(e) => setNewMachine({...newMachine, location: e.target.value})}
+                placeholder="Enter location"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="assignedTo">Assigned To</Label>
+              <Input
+                id="assignedTo"
+                value={newMachine.assignedTo}
+                onChange={(e) => setNewMachine({...newMachine, assignedTo: e.target.value})}
+                placeholder="Enter assigned person"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="lastMaintenanceDate">Last Maintenance Date</Label>
+              <Input
+                id="lastMaintenanceDate"
+                type="date"
+                value={newMachine.lastMaintenanceDate}
+                onChange={(e) => setNewMachine({...newMachine, lastMaintenanceDate: e.target.value})}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="nextMaintenanceDate">Next Maintenance Date</Label>
+              <Input
+                id="nextMaintenanceDate"
+                type="date"
+                value={newMachine.nextMaintenanceDate}
+                onChange={(e) => setNewMachine({...newMachine, nextMaintenanceDate: e.target.value})}
+              />
+            </div>
+            
+            <div className="space-y-2 col-span-2">
+              <Label htmlFor="machineDescription">Description</Label>
+              <Textarea
+                id="machineDescription"
+                value={newMachine.description}
+                onChange={(e) => setNewMachine({...newMachine, description: e.target.value})}
+                placeholder="Enter machine description"
+                rows={3}
+              />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setMachineDialogOpen(false);
+              setEditMachine(null);
+              resetNewMachineForm();
+            }}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddMachine}>
+              {editMachine ? 'Update Machine' : 'Add Machine'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* VIEW MACHINE DETAILS DIALOG - FIXED */}
+      <Dialog open={!!viewMachine} onOpenChange={() => setViewMachine(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Machine Details</DialogTitle>
+          </DialogHeader>
+          {viewMachine && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div><strong>Machine Name:</strong> {viewMachine.name}</div>
+                <div><strong>Status:</strong> 
+                  <Badge className={`ml-2 ${machineStatusOptions.find(s => s.value === viewMachine.status)?.color} border-0`}>
+                    {machineStatusOptions.find(s => s.value === viewMachine.status)?.label}
+                  </Badge>
+                </div>
+                <div><strong>Manufacturer:</strong> {viewMachine.manufacturer || 'N/A'}</div>
+                <div><strong>Model:</strong> {viewMachine.model || 'N/A'}</div> {/* FIXED */}
+                <div><strong>Serial Number:</strong> {viewMachine.serialNumber || 'N/A'}</div>
+                <div><strong>Cost:</strong> {formatCurrency(viewMachine.cost)}</div>
+                <div><strong>Total Value:</strong> {formatCurrency(viewMachine.cost * viewMachine.quantity)}</div>
+                <div><strong>Quantity:</strong> {viewMachine.quantity}</div>
+                <div><strong>Purchase Date:</strong> {formatDate(viewMachine.purchaseDate)}</div>
+                <div><strong>Age:</strong> {calculateMachineAge(viewMachine.purchaseDate)} years</div>
+                {viewMachine.location && <div><strong>Location:</strong> {viewMachine.location}</div>}
+                {viewMachine.department && <div><strong>Department:</strong> {viewMachine.department}</div>}
+                {viewMachine.assignedTo && <div><strong>Assigned To:</strong> {viewMachine.assignedTo}</div>}
+                {viewMachine.lastMaintenanceDate && (
+                  <div><strong>Last Maintenance:</strong> {formatDate(viewMachine.lastMaintenanceDate)}</div>
+                )}
+                {viewMachine.nextMaintenanceDate && (
+                  <div><strong>Next Maintenance:</strong> {formatDate(viewMachine.nextMaintenanceDate)}</div>
+                )}
+                {viewMachine.description && (
+                  <div className="col-span-2">
+                    <strong>Description:</strong>
+                    <p className="mt-1 text-sm text-muted-foreground">{viewMachine.description}</p>
+                  </div>
+                )}
+              </div>
+              
+              {/* Maintenance History */}
+              {viewMachine.maintenanceHistory && viewMachine.maintenanceHistory.length > 0 && (
+                <div>
+                  <h4 className="font-semibold mb-2">Maintenance History</h4>
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {viewMachine.maintenanceHistory.map((record, index) => (
+                      <div key={index} className="flex flex-col p-2 bg-muted/50 rounded text-sm">
+                        <div className="flex justify-between">
+                          <span className="font-medium">{record.type}</span>
+                          <span>{formatDate(record.date)}</span>
+                        </div>
+                        <div className="text-muted-foreground">{record.description}</div>
+                        <div className="flex justify-between text-xs mt-1">
+                          <span>Performed by: {record.performedBy}</span>
+                          <span>Cost: {formatCurrency(record.cost)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ADD MAINTENANCE RECORD DIALOG */}
+      <Dialog open={maintenanceDialogOpen} onOpenChange={(open) => {
+        setMaintenanceDialogOpen(open);
+        if (!open) {
+          setSelectedMachineForMaintenance(null);
+          setMaintenanceRecord({
+            type: "Routine",
+            description: "",
+            cost: 0,
+            performedBy: "",
+          });
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Maintenance Record</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="maintenanceMachine">Select Machine</Label>
+              <Select
+                value={selectedMachineForMaintenance || ""}
+                onValueChange={setSelectedMachineForMaintenance}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select machine" />
+                </SelectTrigger>
+                <SelectContent>
+                  {machines.map(machine => (
+                    <SelectItem key={machine.id} value={machine.id}>
+                      {machine.name} {machine.model ? `(${machine.model})` : ''} {/* FIXED */}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {selectedMachineForMaintenance && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="maintenanceType">Maintenance Type *</Label>
+                  <Select
+                    value={maintenanceRecord.type}
+                    onValueChange={(value) => setMaintenanceRecord({...maintenanceRecord, type: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {maintenanceTypes.map(type => (
+                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
                 
-                {loadingProducts ? (
-                  <div className="flex justify-center items-center py-12">
-                    <Loader2 className="h-8 w-8 animate-spin" />
-                  </div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>SKU</TableHead>
-                        <TableHead>Product Name</TableHead>
-                        <TableHead>Department</TableHead>
-                        <TableHead>Site</TableHead>
-                        <TableHead>Manager</TableHead>
-                        <TableHead>Quantity</TableHead>
-                        <TableHead>Changes</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredProducts.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                            No products found
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        filteredProducts.map((product) => {
-                          const DeptIcon = getDepartmentIcon(product.department);
-                          return (
-                            <TableRow key={product._id}>
-                              <TableCell className="font-medium">{product.sku || "N/A"}</TableCell>
-                              <TableCell className="flex items-center gap-2">
-                                <Package className="h-4 w-4" />
-                                {product.name}
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="outline" className="flex items-center gap-1 w-fit">
-                                  <DeptIcon className="h-3 w-3" />
-                                  {departments.find(d => d.value === product.department)?.label}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                {sites.find(s => s.id === product.site)?.name || product.site}
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-1">
-                                  <UserCheck className="h-3 w-3" />
-                                  {product.assignedManager || "N/A"}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  {product.quantity}
-                                  {product.reorderLevel && product.quantity <= product.reorderLevel && (
-                                    <Badge variant="outline" className="text-xs">
-                                      <AlertTriangle className="h-3 w-3 mr-1" />
-                                      Reorder
-                                    </Badge>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="outline" className="cursor-pointer" 
-                                  onClick={() => setChangeHistoryDialogOpen(product._id)}>
-                                  {product.changeHistory?.length || 0} changes
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex gap-2">
-                                  <Dialog>
-                                    <DialogTrigger asChild>
-                                      <Button variant="outline" size="sm">
-                                        <Eye className="h-4 w-4" />
-                                      </Button>
-                                    </DialogTrigger>
-                                    <DialogContent>
-                                      <DialogHeader>
-                                        <DialogTitle>Product Details</DialogTitle>
-                                      </DialogHeader>
-                                      <div className="space-y-4">
-                                        <div className="grid grid-cols-2 gap-4">
-                                          <div><strong>SKU:</strong> {product.sku || "N/A"}</div>
-                                          <div><strong>Name:</strong> {product.name}</div>
-                                          <div><strong>Department:</strong> {departments.find(d => d.value === product.department)?.label}</div>
-                                          <div><strong>Category:</strong> {product.category}</div>
-                                          <div><strong>Quantity:</strong> {product.quantity}</div>
-                                          <div><strong>Price:</strong> {formatCurrency(product.price)}</div>
-                                          <div><strong>Cost Price:</strong> {formatCurrency(product.costPrice)}</div>
-                                          <div><strong>Supplier:</strong> {product.supplier || "N/A"}</div>
-                                          <div><strong>Reorder Level:</strong> {product.reorderLevel || 0}</div>
-                                          <div><strong>Site:</strong> {sites.find(s => s.id === product.site)?.name || product.site}</div>
-                                          <div><strong>Manager:</strong> {product.assignedManager || "N/A"}</div>
-                                          {product.brushCount && <div><strong>Brush Count:</strong> {product.brushCount}</div>}
-                                          {product.squeegeeCount && <div><strong>Squeegee Count:</strong> {product.squeegeeCount}</div>}
-                                          {product.description && (
-                                            <div className="col-span-2">
-                                              <strong>Description:</strong> {product.description}
-                                            </div>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </DialogContent>
-                                  </Dialog>
-                                  <Button 
-                                    variant="outline" 
-                                    size="sm"
-                                    onClick={() => handleDeleteProduct(product._id)}
-                                    disabled={isSubmitting}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Machine Statistics Tab */}
-          <TabsContent value="machine-stats">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5" />
-                  Machine Statistics - Site Wise
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loadingProducts ? (
-                  <div className="flex justify-center items-center py-12">
-                    <Loader2 className="h-8 w-8 animate-spin" />
-                  </div>
-                ) : (
-                  <>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Site Name</TableHead>
-                          <TableHead>Manager</TableHead>
-                          <TableHead>Machine Count</TableHead>
-                          <TableHead>Total Changes</TableHead>
-                          <TableHead>Total Cost</TableHead>
-                          <TableHead>Brush Count</TableHead>
-                          <TableHead>Squeegee Count</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {Object.entries(siteWiseStats).length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                              No machine data available
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          Object.entries(siteWiseStats).map(([siteId, stats]) => (
-                            <TableRow key={siteId}>
-                              <TableCell className="font-medium flex items-center gap-2">
-                                <Building className="h-4 w-4" />
-                                {stats.siteName}
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-1">
-                                  <UserCheck className="h-3 w-3" />
-                                  {stats.manager}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="outline">{stats.machineCount}</Badge>
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant={stats.totalChanges > 0 ? "secondary" : "outline"}>
-                                  {stats.totalChanges} changes
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="font-semibold">
-                                {formatCurrency(stats.totalCost)}
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="outline">{stats.brushCount}</Badge>
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="outline">{stats.squeegeeCount}</Badge>
-                              </TableCell>
-                            </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-
-                    {/* Detailed Machine List */}
-                    <div className="mt-6">
-                      <h3 className="text-lg font-semibold mb-4">Detailed Machine Information</h3>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Machine Name</TableHead>
-                            <TableHead>Site</TableHead>
-                            <TableHead>Manager</TableHead>
-                            <TableHead>Quantity</TableHead>
-                            <TableHead>Cost</TableHead>
-                            <TableHead>Brushes</TableHead>
-                            <TableHead>Squeegees</TableHead>
-                            <TableHead>Changes</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {products
-                            .filter(p => p.department === "housekeeping" && p.category === "Machines")
-                            .map(machine => (
-                              <TableRow key={machine._id}>
-                                <TableCell className="font-medium">{machine.name}</TableCell>
-                                <TableCell>{sites.find(s => s.id === machine.site)?.name || machine.site}</TableCell>
-                                <TableCell>{machine.assignedManager || "N/A"}</TableCell>
-                                <TableCell>{machine.quantity}</TableCell>
-                                <TableCell>{formatCurrency(machine.costPrice * machine.quantity)}</TableCell>
-                                <TableCell>{machine.brushCount || 0}</TableCell>
-                                <TableCell>{machine.squeegeeCount || 0}</TableCell>
-                                <TableCell>
-                                  <Badge 
-                                    variant="outline" 
-                                    className="cursor-pointer"
-                                    onClick={() => setChangeHistoryDialogOpen(machine._id)}
-                                  >
-                                    {machine.changeHistory?.length || 0} changes
-                                  </Badge>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-
-        {/* Add Product Dialog */}
-        <Dialog open={productDialogOpen} onOpenChange={setProductDialogOpen}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Add New Product</DialogTitle>
-            </DialogHeader>
-            <div className="max-h-[70vh] overflow-y-auto pr-4">
-              <form onSubmit={handleAddProduct} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Department</Label>
-                    <Select value={selectedDept} onValueChange={setSelectedDept}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select department" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {departments.map(dept => (
-                          <SelectItem key={dept.value} value={dept.value}>
-                            {dept.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Category</Label>
-                    <Select 
-                      value={selectedProdCategory} 
-                      onValueChange={setSelectedProdCategory}
-                      disabled={!selectedDept}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {getCategoriesForDepartment(selectedDept).map(category => (
-                          <SelectItem key={category} value={category}>
-                            {category}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
                 <div className="space-y-2">
-                  <Label>Product Name</Label>
-                  <Select value={selectedProduct} onValueChange={setSelectedProduct}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select product or add custom" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="custom">+ Add Custom Product</SelectItem>
-                      {selectedProdCategory && getProductsForCategory(selectedDept, selectedProdCategory).map(product => (
-                        <SelectItem key={product} value={product}>
-                          {product}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="maintenanceDescription">Description *</Label>
+                  <Textarea
+                    id="maintenanceDescription"
+                    value={maintenanceRecord.description}
+                    onChange={(e) => setMaintenanceRecord({...maintenanceRecord, description: e.target.value})}
+                    placeholder="Describe the maintenance performed"
+                    rows={3}
+                  />
                 </div>
-
-                {selectedProduct === "custom" && (
-                  <div className="space-y-2">
-                    <Label>Custom Product Name</Label>
-                    <Input 
-                      value={customProductName}
-                      onChange={(e) => setCustomProductName(e.target.value)}
-                      placeholder="Enter custom product name"
-                      required
-                    />
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Site</Label>
-                    <Select name="site" required>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select site" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {loadingSites ? (
-                          <SelectItem value="loading" disabled>
-                            <div className="flex items-center gap-2">
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                              Loading sites...
-                            </div>
-                          </SelectItem>
-                        ) : (
-                          sites.map(site => (
-                            <SelectItem key={site.id} value={site.id}>{site.name}</SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Quantity</Label>
-                    <Input name="quantity" type="number" min="0" required defaultValue={0} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Reorder Level</Label>
-                    <Input name="reorderLevel" type="number" min="0" required defaultValue={0} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Price</Label>
-                    <Input name="price" type="number" min="0" step="0.01" required defaultValue={0} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Cost Price</Label>
-                    <Input name="costPrice" type="number" min="0" step="0.01" required defaultValue={0} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Supplier</Label>
-                    <Input name="supplier" required placeholder="Enter supplier name" />
-                  </div>
-                </div>
-
-                {selectedProdCategory === "Machines" && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Brush Count</Label>
-                      <Input name="brushCount" type="number" min="0" placeholder="Optional" defaultValue={0} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Squeegee Count</Label>
-                      <Input name="squeegeeCount" type="number" min="0" placeholder="Optional" defaultValue={0} />
-                    </div>
-                  </div>
-                )}
-
+                
                 <div className="space-y-2">
-                  <Label>Description</Label>
-                  <Textarea name="description" placeholder="Product description (optional)" />
+                  <Label htmlFor="maintenanceCost">Cost</Label>
+                  <Input
+                    id="maintenanceCost"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={maintenanceRecord.cost}
+                    onChange={(e) => setMaintenanceRecord({...maintenanceRecord, cost: parseFloat(e.target.value) || 0})}
+                    placeholder="Enter maintenance cost"
+                  />
                 </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="performedBy">Performed By *</Label>
+                  <Input
+                    id="performedBy"
+                    value={maintenanceRecord.performedBy}
+                    onChange={(e) => setMaintenanceRecord({...maintenanceRecord, performedBy: e.target.value})}
+                    placeholder="Enter technician name"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMaintenanceDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleAddMaintenance}
+              disabled={!selectedMachineForMaintenance || maintenanceLoading}
+            >
+              {maintenanceLoading ? "Adding..." : "Add Maintenance"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-                <Button 
-                  type="submit" 
-                  className="w-full"
-                  disabled={isSubmitting || !selectedProduct || (selectedProduct === "custom" && !customProductName)}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Adding Product...
-                    </>
-                  ) : (
-                    'Add Product'
-                  )}
-                </Button>
-              </form>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Change History Dialog */}
-        <Dialog open={!!changeHistoryDialogOpen} onOpenChange={() => setChangeHistoryDialogOpen(null)}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>
-                Change History - {products.find(p => p._id === changeHistoryDialogOpen)?.name}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="max-h-96 overflow-y-auto space-y-4">
-              {changeHistoryDialogOpen && (
-                <>
-                  <div className="space-y-2">
-                    {products.find(p => p._id === changeHistoryDialogOpen)?.changeHistory?.map((change, index) => (
-                      <div key={index} className="p-3 border rounded">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-medium capitalize">{change.changeType}</p>
-                            <p className="text-sm text-muted-foreground">{change.description}</p>
-                            <p className="text-xs">Performed by: {change.performedBy}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm font-semibold">{formatCurrency(change.cost)}</p>
-                            <p className="text-xs text-muted-foreground">{change.date}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    {!products.find(p => p._id === changeHistoryDialogOpen)?.changeHistory?.length && (
-                      <p className="text-center text-muted-foreground py-4">No change history recorded</p>
-                    )}
-                  </div>
-                  
-                  <form onSubmit={(e) => handleAddChangeHistory(changeHistoryDialogOpen, e)} className="space-y-4 pt-4 border-t">
-                    <h4 className="font-medium">Add New Change</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Date</Label>
-                        <Input name="date" type="date" required />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Change Type</Label>
-                        <Select name="changeType" required>
-                          <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="maintenance">Maintenance</SelectItem>
-                            <SelectItem value="repair">Repair</SelectItem>
-                            <SelectItem value="replacement">Replacement</SelectItem>
-                            <SelectItem value="inspection">Inspection</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Description</Label>
-                      <Input name="description" required />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Cost</Label>
-                        <Input name="cost" type="number" min="0" step="0.01" required />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Performed By</Label>
-                        <Input name="performedBy" required />
-                      </div>
-                    </div>
-                    <Button type="submit" className="w-full">Add Change Record</Button>
-                  </form>
-                </>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Import Dialog */}
-        <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Import Data</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="border-2 border-dashed rounded-lg p-6 text-center">
-                <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground mb-2">
-                  Upload CSV file with data
-                </p>
-                <Input 
-                  type="file" 
+      {/* IMPORT DIALOG */}
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Import Data</DialogTitle>
+          </DialogHeader>
+          
+          <Tabs defaultValue="inventory">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="inventory">Inventory</TabsTrigger>
+              <TabsTrigger value="machines">Machines</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="inventory" className="space-y-4">
+              <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center">
+                <Upload className="h-12 w-12 mx-auto text-muted-foreground" />
+                <p className="mt-4">Drop your CSV file here or click to browse</p>
+                <p className="text-sm text-muted-foreground">Supports .csv files with item data</p>
+                <Input
+                  type="file"
                   accept=".csv"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      handleImportData(file);
-                    }
-                  }}
+                  onChange={handleImport}
+                  className="mt-4 mx-auto max-w-xs"
                 />
               </div>
-              <Button 
-                variant="outline" 
-                className="w-full"
-                onClick={handleExportData}  
-                disabled={loadingProducts}
-              >
-                <Download className="mr-2 h-4 w-4" />
-                {loadingProducts ? 'Loading...' : 'Download Template'}
-              </Button>
+              <div className="text-sm text-muted-foreground">
+                <p className="font-semibold">CSV Format:</p>
+                <p>SKU,Name,Department,Category,Site,AssignedManager,Quantity,Price,CostPrice,Supplier,ReorderLevel</p>
+                <p className="mt-2 text-xs">Note: SKU must be unique</p>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="machines" className="space-y-4">
+              <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center">
+                <Upload className="h-12 w-12 mx-auto text-muted-foreground" />
+                <p className="mt-4">Drop your CSV file here or click to browse</p>
+                <p className="text-sm text-muted-foreground">Supports .csv files with machine data</p>
+                <Input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleImportMachines}
+                  className="mt-4 mx-auto max-w-xs"
+                />
+              </div>
+              <div className="text-sm text-muted-foreground">
+                <p className="font-semibold">CSV Format:</p>
+                <p>Name,Cost,PurchaseDate,Quantity,Description,Status,Location,Manufacturer,Model,SerialNumber,Department,AssignedTo</p>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
+
+      {/* CHANGE HISTORY DIALOG - UNCHANGED */}
+      <Dialog open={!!changeHistoryDialogOpen} onOpenChange={() => setChangeHistoryDialogOpen(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change History</DialogTitle>
+          </DialogHeader>
+          {changeHistoryDialogOpen && (
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {(() => {
+                const item = items.find(item => item.id === changeHistoryDialogOpen);
+                return item?.changeHistory && item.changeHistory.length > 0 ? (
+                  item.changeHistory.map((change, index) => (
+                    <div key={index} className="flex items-center justify-between text-sm p-2 bg-muted/50 rounded">
+                      <span>{change.date}</span>
+                      <span>{change.change}</span>
+                      <span>by {change.user}</span>
+                      <span className={`font-medium ${change.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {change.quantity > 0 ? '+' : ''}{change.quantity}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No change history available for this item
+                  </p>
+                );
+              })()}
             </div>
-          </DialogContent>
-        </Dialog>
-      </motion.div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
 
-export default ERP;
+export default InventoryPage;

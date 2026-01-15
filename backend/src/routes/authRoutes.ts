@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import User, { IUser } from '../models/User';
+import { auth } from '../middleware/auth';
 
 const router = express.Router();
 
@@ -398,6 +399,22 @@ router.post('/create-default-admin', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: error.message || 'Error creating admin'
+    });
+  }
+});
+// Get current user (manager) info
+router.get('/current-user', auth, async (req, res) => {
+  try {
+    // Return the user from the auth middleware
+    res.json({
+      success: true,
+      data: req.user
+    });
+  } catch (error) {
+    console.error('Error in /current-user route:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error fetching user data' 
     });
   }
 });

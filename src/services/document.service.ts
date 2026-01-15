@@ -1,7 +1,7 @@
 import axios, { AxiosError } from 'axios';
 
 // Use absolute URL - make sure this matches your backend
-const API_BASE_URL = 'http://localhost:5001/api';
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 export interface DocumentUploadResponse {
   success: boolean;
@@ -52,7 +52,7 @@ export interface ApiResponse<T> {
 
 class DocumentService {
   private api = axios.create({
-    baseURL: API_BASE_URL,
+    baseURL: API_URL,
     headers: {
       'Content-Type': 'application/json',
     },
@@ -286,7 +286,7 @@ class DocumentService {
           errorMessage = data.message || JSON.stringify(data);
         }
       } else if (axiosError.request) {
-        errorMessage = 'No response received from server. Check if backend is running at ' + API_BASE_URL;
+        errorMessage = 'No response received from server. Check if backend is running at ' + API_URL;
       } else if (axiosError.message) {
         errorMessage = axiosError.message;
       }

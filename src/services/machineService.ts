@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:5001/api';
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 export interface FrontendMachine {
   id: string;
@@ -86,44 +86,44 @@ export const machineService = {
     if (filters?.sortOrder) params.append('sortOrder', filters.sortOrder);
 
     const response = await axios.get<FrontendMachine[]>(
-      `${API_BASE_URL}/machines${params.toString() ? `?${params.toString()}` : ''}`
+      `${API_URL}/machines${params.toString() ? `?${params.toString()}` : ''}`
     );
     return response.data;
   },
 
   // Get machine by ID
   async getMachineById(id: string): Promise<FrontendMachine> {
-    const response = await axios.get<FrontendMachine>(`${API_BASE_URL}/machines/${id}`);
+    const response = await axios.get<FrontendMachine>(`${API_URL}/machines/${id}`);
     return response.data;
   },
 
   // Create new machine
   async createMachine(data: CreateMachineDTO): Promise<FrontendMachine> {
-    const response = await axios.post<FrontendMachine>(`${API_BASE_URL}/machines`, data);
+    const response = await axios.post<FrontendMachine>(`${API_URL}/machines`, data);
     return response.data;
   },
 
   // Update machine
   async updateMachine(id: string, data: Partial<CreateMachineDTO>): Promise<FrontendMachine> {
-    const response = await axios.put<FrontendMachine>(`${API_BASE_URL}/machines/${id}`, data);
+    const response = await axios.put<FrontendMachine>(`${API_URL}/machines/${id}`, data);
     return response.data;
   },
 
   // Delete machine
   async deleteMachine(id: string): Promise<void> {
-    await axios.delete(`${API_BASE_URL}/machines/${id}`);
+    await axios.delete(`${API_URL}/machines/${id}`);
   },
 
   // Get machine statistics
   async getMachineStats(): Promise<MachineStats> {
-    const response = await axios.get<MachineStats>(`${API_BASE_URL}/machines/stats`);
+    const response = await axios.get<MachineStats>(`${API_URL}/machines/stats`);
     return response.data;
   },
 
   // Add maintenance record
   async addMaintenanceRecord(machineId: string, record: MaintenanceRecordDTO): Promise<FrontendMachine> {
     const response = await axios.post<FrontendMachine>(
-      `${API_BASE_URL}/machines/${machineId}/maintenance`,
+      `${API_URL}/machines/${machineId}/maintenance`,
       record
     );
     return response.data;
@@ -132,7 +132,7 @@ export const machineService = {
   // Search machines
   async searchMachines(query: string): Promise<FrontendMachine[]> {
     const response = await axios.get<FrontendMachine[]>(
-      `${API_BASE_URL}/machines/search?q=${encodeURIComponent(query)}`
+      `${API_URL}/machines/search?q=${encodeURIComponent(query)}`
     );
     return response.data;
   }

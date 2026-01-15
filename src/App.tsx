@@ -90,6 +90,7 @@ import SuperAdminWorkIssues from "./pages/superadmin/SuperAdminWorkIssues";
 import AdminAttendanceView from "./pages/admin/AdminAttendanceView";
 import ManagerOperations from "./pages/manager/ManagerOperations";
 import AdminHRMS from "./pages/admin/AdminHRMS";
+import { AuthProvider } from "./contexts/AuthContext";
 // import AdminCRM from "./pages/admin/AdminCRM";
 
 
@@ -98,6 +99,7 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <RoleProvider>
+      <AuthProvider>
       <TooltipProvider>
         <Toaster />
         <Sonner />
@@ -227,6 +229,7 @@ const App = () => (
           </Routes>
         </BrowserRouter>
       </TooltipProvider>
+      </AuthProvider>
     </RoleProvider>
   </QueryClientProvider>
 );

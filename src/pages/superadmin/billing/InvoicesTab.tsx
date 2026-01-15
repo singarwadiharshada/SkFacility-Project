@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,11 +22,75 @@ import {
   AlertCircle,
   RefreshCw
 } from "lucide-react";
-import { Invoice, getServiceIcon, getStatusColor, formatCurrency } from "../Billing";
+import { getServiceIcon, getStatusColor, formatCurrency } from "../Billing";
 import { PerformInvoiceForm } from "./PerformInvoiceForm";
 import { TaxInvoiceForm } from "./TaxInvoiceForm";
 import jsPDF from "jspdf";
-import InvoiceService from "../../../services/invoiceService";
+import InvoiceService from "../../../services/InvoiceService";
+
+// Define a unified Invoice type with all properties needed
+interface InvoiceItem {
+  description: string;
+  quantity: number;
+  rate: number;
+  amount: number;
+  unit?: string;
+}
+
+interface Invoice {
+  id: string;
+  client: string;
+  clientEmail: string;
+  amount: number;
+  date: string;
+  dueDate?: string;
+  status: string;
+  items: InvoiceItem[];
+  tax: number;
+  serviceType?: string;
+  site?: string;
+  
+  // Required by invoiceService
+  invoiceNumber: string;
+  
+  // Common properties for both invoice types
+  invoiceType?: "perform" | "tax";
+  voucherNo?: string;
+  consignee?: string;
+  consigneeAddress?: string;
+  consigneeGSTIN?: string;
+  consigneeState?: string;
+  consigneeStateCode?: string;
+  buyer?: string;
+  buyerAddress?: string;
+  buyerGSTIN?: string;
+  buyerState?: string;
+  buyerStateCode?: string;
+  buyerRef?: string;
+  dispatchedThrough?: string;
+  paymentTerms?: string;
+  notes?: string;
+  destination?: string;
+  deliveryTerms?: string;
+  amountInWords?: string;
+  
+  // Company details
+  companyName?: string;
+  companyAddress?: string;
+  companyGSTIN?: string;
+  companyState?: string;
+  companyStateCode?: string;
+  email?: string;
+  accountHolder?: string;
+  bankName?: string;
+  accountNumber?: string;
+  branchAndIFSC?: string;
+  
+  // Tax invoice specific
+  managementFeesPercent?: number;
+  managementFeesAmount?: number;
+  roundUp?: number;
+}
 
 interface InvoicesTabProps {
   onInvoiceCreate?: (invoice: Invoice) => void;
@@ -82,7 +145,8 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       setLoading(true);
       setError(null);
       const data = await InvoiceService.getAllInvoices();
-      setInvoices(data);
+      // Cast to our unified Invoice type
+      setInvoices(data as Invoice[]);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch invoices');
       console.error('Error fetching invoices:', err);
@@ -95,11 +159,11 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
   const handleCreateInvoice = async (invoice: Invoice) => {
     try {
       const newInvoice = await InvoiceService.createInvoice(invoice);
-      setInvoices(prev => [newInvoice, ...prev]);
+      setInvoices(prev => [newInvoice as Invoice, ...prev]);
       
       // Call the parent callback if provided
       if (onInvoiceCreate) {
-        onInvoiceCreate(newInvoice);
+        onInvoiceCreate(newInvoice as Invoice);
       }
       
       // Show success message
@@ -121,7 +185,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       // Update local state
       setInvoices(prev => 
         prev.map(invoice => 
-          invoice.id === invoiceId ? updatedInvoice : invoice
+          invoice.id === invoiceId ? updatedInvoice as Invoice : invoice
         )
       );
       
@@ -169,6 +233,79 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
     } finally {
       setDeletingInvoiceId(null);
     }
+  };
+
+  // Number to words converter
+  const convertToIndianWords = (num: number) => {
+    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    
+    function convert_hundreds(num: number) {
+      let result = '';
+      if (num >= 100) {
+        result += ones[Math.floor(num / 100)] + ' Hundred ';
+        num %= 100;
+      }
+      if (num >= 20) {
+        result += tens[Math.floor(num / 10)] + ' ';
+        num %= 10;
+      }
+      if (num >= 10) {
+        result += teens[num - 10] + ' ';
+        return result;
+      }
+      if (num > 0) {
+        result += ones[num] + ' ';
+      }
+      return result;
+    }
+    
+    function convert_number(num: number) {
+      if (num === 0) return 'Zero';
+      
+      let result = '';
+      const crore = Math.floor(num / 10000000);
+      if (crore > 0) {
+        result += convert_hundreds(crore) + 'Crore ';
+        num %= 10000000;
+      }
+      
+      const lakh = Math.floor(num / 100000);
+      if (lakh > 0) {
+        result += convert_hundreds(lakh) + 'Lakh ';
+        num %= 100000;
+      }
+      
+      const thousand = Math.floor(num / 1000);
+      if (thousand > 0) {
+        result += convert_hundreds(thousand) + 'Thousand ';
+        num %= 1000;
+      }
+      
+      const hundred = Math.floor(num / 100);
+      if (hundred > 0) {
+        result += convert_hundreds(hundred) + 'Hundred ';
+        num %= 100;
+      }
+      
+      if (num > 0) {
+        result += convert_hundreds(num);
+      }
+      
+      return result.trim();
+    }
+    
+    const rupees = Math.floor(num);
+    const paise = Math.round((num - rupees) * 100);
+    
+    let result = convert_number(rupees) + ' Rupees';
+    if (paise > 0) {
+      result += ' and ' + convert_number(paise) + ' Paise';
+    }
+    result += ' Only';
+    
+    return `INR ${result.toUpperCase()}`;
   };
 
   // Generate Sales Order PDF for existing invoices
@@ -421,19 +558,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
         
         // Description - Left aligned
         let description = item.description || "";
-        let unit = "No";
-        
-        // Extract unit from description or use item.unit if available
-        if ((item as any).unit) {
-          unit = (item as any).unit;
-        } else {
-          // Fallback: Try to extract unit from description for backward compatibility
-          const unitMatch = description.match(/\s(\w+)$/);
-          if (unitMatch) {
-            unit = unitMatch[1];
-            description = description.replace(/\s\w+$/, '');
-          }
-        }
+        let unit = item.unit || "No";
         
         // Display description without unit in description column
         addText(description, columnPositions.description, yPos, { size: 9, align: 'left' });
@@ -484,7 +609,9 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       yPos += 6;
       
       const amountInWords = invoice.amountInWords || convertToIndianWords(invoice.amount);
-      const wordsLines = doc.splitTextToSize(amountInWords, contentWidth);
+      // Cast doc to any to access splitTextToSize which might not be in the types
+      const docAny = doc as any;
+      const wordsLines = docAny.splitTextToSize?.(amountInWords, contentWidth) || [amountInWords];
       wordsLines.forEach((line: string) => {
         addText(line, leftMargin, yPos, { size: 9 });
         yPos += 4;
@@ -551,79 +678,6 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       alert("Error generating PDF. Please check the console for details.");
       return false;
     }
-  };
-
-  // Number to words converter
-  const convertToIndianWords = (num: number) => {
-    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
-    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-    const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-    
-    function convert_hundreds(num: number) {
-      let result = '';
-      if (num >= 100) {
-        result += ones[Math.floor(num / 100)] + ' Hundred ';
-        num %= 100;
-      }
-      if (num >= 20) {
-        result += tens[Math.floor(num / 10)] + ' ';
-        num %= 10;
-      }
-      if (num >= 10) {
-        result += teens[num - 10] + ' ';
-        return result;
-      }
-      if (num > 0) {
-        result += ones[num] + ' ';
-      }
-      return result;
-    }
-    
-    function convert_number(num: number) {
-      if (num === 0) return 'Zero';
-      
-      let result = '';
-      const crore = Math.floor(num / 10000000);
-      if (crore > 0) {
-        result += convert_hundreds(crore) + 'Crore ';
-        num %= 10000000;
-      }
-      
-      const lakh = Math.floor(num / 100000);
-      if (lakh > 0) {
-        result += convert_hundreds(lakh) + 'Lakh ';
-        num %= 100000;
-      }
-      
-      const thousand = Math.floor(num / 1000);
-      if (thousand > 0) {
-        result += convert_hundreds(thousand) + 'Thousand ';
-        num %= 1000;
-      }
-      
-      const hundred = Math.floor(num / 100);
-      if (hundred > 0) {
-        result += convert_hundreds(hundred) + 'Hundred ';
-        num %= 100;
-      }
-      
-      if (num > 0) {
-        result += convert_hundreds(num);
-      }
-      
-      return result.trim();
-    }
-    
-    const rupees = Math.floor(num);
-    const paise = Math.round((num - rupees) * 100);
-    
-    let result = convert_number(rupees) + ' Rupees';
-    if (paise > 0) {
-      result += ' and ' + convert_number(paise) + ' Paise';
-    }
-    result += ' Only';
-    
-    return `INR ${result.toUpperCase()}`;
   };
 
   // Download Invoice Function
@@ -765,10 +819,10 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
     return invoiceList.filter(invoice => 
       invoice.client.toLowerCase().includes(searchTerm.toLowerCase()) ||
       invoice.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      invoice.site?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      invoice.serviceType?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (invoice.site && invoice.site.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (invoice.serviceType && invoice.serviceType.toLowerCase().includes(searchTerm.toLowerCase())) ||
       invoice.status.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      invoice.voucherNo?.toLowerCase().includes(searchTerm.toLowerCase())
+      (invoice.voucherNo && invoice.voucherNo.toLowerCase().includes(searchTerm.toLowerCase()))
     );
   };
 
@@ -1450,5 +1504,3 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
 };
 
 export default InvoicesTab;
-
-

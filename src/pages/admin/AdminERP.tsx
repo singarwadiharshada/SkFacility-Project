@@ -1,967 +1,2318 @@
-import { useState } from "react";
-import { DashboardHeader } from "@/components/shared/DashboardHeader";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState, useEffect } from 'react';
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  CardDescription,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  Search, Plus, Package, ShoppingCart, Eye, 
-  IndianRupee, Building, Users, Download, Upload,
-  UserCheck, AlertTriangle, Wrench, Droplets, Cpu, 
-  BarChart3, Filter, Calendar, Printer, FileText,
-  CheckCircle, XCircle, Clock, TrendingUp
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Upload,
+  Plus,
+  Search,
+  Package,
+  UserCheck,
+  AlertTriangle,
+  Eye,
+  Trash2,
+  Download,
+  Edit,
+  History,
+  Building,
+  Shield,
+  Wrench,
+  Printer,
+  Palette,
+  ShoppingBag,
+  Coffee,
+  BarChart3,
+  Tag,
+  MapPin,
+  RefreshCw,
+  Cpu,
+  Settings,
+  Calendar,
+  TrendingUp,
+  AlertCircle,
+  CheckCircle,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { motion } from "framer-motion";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { inventoryService, type FrontendInventoryItem } from '@/services/inventoryService';
+import { machineService, type FrontendMachine, type MachineStats, type MaintenanceRecordDTO } from '@/services/machineService';
 
 // Types
-interface Product {
-  id: string;
-  name: string;
-  category: string;
-  subCategory: string;
-  department: string;
-  quantity: number;
-  price: number;
-  costPrice: number;
-  status: "in-stock" | "low-stock" | "out-of-stock";
-  supplier: string;
-  sku: string;
-  reorderLevel: number;
-  description?: string;
-  site: string;
-  assignedManager: string;
-  changeHistory: ChangeHistory[];
-  brushCount?: number;
-  squeegeeCount?: number;
-  lastUpdated: string;
-}
-
-interface ChangeHistory {
-  date: string;
-  changeType: "maintenance" | "repair" | "replacement" | "inspection";
-  description: string;
-  cost: number;
-  performedBy: string;
-}
-
 interface Site {
   id: string;
   name: string;
-  location: string;
-  city: string;
-  status: "active" | "inactive";
-  manager: string;
-  totalEmployees: number;
-  contact: string;
 }
 
-interface Requisition {
-  id: string;
-  productName: string;
-  category: string;
-  quantity: number;
-  site: string;
-  requestedBy: string;
-  date: string;
-  status: "pending" | "approved" | "rejected" | "fulfilled";
-  priority: "low" | "medium" | "high";
-  estimatedCost: number;
+interface Department {
+  value: string;
+  label: string;
+  icon: React.ComponentType<any>;
 }
 
-// Department Categories
-const departments = [
-  { value: "housekeeping", label: "🧼 Housekeeping Management" },
-  { value: "security", label: "🛡️ Security Management" },
-  { value: "parking", label: "🚗 Parking Management" },
-  { value: "waste", label: "♻️ Waste Management" },
-  { value: "stp", label: "🏭 STP Tank Cleaning" },
-  { value: "consumables", label: "🛒 Consumables" },
-];
+interface InventoryStats {
+  totalItems: number;
+  lowStockItems: number;
+  totalValue: number;
+}
 
-// Sample Data
-const initialProducts: Product[] = [
-  { 
-    id: "1", 
-    name: "Single disc machine", 
-    category: "Machines",
-    subCategory: "Machines",
-    department: "housekeeping", 
-    quantity: 5, 
-    price: 45000, 
-    costPrice: 38000, 
-    status: "in-stock", 
-    supplier: "Cleaning Equipment Co.", 
-    sku: "HK-MACH-001", 
-    reorderLevel: 2,
-    description: "Professional single disc floor cleaning machine",
-    site: "SITE-001",
-    assignedManager: "Rajesh Kumar",
-    brushCount: 12,
-    squeegeeCount: 8,
-    lastUpdated: "2024-03-15",
-    changeHistory: [
-      {
-        date: "2024-01-15",
-        changeType: "maintenance",
-        description: "Routine maintenance and brush replacement",
-        cost: 2500,
-        performedBy: "Maintenance Team"
-      }
-    ]
-  },
-  { 
-    id: "2", 
-    name: "Auto scrubber dryer", 
-    category: "Machines",
-    subCategory: "Machines",
-    department: "housekeeping", 
-    quantity: 3, 
-    price: 125000, 
-    costPrice: 110000, 
-    status: "in-stock", 
-    supplier: "Cleaning Equipment Co.", 
-    sku: "HK-MACH-002", 
-    reorderLevel: 1,
-    description: "Walk-behind auto scrubber dryer",
-    site: "SITE-001",
-    assignedManager: "Rajesh Kumar",
-    brushCount: 6,
-    squeegeeCount: 4,
-    lastUpdated: "2024-03-10",
-    changeHistory: []
-  },
-  { 
-    id: "3", 
-    name: "High pressure jet machine", 
-    category: "Machines",
-    subCategory: "Machines",
-    department: "housekeeping", 
-    quantity: 2, 
-    price: 75000, 
-    costPrice: 65000, 
-    status: "low-stock", 
-    supplier: "Cleaning Equipment Co.", 
-    sku: "HK-MACH-003", 
-    reorderLevel: 1,
-    description: "Industrial high pressure cleaning machine",
-    site: "SITE-001",
-    assignedManager: "Rajesh Kumar",
-    brushCount: 4,
-    squeegeeCount: 3,
-    lastUpdated: "2024-03-05",
-    changeHistory: []
-  },
-  { 
-    id: "4", 
-    name: "CCTV Cameras (IP/HD)", 
-    category: "Equipment",
-    subCategory: "Equipment",
-    department: "security", 
-    quantity: 25, 
-    price: 8500, 
-    costPrice: 6500, 
-    status: "in-stock", 
-    supplier: "Security Systems Ltd.", 
-    sku: "SEC-EQP-001", 
-    reorderLevel: 5,
-    site: "SITE-001",
-    assignedManager: "Rajesh Kumar",
-    lastUpdated: "2024-03-12",
-    changeHistory: []
-  },
-  { 
-    id: "5", 
-    name: "Boom barrier", 
-    category: "Equipment",
-    subCategory: "Equipment",
-    department: "parking", 
-    quantity: 8, 
-    price: 75000, 
-    costPrice: 60000, 
-    status: "low-stock", 
-    supplier: "Parking Solutions Inc.", 
-    sku: "PARK-EQP-001", 
-    reorderLevel: 3,
-    site: "SITE-001",
-    assignedManager: "Rajesh Kumar",
-    lastUpdated: "2024-03-08",
-    changeHistory: []
-  },
-];
+// Use the FrontendInventoryItem type from service
+type InventoryItem = FrontendInventoryItem;
 
-const initialSites: Site[] = [
-  { id: "SITE-001", name: "Tech Park Bangalore", location: "Whitefield", city: "Bangalore", status: "active", manager: "Rajesh Kumar", totalEmployees: 45, contact: "+91 80 2654 7890" },
-  { id: "SITE-002", name: "Corporate Tower Mumbai", location: "Bandra Kurla Complex", city: "Mumbai", status: "active", manager: "Sanjay Singh", totalEmployees: 32, contact: "+91 22 2654 7891" },
-];
+// Use the FrontendMachine type from service
+type Machine = FrontendMachine;
 
-const initialRequisitions: Requisition[] = [
-  { id: "REQ-001", productName: "Single disc machine", category: "Machines", quantity: 2, site: "SITE-001", requestedBy: "Amit Patel", date: "2024-03-15", status: "pending", priority: "medium", estimatedCost: 90000 },
-  { id: "REQ-002", productName: "CCTV Cameras", category: "Equipment", quantity: 10, site: "SITE-001", requestedBy: "Neha Gupta", date: "2024-03-14", status: "approved", priority: "high", estimatedCost: 85000 },
-  { id: "REQ-003", productName: "Color-coded bins", category: "Bins & Storage", quantity: 25, site: "SITE-001", requestedBy: "Rahul Sharma", date: "2024-03-13", status: "fulfilled", priority: "low", estimatedCost: 62500 },
-  { id: "REQ-004", productName: "High pressure jet machine", category: "Machines", quantity: 1, site: "SITE-001", requestedBy: "Vikram Joshi", date: "2024-03-12", status: "rejected", priority: "medium", estimatedCost: 75000 },
-];
-
-const AdminERP = () => {
-  // State Management
-  const [products, setProducts] = useState<Product[]>(initialProducts);
-  const [sites, setSites] = useState<Site[]>(initialSites);
-  const [requisitions, setRequisitions] = useState<Requisition[]>(initialRequisitions);
+const InventoryPage = () => {
+  // State
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [machines, setMachines] = useState<Machine[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("all");
   const [selectedCategory, setSelectedCategory] = useState("all");
-  const [selectedStatus, setSelectedStatus] = useState("all");
-  const [selectedRequisitionStatus, setSelectedRequisitionStatus] = useState("all");
-  const [viewHistoryDialogOpen, setViewHistoryDialogOpen] = useState<string | null>(null);
-  const [requisitionDialogOpen, setRequisitionDialogOpen] = useState(false);
+  const [selectedSite, setSelectedSite] = useState("all");
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [itemDialogOpen, setItemDialogOpen] = useState(false);
+  const [changeHistoryDialogOpen, setChangeHistoryDialogOpen] = useState<string | null>(null);
+  const [editItem, setEditItem] = useState<InventoryItem | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [stats, setStats] = useState<InventoryStats>({
+    totalItems: 0,
+    lowStockItems: 0,
+    totalValue: 0,
+  });
+  
+  // Machine states
+  const [machineDialogOpen, setMachineDialogOpen] = useState(false);
+  const [editMachine, setEditMachine] = useState<Machine | null>(null);
+  const [viewMachine, setViewMachine] = useState<Machine | null>(null);
+  const [machineSearchQuery, setMachineSearchQuery] = useState("");
+  const [machineStats, setMachineStats] = useState<MachineStats | null>(null);
+  const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState(false);
+  const [selectedMachineForMaintenance, setSelectedMachineForMaintenance] = useState<string | null>(null);
+  const [maintenanceLoading, setMaintenanceLoading] = useState(false);
+  
+  // New item form state - UNCHANGED
+  const [newItem, setNewItem] = useState<Partial<InventoryItem>>({
+    name: "",
+    sku: "",
+    department: "cleaning",
+    category: "",
+    site: "1",
+    assignedManager: "",
+    quantity: 0,
+    price: 0,
+    costPrice: 0,
+    supplier: "",
+    reorderLevel: 10,
+    description: "",
+  });
 
-  // Current Admin's Site (Assuming admin is assigned to one site)
-  const currentAdminSite = "SITE-001";
-  const currentAdminName = "Rajesh Kumar";
+  // New machine form state - FIXED: Changed machineModel to model
+  const [newMachine, setNewMachine] = useState<Partial<Machine>>({
+    name: "",
+    cost: 0,
+    purchaseDate: new Date().toISOString().split('T')[0],
+    quantity: 1,
+    description: "",
+    status: 'operational',
+    location: "",
+    manufacturer: "",
+    model: "", // CHANGED FROM machineModel to model
+    serialNumber: "",
+    department: "",
+    assignedTo: "",
+  });
 
-  // Utility Functions
-  const getStatusColor = (status: string) => {
-    const statusColors: { [key: string]: "default" | "secondary" | "destructive" | "outline" } = {
-      "active": "default", "in-stock": "default",
-      "pending": "secondary", "inactive": "outline", "draft": "outline",
-      "low-stock": "secondary", "out-of-stock": "destructive",
-      "approved": "default", "rejected": "destructive", "fulfilled": "outline"
-    };
-    return statusColors[status] || "outline";
+  // Maintenance form state
+  const [maintenanceRecord, setMaintenanceRecord] = useState<MaintenanceRecordDTO>({
+    type: "Routine",
+    description: "",
+    cost: 0,
+    performedBy: "",
+  });
+
+  // Data - UNCHANGED
+  const departments: Department[] = [
+    { value: "cleaning", label: "Cleaning", icon: Shield },
+    { value: "maintenance", label: "Maintenance", icon: Wrench },
+    { value: "office", label: "Office Supplies", icon: Printer },
+    { value: "paint", label: "Paint", icon: Palette },
+    { value: "tools", label: "Tools", icon: ShoppingBag },
+    { value: "canteen", label: "Canteen", icon: Coffee },
+  ];
+
+  const sites: Site[] = [
+    { id: "1", name: "Main Site" },
+    { id: "2", name: "Branch Office" },
+    { id: "3", name: "Warehouse A" },
+    { id: "4", name: "Construction Site B" },
+  ];
+
+  const managers = ["John Doe", "Jane Smith", "Robert Johnson", "Sarah Wilson", "Michael Brown"];
+  
+  const categories = {
+    cleaning: ["Tools", "Chemicals", "Equipment", "Supplies"],
+    maintenance: ["Tools", "Safety", "Equipment", "Parts"],
+    office: ["Furniture", "Stationery", "Electronics", "Supplies"],
+    paint: ["Paints", "Brushes", "Rollers", "Accessories"],
+    tools: ["Power Tools", "Hand Tools", "Safety Gear", "Consumables"],
+    canteen: ["Food Items", "Beverages", "Utensils", "Cleaning"],
   };
 
+  const machineStatusOptions = [
+    { value: 'operational', label: 'Operational', color: 'bg-green-100 text-green-800', icon: CheckCircle },
+    { value: 'maintenance', label: 'Under Maintenance', color: 'bg-yellow-100 text-yellow-800', icon: AlertCircle },
+    { value: 'out-of-service', label: 'Out of Service', color: 'bg-red-100 text-red-800', icon: XCircle },
+  ];
+
+  const maintenanceTypes = [
+    "Routine",
+    "Preventive",
+    "Corrective",
+    "Emergency",
+    "Scheduled",
+    "Overhaul"
+  ];
+
+  // Helper function to calculate stats from items - UNCHANGED
+  const calculateStats = (itemsList: InventoryItem[]): InventoryStats => {
+    const totalItems = itemsList.length;
+    const lowStockItems = itemsList.filter(item => item.quantity <= item.reorderLevel).length;
+    const totalValue = itemsList.reduce((sum, item) => sum + (item.quantity * item.costPrice), 0);
+    
+    return {
+      totalItems,
+      lowStockItems,
+      totalValue
+    };
+  };
+
+  // Format currency
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
+    return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0,
+      currency: 'USD'
     }).format(amount);
   };
 
+  // Format date
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-IN', {
-      day: '2-digit',
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
       month: 'short',
-      year: 'numeric'
+      day: 'numeric'
     });
   };
 
-  // Calculations for admin's site only
-  const getSiteMachineStats = () => {
-    const siteProducts = products.filter(p => p.site === currentAdminSite);
-    const machines = siteProducts.filter(p => p.department === "housekeeping" && p.category === "Machines");
+  // Calculate machine statistics locally if API fails - FIXED
+  const calculateLocalMachineStats = () => {
+    const totalMachines = machines.length;
+    const totalMachineValue = machines.reduce((sum, machine) => sum + (machine.cost * machine.quantity), 0);
+    const operationalMachines = machines.filter(m => m.status === 'operational').length;
+    const maintenanceMachines = machines.filter(m => m.status === 'maintenance').length;
+    const outOfServiceMachines = machines.filter(m => m.status === 'out-of-service').length;
+    const averageMachineCost = totalMachines > 0 ? totalMachineValue / totalMachines : 0;
     
+    // Count machines needing maintenance soon (within next 30 days)
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+    
+    const upcomingMaintenanceCount = machines.filter(machine => 
+      machine.nextMaintenanceDate && 
+      new Date(machine.nextMaintenanceDate) <= thirtyDaysFromNow
+    ).length;
+
+    // Calculate machines by department
+    const machinesByDepartment = machines.reduce((acc, machine) => {
+      const dept = machine.department || 'Unassigned';
+      acc[dept] = (acc[dept] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    // Calculate machines by location
+    const machinesByLocation = machines.reduce((acc, machine) => {
+      const location = machine.location || 'Unassigned';
+      acc[location] = (acc[location] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
     return {
-      totalMachines: machines.reduce((total, machine) => total + machine.quantity, 0),
-      totalCost: machines.reduce((total, machine) => total + (machine.costPrice * machine.quantity), 0),
-      totalBrushes: machines.reduce((total, machine) => total + (machine.brushCount || 0), 0),
-      totalSqueegees: machines.reduce((total, machine) => total + (machine.squeegeeCount || 0), 0),
-      lowStockItems: siteProducts.filter(p => p.status === "low-stock").length,
-      outOfStockItems: siteProducts.filter(p => p.status === "out-of-stock").length,
-      totalChanges: machines.reduce((total, machine) => total + machine.changeHistory.length, 0)
+      totalMachines,
+      totalMachineValue,
+      operationalMachines,
+      maintenanceMachines,
+      outOfServiceMachines,
+      averageMachineCost,
+      machinesByDepartment,
+      machinesByLocation,
+      upcomingMaintenanceCount
     };
   };
 
-  // Filter products for admin's site only
-  const filteredProducts = products
-    .filter(product => product.site === currentAdminSite)
-    .filter(product => {
-      const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           product.sku.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesDepartment = selectedDepartment === "all" || product.department === selectedDepartment;
-      const matchesCategory = selectedCategory === "all" || product.category === selectedCategory;
-      const matchesStatus = selectedStatus === "all" || product.status === selectedStatus;
-      return matchesSearch && matchesDepartment && matchesCategory && matchesStatus;
-    });
+  // Fetch data from backend on component mount - UPDATED with better error handling
+  useEffect(() => {
+    fetchData();
+  }, []);
 
-  // Filter requisitions for admin's site only
-  const filteredRequisitions = requisitions
-    .filter(req => req.site === currentAdminSite)
-    .filter(req => {
-      const matchesStatus = selectedRequisitionStatus === "all" || req.status === selectedRequisitionStatus;
-      return matchesStatus;
-    });
-
-  const siteStats = getSiteMachineStats();
-
-  // Handle requisition submission
-  const handleSubmitRequisition = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    
-    const newRequisition: Requisition = {
-      id: `REQ-${Date.now().toString().slice(-6)}`,
-      productName: formData.get("productName") as string,
-      category: formData.get("category") as string,
-      quantity: parseInt(formData.get("quantity") as string),
-      site: currentAdminSite,
-      requestedBy: currentAdminName,
-      date: new Date().toISOString().split('T')[0],
-      status: "pending",
-      priority: formData.get("priority") as "low" | "medium" | "high",
-      estimatedCost: parseInt(formData.get("estimatedCost") as string),
-    };
-    
-    setRequisitions(prev => [newRequisition, ...prev]);
-    toast.success("Requisition submitted successfully!");
-    setRequisitionDialogOpen(false);
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch items and machines in parallel
+      const [itemsData, machinesData] = await Promise.all([
+        inventoryService.getItems(),
+        machineService.getMachines()
+      ]);
+      
+      setItems(itemsData || []);
+      setMachines(machinesData || []);
+      
+      // Try to fetch machine stats, fall back to local calculation
+      try {
+        const statsData = await machineService.getMachineStats();
+        setMachineStats(statsData);
+      } catch (statsError) {
+        console.warn('Failed to fetch machine stats from API, calculating locally:', statsError);
+        const localStats = calculateLocalMachineStats();
+        setMachineStats(localStats);
+      }
+      
+      // Calculate inventory stats locally
+      const calculatedStats = calculateStats(itemsData || []);
+      setStats(calculatedStats);
+      
+    } catch (error) {
+      console.error('Failed to fetch data from backend:', error);
+      // Error toast is shown by service interceptors
+      
+      // Set empty arrays if backend fails
+      setItems([]);
+      setMachines([]);
+      // Calculate local machine stats even if machines array is empty
+      setMachineStats(calculateLocalMachineStats());
+      setStats({ totalItems: 0, lowStockItems: 0, totalValue: 0 });
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Handle requisition approval/rejection
-  const handleRequisitionAction = (requisitionId: string, action: "approve" | "reject") => {
-    setRequisitions(prev => prev.map(req => 
-      req.id === requisitionId 
-        ? { ...req, status: action === "approve" ? "approved" : "rejected" }
-        : req
-    ));
+  const refreshData = async () => {
+    try {
+      setRefreshing(true);
+      await fetchData();
+      toast.success("Data refreshed successfully!");
+    } catch (error) {
+      console.error('Failed to refresh data:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Functions - UNCHANGED
+  const getDepartmentIcon = (department: string) => {
+    const dept = departments.find(d => d.value === department);
+    return dept ? dept.icon : Package;
+  };
+
+  const getCategoriesForDepartment = (dept: string) => {
+    return categories[dept as keyof typeof categories] || [];
+  };
+
+  // Filter items - UNCHANGED
+  const filteredItems = items.filter(item => {
+    const matchesSearch = 
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.supplier.toLowerCase().includes(searchQuery.toLowerCase());
     
-    if (action === "approve") {
-      // Update product quantity if available
-      const requisition = requisitions.find(r => r.id === requisitionId);
-      if (requisition) {
-        const product = products.find(p => 
-          p.name === requisition.productName && 
-          p.site === currentAdminSite
+    const matchesDept = selectedDepartment === "all" || item.department === selectedDepartment;
+    const matchesCategory = selectedCategory === "all" || item.category === selectedCategory;
+    const matchesSite = selectedSite === "all" || item.site === selectedSite;
+    
+    return matchesSearch && matchesDept && matchesCategory && matchesSite;
+  });
+
+  // Filter machines - FIXED: Changed machineModel to model
+  const filteredMachines = machines.filter(machine => {
+    const matchesSearch = 
+      machine.name.toLowerCase().includes(machineSearchQuery.toLowerCase()) ||
+      machine.manufacturer?.toLowerCase().includes(machineSearchQuery.toLowerCase()) ||
+      machine.model?.toLowerCase().includes(machineSearchQuery.toLowerCase()) || // FIXED
+      machine.location?.toLowerCase().includes(machineSearchQuery.toLowerCase()) ||
+      machine.serialNumber?.toLowerCase().includes(machineSearchQuery.toLowerCase());
+    
+    return matchesSearch;
+  });
+
+  // Handle item actions - UNCHANGED
+  const handleDeleteItem = async (itemId: string) => {
+    try {
+      await inventoryService.deleteItem(itemId);
+      const updatedItems = items.filter(item => item.id !== itemId);
+      setItems(updatedItems);
+      
+      // Recalculate stats from updated items
+      setStats(calculateStats(updatedItems));
+      
+      toast.success("Item deleted successfully!");
+    } catch (error) {
+      console.error('Failed to delete item:', error);
+    }
+  };
+
+  const handleAddItem = async () => {
+    if (!newItem.name || !newItem.sku) {
+      toast.error("Please fill in required fields");
+      return;
+    }
+
+    try {
+      const itemData: Omit<InventoryItem, 'id' | '_id' | 'createdAt' | 'updatedAt'> = {
+        sku: newItem.sku.toUpperCase(),
+        name: newItem.name,
+        department: newItem.department || "cleaning",
+        category: newItem.category || "Tools",
+        site: newItem.site || "1",
+        assignedManager: newItem.assignedManager || "John Doe",
+        quantity: newItem.quantity || 0,
+        price: newItem.price || 0,
+        costPrice: newItem.costPrice || 0,
+        supplier: newItem.supplier || "",
+        reorderLevel: newItem.reorderLevel || 10,
+        description: newItem.description,
+        changeHistory: [{
+          date: new Date().toISOString().split('T')[0],
+          change: "Created",
+          user: "Supervisor",
+          quantity: newItem.quantity || 0
+        }],
+      };
+
+      const createdItem = await inventoryService.createItem(itemData);
+    
+      // Add to local state
+      const updatedItems = [...items, createdItem];
+      setItems(updatedItems);
+      
+      // Recalculate stats from updated items
+      setStats(calculateStats(updatedItems));
+      
+      setItemDialogOpen(false);
+      resetNewItemForm();
+    } catch (error) {
+      console.error('Failed to add item:', error);
+    }
+  };
+
+  const handleEditItem = async () => {
+    if (!editItem) return;
+
+    try {
+      // Create a clean update object without id and timestamps
+      const { id, createdAt, updatedAt, ...updateData } = editItem;
+      
+      // Add change history entry for quantity changes
+      const originalItem = items.find(item => item.id === editItem.id);
+      if (originalItem && editItem.quantity !== originalItem.quantity) {
+        updateData.changeHistory = [
+          ...(editItem.changeHistory || []),
+          {
+            date: new Date().toISOString().split('T')[0],
+            change: "Updated",
+            user: "Supervisor",
+            quantity: editItem.quantity - originalItem.quantity
+          }
+        ];
+      }
+
+      const updatedItem = await inventoryService.updateItem(editItem.id, updateData);
+      
+      // Update local state
+      const updatedItems = items.map(item => 
+        item.id === updatedItem.id ? updatedItem : item
+      );
+      setItems(updatedItems);
+      
+      // Recalculate stats from updated items
+      setStats(calculateStats(updatedItems));
+      
+      setEditItem(null);
+      setItemDialogOpen(false);
+    } catch (error) {
+      console.error('Failed to update item:', error);
+    }
+  };
+
+  // Machine functions - FIXED: Changed machineModel to model
+  const handleAddMachine = async () => {
+    if (!newMachine.name || !newMachine.cost || !newMachine.purchaseDate) {
+      toast.error("Please fill in required fields");
+      return;
+    }
+
+    try {
+      const machineData = {
+        name: newMachine.name,
+        cost: newMachine.cost || 0,
+        purchaseDate: newMachine.purchaseDate,
+        quantity: newMachine.quantity || 1,
+        description: newMachine.description,
+        status: newMachine.status || 'operational',
+        location: newMachine.location,
+        manufacturer: newMachine.manufacturer,
+        model: newMachine.model, // FIXED
+        serialNumber: newMachine.serialNumber,
+        department: newMachine.department,
+        assignedTo: newMachine.assignedTo,
+        lastMaintenanceDate: newMachine.lastMaintenanceDate,
+        nextMaintenanceDate: newMachine.nextMaintenanceDate,
+      };
+
+      if (editMachine) {
+        // Update existing machine
+        const updatedMachine = await machineService.updateMachine(editMachine.id, machineData);
+        const updatedMachines = machines.map(machine => 
+          machine.id === editMachine.id ? updatedMachine : machine
         );
+        setMachines(updatedMachines);
+        toast.success("Machine updated successfully!");
+      } else {
+        // Add new machine
+        const createdMachine = await machineService.createMachine(machineData);
+        setMachines([...machines, createdMachine]);
+        toast.success("Machine added successfully!");
+      }
+
+      // Refresh machine stats
+      const statsData = await machineService.getMachineStats().catch(() => calculateLocalMachineStats());
+      setMachineStats(statsData);
+      
+      setMachineDialogOpen(false);
+      resetNewMachineForm();
+      setEditMachine(null);
+    } catch (error) {
+      console.error('Failed to save machine:', error);
+      toast.error("Failed to save machine");
+    }
+  };
+
+  const handleEditMachine = (machine: Machine) => {
+    setEditMachine(machine);
+    setNewMachine({
+      name: machine.name,
+      cost: machine.cost,
+      purchaseDate: machine.purchaseDate,
+      quantity: machine.quantity,
+      description: machine.description,
+      status: machine.status,
+      location: machine.location,
+      manufacturer: machine.manufacturer,
+      model: machine.model, // FIXED
+      serialNumber: machine.serialNumber,
+      department: machine.department,
+      assignedTo: machine.assignedTo,
+      lastMaintenanceDate: machine.lastMaintenanceDate,
+      nextMaintenanceDate: machine.nextMaintenanceDate,
+    });
+    setMachineDialogOpen(true);
+  };
+
+  const handleViewMachine = async (machineId: string) => {
+    try {
+      const machine = await machineService.getMachineById(machineId);
+      setViewMachine(machine);
+    } catch (error) {
+      console.error('Failed to fetch machine details:', error);
+      toast.error("Failed to fetch machine details");
+    }
+  };
+
+  const handleDeleteMachine = async (machineId: string) => {
+    try {
+      await machineService.deleteMachine(machineId);
+      const updatedMachines = machines.filter(machine => machine.id !== machineId);
+      setMachines(updatedMachines);
+      
+      // Refresh machine stats
+      const statsData = await machineService.getMachineStats().catch(() => calculateLocalMachineStats());
+      setMachineStats(statsData);
+      
+      toast.success("Machine deleted successfully!");
+    } catch (error) {
+      console.error('Failed to delete machine:', error);
+      toast.error("Failed to delete machine");
+    }
+  };
+
+  const handleAddMaintenance = async () => {
+    if (!selectedMachineForMaintenance || !maintenanceRecord.type || !maintenanceRecord.description || !maintenanceRecord.performedBy) {
+      toast.error("Please fill in all maintenance record fields");
+      return;
+    }
+
+    try {
+      setMaintenanceLoading(true);
+      const updatedMachine = await machineService.addMaintenanceRecord(
+        selectedMachineForMaintenance,
+        maintenanceRecord
+      );
+      
+      // Update local state
+      const updatedMachines = machines.map(machine => 
+        machine.id === selectedMachineForMaintenance ? updatedMachine : machine
+      );
+      setMachines(updatedMachines);
+      
+      // Refresh machine stats
+      const statsData = await machineService.getMachineStats().catch(() => calculateLocalMachineStats());
+      setMachineStats(statsData);
+      
+      // Reset form
+      setMaintenanceRecord({
+        type: "Routine",
+        description: "",
+        cost: 0,
+        performedBy: "",
+      });
+      setSelectedMachineForMaintenance(null);
+      setMaintenanceDialogOpen(false);
+      toast.success("Maintenance record added successfully!");
+    } catch (error) {
+      console.error('Failed to add maintenance record:', error);
+      toast.error("Failed to add maintenance record");
+    } finally {
+      setMaintenanceLoading(false);
+    }
+  };
+
+  const resetNewMachineForm = () => {
+    setNewMachine({
+      name: "",
+      cost: 0,
+      purchaseDate: new Date().toISOString().split('T')[0],
+      quantity: 1,
+      description: "",
+      status: 'operational',
+      location: "",
+      manufacturer: "",
+      model: "", // FIXED
+      serialNumber: "",
+      department: "",
+      assignedTo: "",
+    });
+  };
+
+  const resetNewItemForm = () => {
+    setNewItem({
+      name: "",
+      sku: "",
+      department: "cleaning",
+      category: "",
+      site: "1",
+      assignedManager: "",
+      quantity: 0,
+      price: 0,
+      costPrice: 0,
+      supplier: "",
+      reorderLevel: 10,
+      description: "",
+    });
+  };
+
+  const openEditDialog = (item: InventoryItem) => {
+    setEditItem(item);
+    setItemDialogOpen(true);
+  };
+
+  // Handle import - UNCHANGED
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const lines = text.split('\n');
+      
+      // Skip header row
+      const dataLines = lines.slice(1);
+      
+      let importedCount = 0;
+      let failedCount = 0;
+      
+      for (const line of dataLines) {
+        if (!line.trim()) continue;
         
-        if (product && product.quantity >= requisition.quantity) {
-          setProducts(prev => prev.map(p =>
-            p.id === product.id
-              ? { ...p, quantity: p.quantity - requisition.quantity }
-              : p
-          ));
+        const columns = line.split(',');
+        if (columns.length < 10) {
+          failedCount++;
+          continue;
+        }
+        
+        try {
+          const itemData: Omit<InventoryItem, 'id' | '_id' | 'createdAt' | 'updatedAt'> = {
+            sku: columns[0].trim().toUpperCase(),
+            name: columns[1].trim(),
+            department: columns[2].trim().toLowerCase(),
+            category: columns[3].trim(),
+            site: columns[4].trim(),
+            assignedManager: columns[5].trim(),
+            quantity: parseInt(columns[6].trim()) || 0,
+            price: parseFloat(columns[7].trim()) || 0,
+            costPrice: parseFloat(columns[8].trim()) || 0,
+            supplier: columns[9].trim(),
+            reorderLevel: parseInt(columns[10]?.trim()) || 10,
+            description: columns[11]?.trim() || "",
+            changeHistory: [{
+              date: new Date().toISOString().split('T')[0],
+              change: "Created",
+              user: "Supervisor",
+              quantity: parseInt(columns[6].trim()) || 0
+            }]
+          };
+          
+          await inventoryService.createItem(itemData);
+          importedCount++;
+          
+        } catch (error) {
+          failedCount++;
+          console.error('Failed to import row:', line, error);
         }
       }
+      
+      toast.success(`Imported ${importedCount} items successfully!`);
+      if (failedCount > 0) {
+        toast.error(`${failedCount} items failed to import`);
+      }
+      
+      setImportDialogOpen(false);
+      await fetchData(); // Refresh data
+      
+    } catch (error) {
+      console.error('Failed to parse CSV:', error);
+      toast.error("Failed to import items. Check CSV format.");
     }
-    
-    toast.success(`Requisition ${action === "approve" ? "approved" : "rejected"} successfully!`);
   };
 
-  // Get recent activities
-  const getRecentActivities = () => {
-    const activities = [];
+  const handleExport = () => {
+    if (items.length === 0) {
+      toast.error("No items to export");
+      return;
+    }
+
+    const csvContent = [
+      ["SKU", "Name", "Department", "Category", "Site", "Manager", "Quantity", "Price", "Supplier", "Reorder Level"],
+      ...items.map(item => [
+        item.sku,
+        item.name,
+        departments.find(d => d.value === item.department)?.label || item.department,
+        item.category,
+        sites.find(s => s.id === item.site)?.name || item.site,
+        item.assignedManager,
+        item.quantity.toString(),
+        item.price.toString(),
+        item.supplier,
+        item.reorderLevel.toString()
+      ])
+    ].map(row => row.join(",")).join("\n");
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `inventory-export-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
     
-    // Add product updates
-    const recentProducts = products
-      .filter(p => p.site === currentAdminSite)
-      .sort((a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime())
-      .slice(0, 3);
-    
-    recentProducts.forEach(product => {
-      activities.push({
-        id: product.id,
-        type: "product_update",
-        title: `${product.name} updated`,
-        description: `Quantity: ${product.quantity} | Status: ${product.status}`,
-        date: product.lastUpdated,
-        icon: Package
-      });
-    });
-    
-    // Add requisition updates
-    const recentRequisitions = requisitions
-      .filter(r => r.site === currentAdminSite)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 2);
-    
-    recentRequisitions.forEach(req => {
-      activities.push({
-        id: req.id,
-        type: "requisition",
-        title: `Requisition ${req.status}: ${req.productName}`,
-        description: `Quantity: ${req.quantity} | Priority: ${req.priority}`,
-        date: req.date,
-        icon: FileText
-      });
-    });
-    
-    return activities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+    toast.success("Inventory exported successfully!");
   };
 
-  const recentActivities = getRecentActivities();
+  // Export machines to CSV - FIXED: Simple implementation
+  const handleExportMachines = async () => {
+    try {
+      if (machines.length === 0) {
+        toast.error("No machines to export");
+        return;
+      }
+
+      const csvContent = [
+        ["Name", "Cost", "Purchase Date", "Quantity", "Status", "Location", "Manufacturer", "Model", "Serial Number", "Department", "Assigned To"],
+        ...machines.map(machine => [
+          machine.name,
+          machine.cost.toString(),
+          new Date(machine.purchaseDate).toISOString().split('T')[0],
+          machine.quantity.toString(),
+          machine.status,
+          machine.location || '',
+          machine.manufacturer || '',
+          machine.model || '', // FIXED
+          machine.serialNumber || '',
+          machine.department || '',
+          machine.assignedTo || ''
+        ])
+      ].map(row => row.join(",")).join("\n");
+
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `machines-export-${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      
+      toast.success("Machines exported successfully!");
+    } catch (error) {
+      console.error('Failed to export machines:', error);
+      toast.error("Failed to export machines");
+    }
+  };
+
+  // Import machines from CSV - Simple implementation
+  const handleImportMachines = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      toast.info("Machine import functionality coming soon!");
+      // For now, just show a message and refresh
+      await fetchData();
+    } catch (error) {
+      console.error('Failed to import machines:', error);
+    }
+  };
+
+  // Calculate machine age
+  const calculateMachineAge = (purchaseDate: string) => {
+    const purchase = new Date(purchaseDate);
+    const today = new Date();
+    const diffTime = Math.abs(today.getTime() - purchase.getTime());
+    const diffYears = diffTime / (1000 * 60 * 60 * 24 * 365.25);
+    return Math.floor(diffYears);
+  };
+
+  // Get machine stats for display
+  const machineStatsDisplay = machineStats || calculateLocalMachineStats();
+
+  // Loading state - UNCHANGED
+  if (loading) {
+    return (
+      <div className="container mx-auto p-6">
+        <div className="flex items-center justify-center h-96">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-muted-foreground">Loading data from backend...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-background">
-      <DashboardHeader 
-        title="ERP Management" 
-        subtitle={`Admin Dashboard - ${sites.find(s => s.id === currentAdminSite)?.name}`}
-      />
-      
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="p-6 space-y-6"
-      >
-        {/* Admin Site Overview Cards */}
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Cpu className="h-4 w-4" />
-                Total Machines
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {siteStats.totalMachines}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                At your site
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4" />
-                Low Stock Items
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-amber-500">
-                {siteStats.lowStockItems}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Needs attention
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                Pending Requisitions
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-blue-500">
-                {requisitions.filter(r => r.status === "pending" && r.site === currentAdminSite).length}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Awaiting approval
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <TrendingUp className="h-4 w-4" />
-                Total Value
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-primary">
-                {formatCurrency(siteStats.totalCost)}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Machine inventory value
-              </p>
-            </CardContent>
-          </Card>
+    <div className="container mx-auto p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-3xl font-bold">Inventory Management</h1>
+          <p className="text-muted-foreground">Manage and track your inventory and machinery across all sites</p>
         </div>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            onClick={refreshData}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <Button 
+            variant="outline" 
+            onClick={handleExport}
+            disabled={items.length === 0}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Export
+          </Button>
+          <Button 
+            variant="outline" 
+            onClick={() => setImportDialogOpen(true)}
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            Import
+          </Button>
+          <Button onClick={() => {
+            setEditItem(null);
+            setItemDialogOpen(true);
+          }}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Item
+          </Button>
+        </div>
+      </div>
 
-        <div className="grid gap-6 md:grid-cols-3">
-          {/* Left Column - Recent Activities */}
-          <Card className="md:col-span-1">
+      {/* Stats Cards - UNCHANGED */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Items</CardTitle>
+            <Package className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.totalItems}</div>
+            <p className="text-xs text-muted-foreground">Across all departments</p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Low Stock</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-amber-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-amber-600">{stats.lowStockItems}</div>
+            <p className="text-xs text-muted-foreground">Need reordering</p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Value</CardTitle>
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(stats.totalValue)}</div>
+            <p className="text-xs text-muted-foreground">Current inventory value</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Tabs defaultValue="inventory" className="w-full">
+        <TabsList className="mb-4">
+          <TabsTrigger value="inventory">
+            <Package className="mr-2 h-4 w-4" />
+            Inventory ({items.length})
+          </TabsTrigger>
+          <TabsTrigger value="low-stock">
+            <AlertTriangle className="mr-2 h-4 w-4" />
+            Low Stock ({stats.lowStockItems})
+          </TabsTrigger>
+          <TabsTrigger value="machine-statistics">
+            <Cpu className="mr-2 h-4 w-4" />
+            Machine Statistics ({machines.length})
+          </TabsTrigger>
+          <TabsTrigger value="categories">
+            <Tag className="mr-2 h-4 w-4" />
+            Categories
+          </TabsTrigger>
+          <TabsTrigger value="sites">
+            <MapPin className="mr-2 h-4 w-4" />
+            Sites
+          </TabsTrigger>
+        </TabsList>
+
+        {/* INVENTORY TAB - UNCHANGED */}
+        <TabsContent value="inventory">
+          <Card>
+            <CardContent className="pt-6">
+              {/* Filters */}
+              <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search items..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                
+                <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Departments" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Departments</SelectItem>
+                    {departments.map(dept => {
+                      const Icon = dept.icon;
+                      return (
+                        <SelectItem key={dept.value} value={dept.value}>
+                          <div className="flex items-center gap-2">
+                            <Icon className="h-4 w-4" />
+                            {dept.label}
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+                
+                <Select 
+                  value={selectedCategory} 
+                  onValueChange={setSelectedCategory}
+                  disabled={selectedDepartment === "all"}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Categories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    {selectedDepartment !== "all" && 
+                      getCategoriesForDepartment(selectedDepartment).map(cat => (
+                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                      ))
+                    }
+                  </SelectContent>
+                </Select>
+                
+                <Select value={selectedSite} onValueChange={setSelectedSite}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Sites" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sites</SelectItem>
+                    {sites.map(site => (
+                      <SelectItem key={site.id} value={site.id}>
+                        <div className="flex items-center gap-2">
+                          <Building className="h-4 w-4" />
+                          {site.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Table */}
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>SKU</TableHead>
+                      <TableHead>Item Name</TableHead>
+                      <TableHead>Department</TableHead>
+                      <TableHead>Site</TableHead>
+                      <TableHead>Manager</TableHead>
+                      <TableHead>Quantity</TableHead>
+                      <TableHead>Price</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredItems.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={9} className="text-center py-8">
+                          <Package className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+                          <p className="text-lg font-medium">No items found</p>
+                          <p className="text-muted-foreground">
+                            {items.length === 0 
+                              ? "No items in database. Add your first item!" 
+                              : "Try adjusting your search or filters"}
+                          </p>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredItems.map((item) => {
+                        const DeptIcon = getDepartmentIcon(item.department);
+                        const isLowStock = item.quantity <= item.reorderLevel;
+                        const siteName = sites.find(s => s.id === item.site)?.name;
+                        
+                        return (
+                          <TableRow key={item.id}>
+                            <TableCell className="font-mono font-medium">{item.sku}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Package className="h-4 w-4 text-muted-foreground" />
+                                <span className="font-medium">{item.name}</span>
+                              </div>
+                              {item.description && (
+                                <p className="text-xs text-muted-foreground truncate max-w-[200px]">
+                                  {item.description}
+                                </p>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="flex items-center gap-1 w-fit">
+                                <DeptIcon className="h-3 w-3" />
+                                {departments.find(d => d.value === item.department)?.label}
+                              </Badge>
+                              <div className="text-xs text-muted-foreground mt-1">{item.category}</div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Building className="h-3 w-3" />
+                                {siteName || `Site ${item.site}`}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <UserCheck className="h-3 w-3" />
+                                {item.assignedManager}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <span className={`font-medium ${isLowStock ? 'text-amber-600' : ''}`}>
+                                  {item.quantity}
+                                </span>
+                                {isLowStock && (
+                                  <Badge variant="outline" className="text-xs border-amber-200 bg-amber-50 text-amber-700">
+                                    <AlertTriangle className="h-3 w-3 mr-1" />
+                                    Low
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Reorder: {item.reorderLevel}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="font-medium">{formatCurrency(item.price)}</div>
+                              <div className="text-xs text-muted-foreground">
+                                Cost: {formatCurrency(item.costPrice)}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {isLowStock ? (
+                                <Badge variant="destructive" className="text-xs">
+                                  Low Stock
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                                  In Stock
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => openEditDialog(item)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                
+                                <Dialog>
+                                  <DialogTrigger asChild>
+                                    <Button variant="ghost" size="icon">
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                  </DialogTrigger>
+                                  <DialogContent className="max-w-2xl">
+                                    <DialogHeader>
+                                      <DialogTitle>Item Details</DialogTitle>
+                                    </DialogHeader>
+                                    <div className="space-y-4">
+                                      <div className="grid grid-cols-2 gap-4">
+                                        <div><strong>SKU:</strong> {item.sku}</div>
+                                        <div><strong>Name:</strong> {item.name}</div>
+                                        <div><strong>Department:</strong> {departments.find(d => d.value === item.department)?.label}</div>
+                                        <div><strong>Category:</strong> {item.category}</div>
+                                        <div><strong>Quantity:</strong> {item.quantity}</div>
+                                        <div><strong>Price:</strong> {formatCurrency(item.price)}</div>
+                                        <div><strong>Cost Price:</strong> {formatCurrency(item.costPrice)}</div>
+                                        <div><strong>Supplier:</strong> {item.supplier}</div>
+                                        <div><strong>Reorder Level:</strong> {item.reorderLevel}</div>
+                                        <div><strong>Site:</strong> {siteName || `Site ${item.site}`}</div>
+                                        <div><strong>Manager:</strong> {item.assignedManager}</div>
+                                        {item.description && (
+                                          <div className="col-span-2">
+                                            <strong>Description:</strong> {item.description}
+                                          </div>
+                                        )}
+                                      </div>
+                                      
+                                      {/* Change History */}
+                                      <div>
+                                        <h4 className="font-semibold mb-2">Change History</h4>
+                                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                                          {item.changeHistory && item.changeHistory.length > 0 ? (
+                                            item.changeHistory.map((change, index) => (
+                                              <div key={index} className="flex items-center justify-between text-sm p-2 bg-muted/50 rounded">
+                                                <span>{change.date}</span>
+                                                <span>{change.change}</span>
+                                                <span>by {change.user}</span>
+                                                <span className={`font-medium ${change.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                  {change.quantity > 0 ? '+' : ''}{change.quantity}
+                                                </span>
+                                              </div>
+                                            ))
+                                          ) : (
+                                            <p className="text-sm text-muted-foreground text-center py-2">
+                                              No change history available
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </DialogContent>
+                                </Dialog>
+                                
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => setChangeHistoryDialogOpen(item.id)}
+                                >
+                                  <History className="h-4 w-4" />
+                                </Button>
+                                
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleDeleteItem(item.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        {/* LOW STOCK TAB - UNCHANGED */}
+        <TabsContent value="low-stock">
+          <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                Recent Activities
-              </CardTitle>
+              <CardTitle>Low Stock Items</CardTitle>
+              <CardDescription>Items that need reordering</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {recentActivities.map((activity) => {
-                  const Icon = activity.icon;
+              {stats.lowStockItems === 0 ? (
+                <div className="text-center py-8">
+                  <AlertTriangle className="h-12 w-12 mx-auto text-green-500 mb-2" />
+                  <p className="text-lg font-medium">All items are in stock!</p>
+                  <p className="text-muted-foreground">No items need reordering at this time.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {items
+                    .filter(item => item.quantity <= item.reorderLevel)
+                    .map(item => (
+                      <div key={item.id} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <Package className="h-5 w-5" />
+                          <div>
+                            <div className="font-medium">{item.name}</div>
+                            <div className="text-sm text-muted-foreground">{item.sku}</div>
+                            <div className="text-sm">{item.supplier}</div>
+                          </div>
+                        </div>
+                        <div className="text-amber-600 font-medium">
+                          {item.quantity} / {item.reorderLevel}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* MACHINE STATISTICS TAB - UPDATED with more stats cards */}
+        <TabsContent value="machine-statistics">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Machine Statistics</CardTitle>
+                  <CardDescription>Manage and track machinery equipment</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    onClick={handleExportMachines}
+                    disabled={machines.length === 0}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Export Machines
+                  </Button>
+                  <Button onClick={() => {
+                    setEditMachine(null);
+                    resetNewMachineForm();
+                    setMachineDialogOpen(true);
+                  }}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Machine
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {/* Machine Stats Cards - UPDATED with more cards */}
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Total Machines</CardTitle>
+                    <Cpu className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{machineStatsDisplay.totalMachines}</div>
+                    <p className="text-xs text-muted-foreground">Across all locations</p>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Total Value</CardTitle>
+                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{formatCurrency(machineStatsDisplay.totalMachineValue)}</div>
+                    <p className="text-xs text-muted-foreground">Machinery value</p>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Operational</CardTitle>
+                    <div className="h-4 w-4 rounded-full bg-green-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-green-600">{machineStatsDisplay.operationalMachines}</div>
+                    <p className="text-xs text-muted-foreground">Ready for use</p>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Under Maintenance</CardTitle>
+                    <div className="h-4 w-4 rounded-full bg-yellow-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-yellow-600">{machineStatsDisplay.maintenanceMachines}</div>
+                    <p className="text-xs text-muted-foreground">Currently in maintenance</p>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Out of Service</CardTitle>
+                    <div className="h-4 w-4 rounded-full bg-red-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-red-600">{machineStatsDisplay.outOfServiceMachines}</div>
+                    <p className="text-xs text-muted-foreground">Not operational</p>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Maintenance Due</CardTitle>
+                    <div className="h-4 w-4 rounded-full bg-orange-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-orange-600">{machineStatsDisplay.upcomingMaintenanceCount}</div>
+                    <p className="text-xs text-muted-foreground">Within 30 days</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Machine Search and Actions */}
+              <div className="flex flex-col md:flex-row gap-4 mb-6">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search machines by name, manufacturer, model, or location..."
+                    value={machineSearchQuery}
+                    onChange={(e) => setMachineSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setMaintenanceDialogOpen(true)}
+                  disabled={machines.length === 0}
+                >
+                  <Wrench className="mr-2 h-4 w-4" />
+                  Add Maintenance
+                </Button>
+              </div>
+
+              {/* Machines Table - FIXED: Changed machineModel to model */}
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Machine Name</TableHead>
+                      <TableHead>Model</TableHead>
+                      <TableHead>Quantity</TableHead>
+                      <TableHead>Cost</TableHead>
+                      <TableHead>Purchase Date</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredMachines.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-8">
+                          <Cpu className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+                          <p className="text-lg font-medium">No machines found</p>
+                          <p className="text-muted-foreground">
+                            {machines.length === 0 
+                              ? "No machines in database. Add your first machine!" 
+                              : "Try adjusting your search"}
+                          </p>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredMachines.map((machine) => {
+                        const statusOption = machineStatusOptions.find(s => s.value === machine.status);
+                        const StatusIcon = statusOption?.icon || CheckCircle;
+                        const machineAge = calculateMachineAge(machine.purchaseDate);
+                        
+                        return (
+                          <TableRow key={machine.id}>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Cpu className="h-4 w-4 text-muted-foreground" />
+                                <div>
+                                  <span className="font-medium">{machine.name}</span>
+                                  {machine.manufacturer && (
+                                    <div className="text-xs text-muted-foreground">{machine.manufacturer}</div>
+                                  )}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div>{machine.model || 'N/A'}</div> {/* FIXED */}
+                              {machine.serialNumber && (
+                                <div className="text-xs text-muted-foreground">SN: {machine.serialNumber}</div>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="font-medium">{machine.quantity}</div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="font-medium">{formatCurrency(machine.cost)}</div>
+                              <div className="text-xs text-muted-foreground">
+                                Total: {formatCurrency(machine.cost * machine.quantity)}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3 text-muted-foreground" />
+                                {formatDate(machine.purchaseDate)}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Age: {machineAge} year{machineAge !== 1 ? 's' : ''}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge className={`${statusOption?.color} border-0 flex items-center gap-1`}>
+                                <StatusIcon className="h-3 w-3" />
+                                {statusOption?.label}
+                              </Badge>
+                              {machine.nextMaintenanceDate && (
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  Next: {formatDate(machine.nextMaintenanceDate)}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleViewMachine(machine.id)}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleEditMachine(machine)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => {
+                                    setSelectedMachineForMaintenance(machine.id);
+                                    setMaintenanceDialogOpen(true);
+                                  }}
+                                >
+                                  <Wrench className="h-4 w-4" />
+                                </Button>
+                                
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleDeleteMachine(machine.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        {/* CATEGORIES TAB - UNCHANGED */}
+        <TabsContent value="categories">
+          <Card>
+            <CardHeader>
+              <CardTitle>Categories</CardTitle>
+              <CardDescription>Item categories by department</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {departments.map(dept => {
+                  const Icon = dept.icon;
+                  const deptItems = items.filter(item => item.department === dept.value);
+                  const deptCategories = [...new Set(deptItems.map(item => item.category))];
+                  
                   return (
-                    <div key={activity.id} className="flex items-start gap-3 p-3 border rounded-lg">
-                      <div className="p-2 bg-primary/10 rounded">
-                        <Icon className="h-4 w-4 text-primary" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">{activity.title}</p>
-                        <p className="text-xs text-muted-foreground">{activity.description}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{formatDate(activity.date)}</p>
-                      </div>
-                    </div>
+                    <Card key={dept.value}>
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center gap-2">
+                          <Icon className="h-5 w-5" />
+                          <CardTitle className="text-lg">{dept.label}</CardTitle>
+                        </div>
+                        <CardDescription>
+                          {deptItems.length} items • {deptCategories.length} categories
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2">
+                          {deptCategories.length > 0 ? (
+                            deptCategories.map(category => {
+                              const categoryItems = deptItems.filter(item => item.category === category);
+                              return (
+                                <div key={category} className="flex justify-between items-center">
+                                  <span>{category}</span>
+                                  <Badge variant="secondary">{categoryItems.length}</Badge>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No items in this department</p>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
                   );
                 })}
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+        
+        {/* SITES TAB - UNCHANGED */}
+        <TabsContent value="sites">
+          <Card>
+            <CardHeader>
+              <CardTitle>Sites</CardTitle>
+              <CardDescription>Inventory distribution across sites</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {sites.map(site => {
+                  const siteItems = items.filter(item => item.site === site.id);
+                  const siteValue = siteItems.reduce((sum, item) => sum + (item.quantity * item.costPrice), 0);
+                  
+                  return (
+                    <Card key={site.id}>
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center gap-2">
+                          <Building className="h-5 w-5" />
+                          <CardTitle className="text-lg">{site.name}</CardTitle>
+                        </div>
+                        <CardDescription>
+                          {siteItems.length} items • Value: {formatCurrency(siteValue)}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2">
+                          {siteItems.length > 0 ? (
+                            <div className="text-sm">
+                              <div className="grid grid-cols-2 gap-2 mb-2">
+                                <div className="font-medium">Department</div>
+                                <div className="font-medium text-right">Items</div>
+                              </div>
+                              {Object.entries(
+                                siteItems.reduce((acc, item) => {
+                                  acc[item.department] = (acc[item.department] || 0) + 1;
+                                  return acc;
+                                }, {} as Record<string, number>)
+                              ).map(([dept, count]) => (
+                                <div key={dept} className="flex justify-between items-center">
+                                  <span className="capitalize">{dept}</span>
+                                  <Badge variant="secondary">{count}</Badge>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No items at this site</p>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
-          {/* Right Column - Main Content */}
-          <div className="md:col-span-2">
-            <Tabs defaultValue="inventory" className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="inventory">Inventory</TabsTrigger>
-                <TabsTrigger value="requisitions">Requisitions</TabsTrigger>
-                <TabsTrigger value="machines">Machines</TabsTrigger>
-              </TabsList>
-
-              {/* Inventory Tab */}
-              <TabsContent value="inventory">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                    <CardTitle>Site Inventory</CardTitle>
-                    <div className="flex gap-2">
-                      <Button 
-                        variant="outline" 
-                        onClick={() => {
-                          // Export inventory for current site
-                          toast.success("Inventory exported successfully!");
-                        }}
-                      >
-                        <Download className="mr-2 h-4 w-4" />
-                        Export
-                      </Button>
-                      <Button 
-                        onClick={() => setRequisitionDialogOpen(true)}
-                      >
-                        <Plus className="mr-2 h-4 w-4" />
-                        New Requisition
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="mb-4 flex gap-4">
-                      <div className="relative flex-1">
-                        <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          placeholder="Search products..."
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          className="pl-10"
-                        />
+      {/* ADD/EDIT ITEM DIALOG - UNCHANGED */}
+      <Dialog open={itemDialogOpen} onOpenChange={setItemDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {editItem ? 'Edit Item' : 'Add New Item'}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Item Name *</Label>
+              <Input
+                id="name"
+                value={editItem ? editItem.name : newItem.name}
+                onChange={(e) => 
+                  editItem 
+                    ? setEditItem({...editItem, name: e.target.value})
+                    : setNewItem({...newItem, name: e.target.value})
+                }
+                placeholder="Enter item name"
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="sku">SKU *</Label>
+              <Input
+                id="sku"
+                value={editItem ? editItem.sku : newItem.sku}
+                onChange={(e) => 
+                  editItem 
+                    ? setEditItem({...editItem, sku: e.target.value.toUpperCase()})
+                    : setNewItem({...newItem, sku: e.target.value.toUpperCase()})
+                }
+                placeholder="Enter SKU (e.g., INV-001)"
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="department">Department *</Label>
+              <Select
+                value={editItem ? editItem.department : newItem.department}
+                onValueChange={(value) => 
+                  editItem 
+                    ? setEditItem({...editItem, department: value, category: ''})
+                    : setNewItem({...newItem, department: value, category: ''})
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select department" />
+                </SelectTrigger>
+                <SelectContent>
+                  {departments.map(dept => {
+                    const Icon = dept.icon;
+                    return (
+                      <SelectItem key={dept.value} value={dept.value}>
+                        <div className="flex items-center gap-2">
+                          <Icon className="h-4 w-4" />
+                          {dept.label}
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="category">Category *</Label>
+              <Select
+                value={editItem ? editItem.category : newItem.category}
+                onValueChange={(value) => 
+                  editItem 
+                    ? setEditItem({...editItem, category: value})
+                    : setNewItem({...newItem, category: value})
+                }
+                disabled={!editItem?.department && !newItem.department}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(editItem ? getCategoriesForDepartment(editItem.department) : 
+                    getCategoriesForDepartment(newItem.department || '')).map(cat => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="site">Site *</Label>
+              <Select
+                value={editItem ? editItem.site : newItem.site}
+                onValueChange={(value) => 
+                  editItem 
+                    ? setEditItem({...editItem, site: value})
+                    : setNewItem({...newItem, site: value})
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select site" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sites.map(site => (
+                    <SelectItem key={site.id} value={site.id}>
+                      <div className="flex items-center gap-2">
+                        <Building className="h-4 w-4" />
+                        {site.name}
                       </div>
-                      <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-                        <SelectTrigger className="w-40">
-                          <SelectValue placeholder="Department" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Departments</SelectItem>
-                          {departments.map(dept => (
-                            <SelectItem key={dept.value} value={dept.value}>
-                              {dept.label.split(" ")[1]}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                        <SelectTrigger className="w-40">
-                          <SelectValue placeholder="Status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Status</SelectItem>
-                          <SelectItem value="in-stock">In Stock</SelectItem>
-                          <SelectItem value="low-stock">Low Stock</SelectItem>
-                          <SelectItem value="out-of-stock">Out of Stock</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>SKU</TableHead>
-                          <TableHead>Product</TableHead>
-                          <TableHead>Department</TableHead>
-                          <TableHead>Quantity</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Last Updated</TableHead>
-                          <TableHead>Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredProducts.map((product) => (
-                          <TableRow key={product.id}>
-                            <TableCell className="font-medium">{product.sku}</TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <Package className="h-4 w-4" />
-                                {product.name}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">
-                                {product.department.toUpperCase()}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                {product.quantity}
-                                {product.quantity <= product.reorderLevel && (
-                                  <Badge variant="outline" className="text-xs">
-                                    <AlertTriangle className="h-3 w-3 mr-1" />
-                                    Reorder
-                                  </Badge>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={getStatusColor(product.status)}>
-                                {product.status.replace("-", " ").toUpperCase()}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              {formatDate(product.lastUpdated)}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex gap-2">
-                                <Dialog>
-                                  <DialogTrigger asChild>
-                                    <Button variant="outline" size="sm">
-                                      <Eye className="h-4 w-4" />
-                                    </Button>
-                                  </DialogTrigger>
-                                  <DialogContent>
-                                    <DialogHeader>
-                                      <DialogTitle>Product Details</DialogTitle>
-                                    </DialogHeader>
-                                    <div className="space-y-4">
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div><strong>SKU:</strong> {product.sku}</div>
-                                        <div><strong>Name:</strong> {product.name}</div>
-                                        <div><strong>Department:</strong> {product.department}</div>
-                                        <div><strong>Category:</strong> {product.category}</div>
-                                        <div><strong>Quantity:</strong> {product.quantity}</div>
-                                        <div><strong>Price:</strong> {formatCurrency(product.price)}</div>
-                                        <div><strong>Reorder Level:</strong> {product.reorderLevel}</div>
-                                        <div><strong>Supplier:</strong> {product.supplier}</div>
-                                        {product.brushCount && <div><strong>Brush Count:</strong> {product.brushCount}</div>}
-                                        {product.squeegeeCount && <div><strong>Squeegee Count:</strong> {product.squeegeeCount}</div>}
-                                      </div>
-                                      {product.changeHistory.length > 0 && (
-                                        <div>
-                                          <Button 
-                                            variant="outline" 
-                                            size="sm"
-                                            onClick={() => setViewHistoryDialogOpen(product.id)}
-                                          >
-                                            View Change History ({product.changeHistory.length})
-                                          </Button>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </DialogContent>
-                                </Dialog>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* Requisitions Tab */}
-              <TabsContent value="requisitions">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                    <CardTitle>Purchase Requisitions</CardTitle>
-                    <div className="flex gap-2">
-                      <Select value={selectedRequisitionStatus} onValueChange={setSelectedRequisitionStatus}>
-                        <SelectTrigger className="w-40">
-                          <SelectValue placeholder="Filter by status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Status</SelectItem>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="approved">Approved</SelectItem>
-                          <SelectItem value="rejected">Rejected</SelectItem>
-                          <SelectItem value="fulfilled">Fulfilled</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Requisition ID</TableHead>
-                          <TableHead>Product</TableHead>
-                          <TableHead>Quantity</TableHead>
-                          <TableHead>Priority</TableHead>
-                          <TableHead>Estimated Cost</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredRequisitions.map((req) => (
-                          <TableRow key={req.id}>
-                            <TableCell className="font-medium">{req.id}</TableCell>
-                            <TableCell>
-                              <div>
-                                <p className="font-medium">{req.productName}</p>
-                                <p className="text-xs text-muted-foreground">{req.category}</p>
-                              </div>
-                            </TableCell>
-                            <TableCell>{req.quantity}</TableCell>
-                            <TableCell>
-                              <Badge variant={
-                                req.priority === "high" ? "destructive" : 
-                                req.priority === "medium" ? "secondary" : "outline"
-                              }>
-                                {req.priority.toUpperCase()}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>{formatCurrency(req.estimatedCost)}</TableCell>
-                            <TableCell>
-                              <Badge variant={getStatusColor(req.status)}>
-                                {req.status.toUpperCase()}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex gap-2">
-                                {req.status === "pending" && (
-                                  <>
-                                    <Button 
-                                      size="sm" 
-                                      variant="default"
-                                      onClick={() => handleRequisitionAction(req.id, "approve")}
-                                    >
-                                      <CheckCircle className="h-4 w-4 mr-1" />
-                                      Approve
-                                    </Button>
-                                    <Button 
-                                      size="sm" 
-                                      variant="destructive"
-                                      onClick={() => handleRequisitionAction(req.id, "reject")}
-                                    >
-                                      <XCircle className="h-4 w-4 mr-1" />
-                                      Reject
-                                    </Button>
-                                  </>
-                                )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* Machines Tab */}
-              <TabsContent value="machines">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Wrench className="h-5 w-5" />
-                      Machine Management
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid gap-4 md:grid-cols-2 mb-6">
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-sm font-medium">
-                            Machine Details
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-2">
-                            <div className="flex justify-between">
-                              <span className="text-sm text-muted-foreground">Total Machines:</span>
-                              <span className="font-medium">{siteStats.totalMachines}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-sm text-muted-foreground">Total Brushes:</span>
-                              <span className="font-medium">{siteStats.totalBrushes}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-sm text-muted-foreground">Total Squeegees:</span>
-                              <span className="font-medium">{siteStats.totalSqueegees}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-sm text-muted-foreground">Total Changes:</span>
-                              <span className="font-medium">{siteStats.totalChanges}</span>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-sm font-medium">
-                            Machine Status
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                                <span className="text-sm">Operational</span>
-                              </div>
-                              <span className="font-medium">
-                                {products.filter(p => 
-                                  p.site === currentAdminSite && 
-                                  p.department === "housekeeping" && 
-                                  p.category === "Machines" &&
-                                  p.status === "in-stock"
-                                ).length}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 rounded-full bg-amber-500"></div>
-                                <span className="text-sm">Needs Maintenance</span>
-                              </div>
-                              <span className="font-medium">
-                                {products.filter(p => 
-                                  p.site === currentAdminSite && 
-                                  p.department === "housekeeping" && 
-                                  p.category === "Machines" &&
-                                  p.status === "low-stock"
-                                ).length}
-                              </span>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </div>
-
-                    <h3 className="text-lg font-semibold mb-4">Site Machines</h3>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Machine Name</TableHead>
-                          <TableHead>Quantity</TableHead>
-                          <TableHead>Brushes</TableHead>
-                          <TableHead>Squeegees</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Last Maintenance</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {products
-                          .filter(p => 
-                            p.site === currentAdminSite && 
-                            p.department === "housekeeping" && 
-                            p.category === "Machines"
-                          )
-                          .map((machine) => (
-                            <TableRow key={machine.id}>
-                              <TableCell className="font-medium">{machine.name}</TableCell>
-                              <TableCell>{machine.quantity}</TableCell>
-                              <TableCell>{machine.brushCount || 0}</TableCell>
-                              <TableCell>{machine.squeegeeCount || 0}</TableCell>
-                              <TableCell>
-                                <Badge variant={getStatusColor(machine.status)}>
-                                  {machine.status.replace("-", " ").toUpperCase()}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                {machine.changeHistory.length > 0 
-                                  ? formatDate(machine.changeHistory[machine.changeHistory.length - 1].date)
-                                  : "Never"
-                                }
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="assignedManager">Assigned Manager *</Label>
+              <Select
+                value={editItem ? editItem.assignedManager : newItem.assignedManager}
+                onValueChange={(value) => 
+                  editItem 
+                    ? setEditItem({...editItem, assignedManager: value})
+                    : setNewItem({...newItem, assignedManager: value})
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select manager" />
+                </SelectTrigger>
+                <SelectContent>
+                  {managers.map(manager => (
+                    <SelectItem key={manager} value={manager}>{manager}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="quantity">Quantity *</Label>
+              <Input
+                id="quantity"
+                type="number"
+                min="0"
+                value={editItem ? editItem.quantity : newItem.quantity}
+                onChange={(e) => 
+                  editItem 
+                    ? setEditItem({...editItem, quantity: parseInt(e.target.value) || 0})
+                    : setNewItem({...newItem, quantity: parseInt(e.target.value) || 0})
+                }
+                placeholder="Enter quantity"
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="reorderLevel">Reorder Level *</Label>
+              <Input
+                id="reorderLevel"
+                type="number"
+                min="0"
+                value={editItem ? editItem.reorderLevel : newItem.reorderLevel}
+                onChange={(e) => 
+                  editItem 
+                    ? setEditItem({...editItem, reorderLevel: parseInt(e.target.value) || 0})
+                    : setNewItem({...newItem, reorderLevel: parseInt(e.target.value) || 0})
+                }
+                placeholder="Enter reorder level"
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="price">Price *</Label>
+              <Input
+                id="price"
+                type="number"
+                step="0.01"
+                min="0"
+                value={editItem ? editItem.price : newItem.price}
+                onChange={(e) => 
+                  editItem 
+                    ? setEditItem({...editItem, price: parseFloat(e.target.value) || 0})
+                    : setNewItem({...newItem, price: parseFloat(e.target.value) || 0})
+                }
+                placeholder="Enter price"
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="costPrice">Cost Price *</Label>
+              <Input
+                id="costPrice"
+                type="number"
+                step="0.01"
+                min="0"
+                value={editItem ? editItem.costPrice : newItem.costPrice}
+                onChange={(e) => 
+                  editItem 
+                    ? setEditItem({...editItem, costPrice: parseFloat(e.target.value) || 0})
+                    : setNewItem({...newItem, costPrice: parseFloat(e.target.value) || 0})
+                }
+                placeholder="Enter cost price"
+                required
+              />
+            </div>
+            
+            <div className="space-y-2 col-span-2">
+              <Label htmlFor="supplier">Supplier *</Label>
+              <Input
+                id="supplier"
+                value={editItem ? editItem.supplier : newItem.supplier}
+                onChange={(e) => 
+                  editItem 
+                    ? setEditItem({...editItem, supplier: e.target.value})
+                    : setNewItem({...newItem, supplier: e.target.value})
+                }
+                placeholder="Enter supplier name"
+                required
+              />
+            </div>
+            
+            <div className="space-y-2 col-span-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                value={editItem ? editItem.description : newItem.description}
+                onChange={(e) => 
+                  editItem 
+                    ? setEditItem({...editItem, description: e.target.value})
+                    : setNewItem({...newItem, description: e.target.value})
+                }
+                placeholder="Enter item description"
+                rows={3}
+              />
+            </div>
           </div>
-        </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setItemDialogOpen(false);
+              setEditItem(null);
+              resetNewItemForm();
+            }}>
+              Cancel
+            </Button>
+            <Button onClick={editItem ? handleEditItem : handleAddItem}>
+              {editItem ? 'Update Item' : 'Add Item'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-        {/* View Change History Dialog */}
-        <Dialog open={!!viewHistoryDialogOpen} onOpenChange={() => setViewHistoryDialogOpen(null)}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>
-                Change History - {products.find(p => p.id === viewHistoryDialogOpen)?.name}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="max-h-96 overflow-y-auto space-y-4">
-              {viewHistoryDialogOpen && products.find(p => p.id === viewHistoryDialogOpen)?.changeHistory.map((change, index) => (
-                <div key={index} className="p-3 border rounded">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium">{change.changeType}</p>
-                      <p className="text-sm text-muted-foreground">{change.description}</p>
-                      <p className="text-xs">Performed by: {change.performedBy}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-semibold">{formatCurrency(change.cost)}</p>
-                      <p className="text-xs text-muted-foreground">{formatDate(change.date)}</p>
-                    </div>
+      {/* ADD/EDIT MACHINE DIALOG - FIXED: Changed machineModel to model */}
+      <Dialog open={machineDialogOpen} onOpenChange={(open) => {
+        setMachineDialogOpen(open);
+        if (!open) {
+          setEditMachine(null);
+          resetNewMachineForm();
+        }
+      }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {editMachine ? 'Edit Machine' : 'Add New Machine'}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="machineName">Machine Name *</Label>
+              <Input
+                id="machineName"
+                value={newMachine.name}
+                onChange={(e) => setNewMachine({...newMachine, name: e.target.value})}
+                placeholder="Enter machine name"
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="model">Model</Label> {/* FIXED: Changed from machineModel to model */}
+              <Input
+                id="model"
+                value={newMachine.model} 
+                onChange={(e) => setNewMachine({...newMachine, model: e.target.value})} 
+                placeholder="Enter model"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="manufacturer">Manufacturer</Label>
+              <Input
+                id="manufacturer"
+                value={newMachine.manufacturer}
+                onChange={(e) => setNewMachine({...newMachine, manufacturer: e.target.value})}
+                placeholder="Enter manufacturer"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="serialNumber">Serial Number</Label>
+              <Input
+                id="serialNumber"
+                value={newMachine.serialNumber}
+                onChange={(e) => setNewMachine({...newMachine, serialNumber: e.target.value})}
+                placeholder="Enter serial number"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="machineCost">Cost/Price *</Label>
+              <Input
+                id="machineCost"
+                type="number"
+                step="0.01"
+                min="0"
+                value={newMachine.cost}
+                onChange={(e) => setNewMachine({...newMachine, cost: parseFloat(e.target.value) || 0})}
+                placeholder="Enter cost"
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="purchaseDate">Purchase Date *</Label>
+              <Input
+                id="purchaseDate"
+                type="date"
+                value={newMachine.purchaseDate}
+                onChange={(e) => setNewMachine({...newMachine, purchaseDate: e.target.value})}
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="machineQuantity">Quantity *</Label>
+              <Input
+                id="machineQuantity"
+                type="number"
+                min="1"
+                value={newMachine.quantity}
+                onChange={(e) => setNewMachine({...newMachine, quantity: parseInt(e.target.value) || 1})}
+                placeholder="Enter quantity"
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="machineStatus">Status *</Label>
+              <Select
+                value={newMachine.status}
+                onValueChange={(value: 'operational' | 'maintenance' | 'out-of-service') => 
+                  setNewMachine({...newMachine, status: value})
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {machineStatusOptions.map(status => (
+                    <SelectItem key={status.value} value={status.value}>
+                      {status.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="department">Department</Label>
+              <Input
+                id="department"
+                value={newMachine.department}
+                onChange={(e) => setNewMachine({...newMachine, department: e.target.value})}
+                placeholder="Enter department"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="machineLocation">Location</Label>
+              <Input
+                id="machineLocation"
+                value={newMachine.location}
+                onChange={(e) => setNewMachine({...newMachine, location: e.target.value})}
+                placeholder="Enter location"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="assignedTo">Assigned To</Label>
+              <Input
+                id="assignedTo"
+                value={newMachine.assignedTo}
+                onChange={(e) => setNewMachine({...newMachine, assignedTo: e.target.value})}
+                placeholder="Enter assigned person"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="lastMaintenanceDate">Last Maintenance Date</Label>
+              <Input
+                id="lastMaintenanceDate"
+                type="date"
+                value={newMachine.lastMaintenanceDate}
+                onChange={(e) => setNewMachine({...newMachine, lastMaintenanceDate: e.target.value})}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="nextMaintenanceDate">Next Maintenance Date</Label>
+              <Input
+                id="nextMaintenanceDate"
+                type="date"
+                value={newMachine.nextMaintenanceDate}
+                onChange={(e) => setNewMachine({...newMachine, nextMaintenanceDate: e.target.value})}
+              />
+            </div>
+            
+            <div className="space-y-2 col-span-2">
+              <Label htmlFor="machineDescription">Description</Label>
+              <Textarea
+                id="machineDescription"
+                value={newMachine.description}
+                onChange={(e) => setNewMachine({...newMachine, description: e.target.value})}
+                placeholder="Enter machine description"
+                rows={3}
+              />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setMachineDialogOpen(false);
+              setEditMachine(null);
+              resetNewMachineForm();
+            }}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddMachine}>
+              {editMachine ? 'Update Machine' : 'Add Machine'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* VIEW MACHINE DETAILS DIALOG - FIXED */}
+      <Dialog open={!!viewMachine} onOpenChange={() => setViewMachine(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Machine Details</DialogTitle>
+          </DialogHeader>
+          {viewMachine && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div><strong>Machine Name:</strong> {viewMachine.name}</div>
+                <div><strong>Status:</strong> 
+                  <Badge className={`ml-2 ${machineStatusOptions.find(s => s.value === viewMachine.status)?.color} border-0`}>
+                    {machineStatusOptions.find(s => s.value === viewMachine.status)?.label}
+                  </Badge>
+                </div>
+                <div><strong>Manufacturer:</strong> {viewMachine.manufacturer || 'N/A'}</div>
+                <div><strong>Model:</strong> {viewMachine.model || 'N/A'}</div> {/* FIXED */}
+                <div><strong>Serial Number:</strong> {viewMachine.serialNumber || 'N/A'}</div>
+                <div><strong>Cost:</strong> {formatCurrency(viewMachine.cost)}</div>
+                <div><strong>Total Value:</strong> {formatCurrency(viewMachine.cost * viewMachine.quantity)}</div>
+                <div><strong>Quantity:</strong> {viewMachine.quantity}</div>
+                <div><strong>Purchase Date:</strong> {formatDate(viewMachine.purchaseDate)}</div>
+                <div><strong>Age:</strong> {calculateMachineAge(viewMachine.purchaseDate)} years</div>
+                {viewMachine.location && <div><strong>Location:</strong> {viewMachine.location}</div>}
+                {viewMachine.department && <div><strong>Department:</strong> {viewMachine.department}</div>}
+                {viewMachine.assignedTo && <div><strong>Assigned To:</strong> {viewMachine.assignedTo}</div>}
+                {viewMachine.lastMaintenanceDate && (
+                  <div><strong>Last Maintenance:</strong> {formatDate(viewMachine.lastMaintenanceDate)}</div>
+                )}
+                {viewMachine.nextMaintenanceDate && (
+                  <div><strong>Next Maintenance:</strong> {formatDate(viewMachine.nextMaintenanceDate)}</div>
+                )}
+                {viewMachine.description && (
+                  <div className="col-span-2">
+                    <strong>Description:</strong>
+                    <p className="mt-1 text-sm text-muted-foreground">{viewMachine.description}</p>
+                  </div>
+                )}
+              </div>
+              
+              {/* Maintenance History */}
+              {viewMachine.maintenanceHistory && viewMachine.maintenanceHistory.length > 0 && (
+                <div>
+                  <h4 className="font-semibold mb-2">Maintenance History</h4>
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {viewMachine.maintenanceHistory.map((record, index) => (
+                      <div key={index} className="flex flex-col p-2 bg-muted/50 rounded text-sm">
+                        <div className="flex justify-between">
+                          <span className="font-medium">{record.type}</span>
+                          <span>{formatDate(record.date)}</span>
+                        </div>
+                        <div className="text-muted-foreground">{record.description}</div>
+                        <div className="flex justify-between text-xs mt-1">
+                          <span>Performed by: {record.performedBy}</span>
+                          <span>Cost: {formatCurrency(record.cost)}</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
-              {viewHistoryDialogOpen && products.find(p => p.id === viewHistoryDialogOpen)?.changeHistory.length === 0 && (
-                <p className="text-center text-muted-foreground py-4">No change history recorded</p>
               )}
             </div>
-          </DialogContent>
-        </Dialog>
+          )}
+        </DialogContent>
+      </Dialog>
 
-        {/* New Requisition Dialog */}
-        <Dialog open={requisitionDialogOpen} onOpenChange={setRequisitionDialogOpen}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Create New Requisition</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmitRequisition} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Product Name</Label>
-                <Input name="productName" required placeholder="Enter product name" />
-              </div>
-              <div className="space-y-2">
-                <Label>Category</Label>
-                <Select name="category" required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Machines">Machines</SelectItem>
-                    <SelectItem value="Equipment">Equipment</SelectItem>
-                    <SelectItem value="Tools & Material">Tools & Material</SelectItem>
-                    <SelectItem value="Chemicals & Consumables">Chemicals & Consumables</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+      {/* ADD MAINTENANCE RECORD DIALOG */}
+      <Dialog open={maintenanceDialogOpen} onOpenChange={(open) => {
+        setMaintenanceDialogOpen(open);
+        if (!open) {
+          setSelectedMachineForMaintenance(null);
+          setMaintenanceRecord({
+            type: "Routine",
+            description: "",
+            cost: 0,
+            performedBy: "",
+          });
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Maintenance Record</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="maintenanceMachine">Select Machine</Label>
+              <Select
+                value={selectedMachineForMaintenance || ""}
+                onValueChange={setSelectedMachineForMaintenance}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select machine" />
+                </SelectTrigger>
+                <SelectContent>
+                  {machines.map(machine => (
+                    <SelectItem key={machine.id} value={machine.id}>
+                      {machine.name} {machine.model ? `(${machine.model})` : ''} {/* FIXED */}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {selectedMachineForMaintenance && (
+              <>
                 <div className="space-y-2">
-                  <Label>Quantity</Label>
-                  <Input name="quantity" type="number" required />
-                </div>
-                <div className="space-y-2">
-                  <Label>Priority</Label>
-                  <Select name="priority" required>
+                  <Label htmlFor="maintenanceType">Maintenance Type *</Label>
+                  <Select
+                    value={maintenanceRecord.type}
+                    onValueChange={(value) => setMaintenanceRecord({...maintenanceRecord, type: value})}
+                  >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select priority" />
+                      <SelectValue placeholder="Select type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
+                      {maintenanceTypes.map(type => (
+                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="maintenanceDescription">Description *</Label>
+                  <Textarea
+                    id="maintenanceDescription"
+                    value={maintenanceRecord.description}
+                    onChange={(e) => setMaintenanceRecord({...maintenanceRecord, description: e.target.value})}
+                    placeholder="Describe the maintenance performed"
+                    rows={3}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="maintenanceCost">Cost</Label>
+                  <Input
+                    id="maintenanceCost"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={maintenanceRecord.cost}
+                    onChange={(e) => setMaintenanceRecord({...maintenanceRecord, cost: parseFloat(e.target.value) || 0})}
+                    placeholder="Enter maintenance cost"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="performedBy">Performed By *</Label>
+                  <Input
+                    id="performedBy"
+                    value={maintenanceRecord.performedBy}
+                    onChange={(e) => setMaintenanceRecord({...maintenanceRecord, performedBy: e.target.value})}
+                    placeholder="Enter technician name"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMaintenanceDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleAddMaintenance}
+              disabled={!selectedMachineForMaintenance || maintenanceLoading}
+            >
+              {maintenanceLoading ? "Adding..." : "Add Maintenance"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* IMPORT DIALOG */}
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Import Data</DialogTitle>
+          </DialogHeader>
+          
+          <Tabs defaultValue="inventory">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="inventory">Inventory</TabsTrigger>
+              <TabsTrigger value="machines">Machines</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="inventory" className="space-y-4">
+              <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center">
+                <Upload className="h-12 w-12 mx-auto text-muted-foreground" />
+                <p className="mt-4">Drop your CSV file here or click to browse</p>
+                <p className="text-sm text-muted-foreground">Supports .csv files with item data</p>
+                <Input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleImport}
+                  className="mt-4 mx-auto max-w-xs"
+                />
               </div>
-              <div className="space-y-2">
-                <Label>Estimated Cost (₹)</Label>
-                <Input name="estimatedCost" type="number" required />
+              <div className="text-sm text-muted-foreground">
+                <p className="font-semibold">CSV Format:</p>
+                <p>SKU,Name,Department,Category,Site,AssignedManager,Quantity,Price,CostPrice,Supplier,ReorderLevel</p>
+                <p className="mt-2 text-xs">Note: SKU must be unique</p>
               </div>
-              <Button type="submit" className="w-full">Submit Requisition</Button>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </motion.div>
+            </TabsContent>
+            
+            <TabsContent value="machines" className="space-y-4">
+              <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center">
+                <Upload className="h-12 w-12 mx-auto text-muted-foreground" />
+                <p className="mt-4">Drop your CSV file here or click to browse</p>
+                <p className="text-sm text-muted-foreground">Supports .csv files with machine data</p>
+                <Input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleImportMachines}
+                  className="mt-4 mx-auto max-w-xs"
+                />
+              </div>
+              <div className="text-sm text-muted-foreground">
+                <p className="font-semibold">CSV Format:</p>
+                <p>Name,Cost,PurchaseDate,Quantity,Description,Status,Location,Manufacturer,Model,SerialNumber,Department,AssignedTo</p>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
+
+      {/* CHANGE HISTORY DIALOG - UNCHANGED */}
+      <Dialog open={!!changeHistoryDialogOpen} onOpenChange={() => setChangeHistoryDialogOpen(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change History</DialogTitle>
+          </DialogHeader>
+          {changeHistoryDialogOpen && (
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {(() => {
+                const item = items.find(item => item.id === changeHistoryDialogOpen);
+                return item?.changeHistory && item.changeHistory.length > 0 ? (
+                  item.changeHistory.map((change, index) => (
+                    <div key={index} className="flex items-center justify-between text-sm p-2 bg-muted/50 rounded">
+                      <span>{change.date}</span>
+                      <span>{change.change}</span>
+                      <span>by {change.user}</span>
+                      <span className={`font-medium ${change.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {change.quantity > 0 ? '+' : ''}{change.quantity}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No change history available for this item
+                  </p>
+                );
+              })()}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
 
-export default AdminERP;
+export default InventoryPage;

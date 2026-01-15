@@ -126,149 +126,6 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
     };
   }, []);
 
-  // Fetch employees with caching
-  // Update the fetchDeductions function in DeductionListTab.tsx
-  // const fetchDeductions = useCallback(
-  //   async (forceRefresh = false) => {
-  //     if (forceRefresh) {
-  //       deductionService.clearCache("deductions");
-  //       deductionService.clearCache("stats");
-  //     }
-
-  //     setIsLoading(true);
-  //     try {
-  //       const params: any = {
-  //         page: deductionPage,
-  //         limit: deductionItemsPerPage,
-  //       };
-
-  //       if (statusFilter !== "all") params.status = statusFilter;
-  //       if (typeFilter !== "all") params.type = typeFilter;
-  //       if (searchTerm) params.search = searchTerm;
-
-  //       const response = await deductionService.getDeductions(params);
-
-  //       if (!isMounted.current) return;
-
-  //       // Always handle the response, even if it's an error
-  //       // The service now returns empty successful responses on error
-  //       if (response.success) {
-  //         // Transform MongoDB data to match frontend type
-  //         const transformedDeductions = response.data.map((deduction) =>
-  //           deductionService.transformDeductionData(deduction)
-  //         );
-
-  //         setDeductions(transformedDeductions);
-  //         setTotalDeductionsCount(response.pagination?.totalItems || 0);
-
-  //         // Only show error toast if there's a message and no data
-  //         if (response.message && response.data.length === 0) {
-  //           toast.warning("Partial Data Loaded", {
-  //             description: response.message || "Some data may be outdated.",
-  //           });
-  //         }
-  //       } else {
-  //         toast.error("Failed to fetch deductions", {
-  //           description: response.message || "Please try again",
-  //         });
-  //       }
-  //     } catch (error: any) {
-  //       console.error("Error fetching deductions:", error);
-
-  //       // Don't show error toast for cache misses
-  //       if (!error.message.includes("cached")) {
-  //         toast.error("Network Error", {
-  //           description:
-  //             "Unable to connect to the server. Using cached data if available.",
-  //         });
-  //       }
-  //     } finally {
-  //       if (isMounted.current) {
-  //         setIsLoading(false);
-  //       }
-  //     }
-  //   },
-  //   [deductionPage, deductionItemsPerPage, statusFilter, typeFilter, searchTerm]
-  // );
-
-  // const fetchDeductions = useCallback(
-  //   async (forceRefresh = false) => {
-  //     console.log("Fetching deductions...", {
-  //       page: deductionPage,
-  //       limit: deductionItemsPerPage,
-  //       statusFilter,
-  //       typeFilter,
-  //       searchTerm,
-  //     });
-
-  //     if (forceRefresh) {
-  //       deductionService.clearCache("deductions");
-  //       deductionService.clearCache("stats");
-  //     }
-
-  //     setIsLoading(true);
-  //     try {
-  //       const params: any = {
-  //         page: deductionPage,
-  //         limit: deductionItemsPerPage,
-  //       };
-
-  //       if (statusFilter !== "all") params.status = statusFilter;
-  //       if (typeFilter !== "all") params.type = typeFilter;
-  //       if (searchTerm) params.search = searchTerm;
-
-  //       console.log("API params:", params);
-
-  //       const response = await deductionService.getDeductions(params);
-
-  //       console.log("API Response:", response);
-
-  //       if (!isMounted.current) return;
-
-  //       if (response.success) {
-  //         console.log("Data received:", response.data);
-  //         console.log("Pagination:", response.pagination);
-
-  //         const transformedDeductions = response.data.map((deduction) =>
-  //           deductionService.transformDeductionData(deduction)
-  //         );
-
-  //         console.log("Transformed deductions:", transformedDeductions);
-
-  //         setDeductions(transformedDeductions);
-  //         setTotalDeductionsCount(response.pagination?.totalItems || 0);
-
-  //         if (response.message && response.data.length === 0) {
-  //           toast.warning("Partial Data Loaded", {
-  //             description: response.message || "Some data may be outdated.",
-  //           });
-  //         }
-  //       } else {
-  //         console.error("API Error:", response.message);
-  //         toast.error("Failed to fetch deductions", {
-  //           description: response.message || "Please try again",
-  //         });
-  //       }
-  //     } catch (error: any) {
-  //       console.error("Error fetching deductions:", error);
-
-  //       if (!error.message.includes("cached")) {
-  //         toast.error("Network Error", {
-  //           description:
-  //             "Unable to connect to the server. Using cached data if available.",
-  //         });
-  //       }
-  //     } finally {
-  //       if (isMounted.current) {
-  //         setIsLoading(false);
-  //       }
-  //     }
-  //   },
-  //   [deductionPage, deductionItemsPerPage, statusFilter, typeFilter, searchTerm]
-  // );
-
-  // In your DeductionListTab.tsx, update the fetchDeductions function:
-
   const fetchDeductions = useCallback(
     async (forceRefresh = false) => {
       console.log("Fetching deductions...", {
@@ -389,82 +246,71 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
     [deductionPage, deductionItemsPerPage, statusFilter, typeFilter, searchTerm]
   );
 
-  // Update the fetchEmployees function similarly
-  // const fetchEmployees = useCallback(async (forceRefresh = false) => {
-  //   if (forceRefresh) {
-  //     deductionService.clearCache("employees");
-  //   }
-
-  //   setIsLoadingEmployees(true);
-  //   try {
-  //     const response = await deductionService.getEmployees({
-  //       status: "active",
-  //       limit: 1000,
-  //     });
-
-  //     if (!isMounted.current) return;
-
-  //     if (response.success) {
-  //       // Transform MongoDB data to match frontend type
-  //       const transformedEmployees = response.data.map((employee) =>
-  //         deductionService.transformEmployeeData(employee)
-  //       );
-
-  //       setEmployees(transformedEmployees);
-
-  //       // Only show warning if there's a message and no data
-  //       if (response.message && response.data.length === 0) {
-  //         toast.warning("Partial Data Loaded", {
-  //           description: response.message || "Employee data may be outdated.",
-  //         });
-  //       }
-  //     } else {
-  //       toast.error("Failed to fetch employees", {
-  //         description: response.message || "Please try again",
-  //       });
-  //     }
-  //   } catch (error: any) {
-  //     console.error("Error fetching employees:", error);
-
-  //     // Don't show error toast for cache misses
-  //     if (!error.message.includes("cached")) {
-  //       toast.error("Network Error", {
-  //         description:
-  //           "Unable to fetch employees. Using cached data if available.",
-  //       });
-  //     }
-  //   } finally {
-  //     if (isMounted.current) {
-  //       setIsLoadingEmployees(false);
-  //     }
-  //   }
-  // }, []);
-
   const fetchEmployees = useCallback(async (forceRefresh = false) => {
     setIsLoadingEmployees(true);
     try {
-      // Direct API call for employees
-      const response = await fetch(
-        `http://localhost:5001/api/employees?status=active&limit=1000`
-      );
-
-      if (!response.ok) {
-        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+      console.log("Fetching employees from API...");
+      
+      // Direct API call for employees - try multiple endpoints
+      const endpoints = [
+        'http://localhost:5001/api/employees?status=active&limit=1000',
+        'http://localhost:5001/api/employees/get?status=active&limit=1000',
+        'http://localhost:5001/api/employees/all?status=active&limit=1000'
+      ];
+      
+      let response = null;
+      let data = null;
+      let lastError = null;
+      
+      // Try each endpoint until one works
+      for (const endpoint of endpoints) {
+        try {
+          console.log(`Trying endpoint: ${endpoint}`);
+          response = await fetch(endpoint);
+          
+          if (response.ok) {
+            data = await response.json();
+            console.log(`Success with endpoint: ${endpoint}`, data);
+            break;
+          } else {
+            console.log(`Endpoint ${endpoint} returned ${response.status}`);
+          }
+        } catch (error) {
+          lastError = error;
+          console.log(`Endpoint ${endpoint} failed:`, error);
+        }
+      }
+      
+      if (!response || !data) {
+        throw new Error(lastError?.message || `No valid endpoint found for employees`);
       }
 
-      const data = await response.json();
+      console.log("Employees API response:", data);
 
       if (!isMounted.current) return;
 
       if (data.success) {
-        // Transform employee data
-        const transformedEmployees = data.data.map((employee: any) => ({
-          id: employee._id,
+        // Check the actual response structure - it might be data.employees instead of data.data
+        const employeesArray = data.employees || data.data || [];
+        
+        if (!Array.isArray(employeesArray)) {
+          console.error("Invalid data structure:", data);
+          toast.error("Data Format Error", {
+            description: "Employees data is not in expected format",
+          });
+          setEmployees([]); // Set empty array to prevent errors
+          return;
+        }
+
+        // Transform employee data - include both designation and position fields
+        const transformedEmployees = employeesArray.map((employee: any) => ({
+          id: employee._id || employee.id || '',
           employeeId: employee.employeeId || "",
           name: employee.name || "",
           department: employee.department || "",
           status: employee.status || "active",
-          designation: employee.position || employee.designation || "",
+          designation: employee.designation || employee.position || "", // Map to designation
+          position: employee.position || employee.designation || "", // Map to position (required by Employee type)
           email: employee.email || "",
           phone: employee.phone || "",
           salary: employee.salary || 0,
@@ -473,17 +319,28 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
             : new Date().toISOString().split("T")[0],
         }));
 
+        console.log("Transformed employees:", transformedEmployees);
         setEmployees(transformedEmployees);
       } else {
+        console.error("API returned success=false:", data);
         toast.error("Failed to fetch employees", {
           description: data.message || "Please try again",
         });
+        setEmployees([]); // Set empty array to prevent errors
       }
     } catch (error: any) {
       console.error("Error fetching employees:", error);
-      toast.error("Network Error", {
-        description: "Unable to fetch employees.",
-      });
+      
+      if (error.message.includes('Failed to fetch') || error.message.includes('Network Error')) {
+        toast.error("Connection Error", {
+          description: "Unable to connect to the server. Please check if backend is running on port 5001.",
+        });
+      } else {
+        toast.error("API Error", {
+          description: error.message || "Unable to fetch employees",
+        });
+      }
+      setEmployees([]); // Set empty array to prevent errors
     } finally {
       if (isMounted.current) {
         setIsLoadingEmployees(false);
@@ -594,79 +451,6 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
     (deductionPage - 1) * deductionItemsPerPage,
     deductionPage * deductionItemsPerPage
   );
-
-  // Add new deduction to MongoDB
-  // const handleAddDeduction = async () => {
-  //   if (!deductionForm.employeeId || !deductionForm.amount) {
-  //     toast.error("Validation Error", {
-  //       description: "Please fill in all required fields (Employee and Amount)",
-  //     });
-  //     return;
-  //   }
-
-  //   setIsSubmitting(true);
-  //   try {
-  //     const employee = employees.find(
-  //       (emp) => emp.employeeId === deductionForm.employeeId
-  //     );
-
-  //     if (!employee) {
-  //       toast.error("Employee Not Found", {
-  //         description: "Selected employee not found",
-  //       });
-  //       return;
-  //     }
-
-  //     const deductionData: CreateDeductionRequest = {
-  //       employeeId: deductionForm.employeeId,
-  //       employeeName: employee.name,
-  //       employeeCode: employee.employeeId,
-  //       type: deductionForm.type,
-  //       amount: parseFloat(deductionForm.amount),
-  //       description: deductionForm.description,
-  //       deductionDate: deductionForm.deductionDate,
-  //       status: deductionForm.status,
-  //       repaymentMonths: deductionForm.repaymentMonths
-  //         ? parseInt(deductionForm.repaymentMonths)
-  //         : 0,
-  //       fineAmount: deductionForm.fineAmount
-  //         ? parseFloat(deductionForm.fineAmount)
-  //         : 0,
-  //       appliedMonth: deductionForm.appliedMonth,
-  //     };
-
-  //     const response = await deductionService.createDeduction(deductionData);
-
-  //     if (response.success) {
-  //       // Transform MongoDB response to match frontend type
-  //       const newDeduction = deductionService.transformDeductionData(
-  //         response.data
-  //       );
-
-  //       setDeductions((prev) => [...(prev || []), newDeduction]);
-  //       setIsAddingDeduction(false);
-  //       resetDeductionForm();
-
-  //       toast.success("Success", {
-  //         description: "Deduction added successfully!",
-  //       });
-
-  //       // Refresh the list
-  //       fetchDeductions(true);
-  //     } else {
-  //       toast.error("Failed to add deduction", {
-  //         description: response.message || "Please try again",
-  //       });
-  //     }
-  //   } catch (error: any) {
-  //     console.error("Error adding deduction:", error);
-  //     toast.error("Network Error", {
-  //       description: "Unable to save deduction. Please check your connection.",
-  //     });
-  //   } finally {
-  //     setIsSubmitting(false);
-  //   }
-  // };
 
   // Add new deduction
   const handleAddDeduction = async () => {
@@ -784,82 +568,6 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
       setIsSubmitting(false);
     }
   };
-
-  // Update deduction in MongoDB
-  // const handleUpdateDeduction = async () => {
-  //   if (!editingDeduction) return;
-
-  //   setIsSubmitting(true);
-  //   try {
-  //     const employee = employees.find(
-  //       (emp) => emp.employeeId === deductionForm.employeeId
-  //     );
-
-  //     if (!employee) {
-  //       toast.error("Employee Not Found", {
-  //         description: "Selected employee not found",
-  //       });
-  //       return;
-  //     }
-
-  //     const updateData: UpdateDeductionRequest = {
-  //       employeeId: deductionForm.employeeId,
-  //       employeeName: employee.name,
-  //       employeeCode: employee.employeeId,
-  //       type: deductionForm.type,
-  //       amount: parseFloat(deductionForm.amount),
-  //       description: deductionForm.description,
-  //       deductionDate: deductionForm.deductionDate,
-  //       status: deductionForm.status,
-  //       repaymentMonths: deductionForm.repaymentMonths
-  //         ? parseInt(deductionForm.repaymentMonths)
-  //         : 0,
-  //       fineAmount: deductionForm.fineAmount
-  //         ? parseFloat(deductionForm.fineAmount)
-  //         : 0,
-  //       appliedMonth: deductionForm.appliedMonth,
-  //     };
-
-  //     const response = await deductionService.updateDeduction(
-  //       editingDeduction.id,
-  //       updateData
-  //     );
-
-  //     if (response.success) {
-  //       // Update local state with transformed data
-  //       const updatedDeduction = deductionService.transformDeductionData(
-  //         response.data
-  //       );
-
-  //       setDeductions((prev) =>
-  //         (prev || []).map((d) =>
-  //           d.id === updatedDeduction.id ? updatedDeduction : d
-  //         )
-  //       );
-  //       setEditingDeduction(null);
-  //       resetDeductionForm();
-
-  //       toast.success("Success", {
-  //         description: "Deduction updated successfully!",
-  //       });
-
-  //       // Refresh the list
-  //       fetchDeductions(true);
-  //     } else {
-  //       toast.error("Failed to update deduction", {
-  //         description: response.message || "Please try again",
-  //       });
-  //     }
-  //   } catch (error: any) {
-  //     console.error("Error updating deduction:", error);
-  //     toast.error("Network Error", {
-  //       description:
-  //         "Unable to update deduction. Please check your connection.",
-  //     });
-  //   } finally {
-  //     setIsSubmitting(false);
-  //   }
-  // };
 
   // Update deduction
   const handleUpdateDeduction = async () => {
@@ -1017,35 +725,6 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
       setIsSubmitting(false);
     }
   };
-
-  // Delete deduction from MongoDB
-  // const handleDeleteDeduction = async (id: string) => {
-  //   try {
-  //     const response = await deductionService.deleteDeduction(id);
-
-  //     if (response.success) {
-  //       setDeductions((prev) => (prev || []).filter((d) => d.id !== id));
-  //       setDeleteDialog({ open: false, deduction: null });
-
-  //       toast.success("Success", {
-  //         description: "Deduction deleted successfully!",
-  //       });
-
-  //       // Refresh the list
-  //       fetchDeductions(true);
-  //     } else {
-  //       toast.error("Failed to delete deduction", {
-  //         description: response.message || "Please try again",
-  //       });
-  //     }
-  //   } catch (error: any) {
-  //     console.error("Error deleting deduction:", error);
-  //     toast.error("Network Error", {
-  //       description:
-  //         "Unable to delete deduction. Please check your connection.",
-  //     });
-  //   }
-  // };
 
   // Delete deduction
   const handleDeleteDeduction = async (id: string) => {
@@ -1241,16 +920,6 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
       }));
     }
   };
-
-  // Manual refresh function
-  // const handleManualRefresh = () => {
-  //   // Clear all caches
-  //   deductionService.clearCache();
-
-  //   // Force refresh
-  //   fetchEmployees(true);
-  //   fetchDeductions(true);
-  // };
 
   // Manual refresh function
   const handleManualRefresh = () => {

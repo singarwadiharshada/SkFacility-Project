@@ -144,9 +144,10 @@ export interface ApiResponse<T> {
 /* =========================
    AXIOS SETUP
 ========================= */
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 const api: AxiosInstance = axios.create({
-  baseURL: 'http://localhost:5001/api',
+  baseURL: API_URL,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json'

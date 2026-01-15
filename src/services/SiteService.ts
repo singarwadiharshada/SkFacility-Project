@@ -91,8 +91,7 @@ class ApiError extends Error {
   }
 }
 
-// Configuration
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 // Default stats
 const defaultStats: SiteStats = {
@@ -110,7 +109,7 @@ class SiteService {
     endpoint: string, 
     options: RequestInit = {}
   ): Promise<T> {
-    const url = `${API_BASE_URL}${endpoint}`;
+    const url = `${API_URL}${endpoint}`;
     
     console.log(`🌐 API Call: ${options.method || 'GET'} ${url}`, options.body ? { body: JSON.parse(options.body as string) } : '');
     

@@ -2,7 +2,7 @@
 import { toast } from "sonner";
 
 // Base URL for your backend
-const API_BASE_URL = "http://localhost:5001/api";
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 // Interfaces
 export interface Client {
@@ -98,7 +98,7 @@ const fetchApi = async <T>(
 export const crmStatsService = {
   async getStats(): Promise<CRMStats> {
     try {
-      const response = await fetchApi<ApiResponse<CRMStats>>(`${API_BASE_URL}/crm/stats`);
+      const response = await fetchApi<ApiResponse<CRMStats>>(`${API_URL}/crm/stats`);
       if (response.success) {
         return response.data;
       }
@@ -115,8 +115,8 @@ export const clientService = {
   async getAll(search?: string): Promise<Client[]> {
     try {
       const url = search 
-        ? `${API_BASE_URL}/crm/clients?search=${encodeURIComponent(search)}` 
-        : `${API_BASE_URL}/crm/clients`;
+        ? `${API_URL}/crm/clients?search=${encodeURIComponent(search)}` 
+        : `${API_URL}/crm/clients`;
       
       const response = await fetchApi<ApiResponse<Client[]>>(url);
       if (response.success) {
@@ -131,7 +131,7 @@ export const clientService = {
 
   async getById(id: string): Promise<Client> {
     try {
-      const response = await fetchApi<ApiResponse<Client>>(`${API_BASE_URL}/crm/clients/${id}`);
+      const response = await fetchApi<ApiResponse<Client>>(`${API_URL}/crm/clients/${id}`);
       if (response.success) {
         return response.data;
       }
@@ -146,7 +146,7 @@ export const clientService = {
     try {
       console.log('Creating client with data:', clientData); // Debug log
       
-      const response = await fetchApi<ApiResponse<Client>>(`${API_BASE_URL}/crm/clients`, {
+      const response = await fetchApi<ApiResponse<Client>>(`${API_URL}/crm/clients`, {
         method: 'POST',
         body: JSON.stringify(clientData),
       });
@@ -166,7 +166,7 @@ export const clientService = {
     try {
       console.log('Updating client with data:', clientData); // Debug log
       
-      const response = await fetchApi<ApiResponse<Client>>(`${API_BASE_URL}/crm/clients/${id}`, {
+      const response = await fetchApi<ApiResponse<Client>>(`${API_URL}/crm/clients/${id}`, {
         method: 'PUT',
         body: JSON.stringify(clientData),
       });
@@ -184,7 +184,7 @@ export const clientService = {
 
   async delete(id: string): Promise<void> {
     try {
-      const response = await fetchApi<ApiResponse<void>>(`${API_BASE_URL}/crm/clients/${id}`, {
+      const response = await fetchApi<ApiResponse<void>>(`${API_URL}/crm/clients/${id}`, {
         method: 'DELETE',
       });
       
@@ -205,8 +205,8 @@ export const leadService = {
   async getAll(search?: string): Promise<Lead[]> {
     try {
       const url = search 
-        ? `${API_BASE_URL}/crm/leads?search=${encodeURIComponent(search)}` 
-        : `${API_BASE_URL}/crm/leads`;
+        ? `${API_URL}/crm/leads?search=${encodeURIComponent(search)}` 
+        : `${API_URL}/crm/leads`;
       
       const response = await fetchApi<ApiResponse<Lead[]>>(url);
       if (response.success) {
@@ -221,7 +221,7 @@ export const leadService = {
 
   async getById(id: string): Promise<Lead> {
     try {
-      const response = await fetchApi<ApiResponse<Lead>>(`${API_BASE_URL}/crm/leads/${id}`);
+      const response = await fetchApi<ApiResponse<Lead>>(`${API_URL}/crm/leads/${id}`);
       if (response.success) {
         return response.data;
       }
@@ -234,7 +234,7 @@ export const leadService = {
 
   async create(leadData: Omit<Lead, '_id' | 'createdAt' | 'updatedAt'>): Promise<Lead> {
     try {
-      const response = await fetchApi<ApiResponse<Lead>>(`${API_BASE_URL}/crm/leads`, {
+      const response = await fetchApi<ApiResponse<Lead>>(`${API_URL}/crm/leads`, {
         method: 'POST',
         body: JSON.stringify(leadData),
       });
@@ -252,7 +252,7 @@ export const leadService = {
 
   async update(id: string, leadData: Partial<Lead>): Promise<Lead> {
     try {
-      const response = await fetchApi<ApiResponse<Lead>>(`${API_BASE_URL}/crm/leads/${id}`, {
+      const response = await fetchApi<ApiResponse<Lead>>(`${API_URL}/crm/leads/${id}`, {
         method: 'PUT',
         body: JSON.stringify(leadData),
       });
@@ -270,7 +270,7 @@ export const leadService = {
 
   async updateStatus(id: string, status: Lead['status']): Promise<Lead> {
     try {
-      const response = await fetchApi<ApiResponse<Lead>>(`${API_BASE_URL}/crm/leads/${id}/status`, {
+      const response = await fetchApi<ApiResponse<Lead>>(`${API_URL}/crm/leads/${id}/status`, {
         method: 'PATCH',
         body: JSON.stringify({ status }),
       });
@@ -288,7 +288,7 @@ export const leadService = {
 
   async delete(id: string): Promise<void> {
     try {
-      const response = await fetchApi<ApiResponse<void>>(`${API_BASE_URL}/crm/leads/${id}`, {
+      const response = await fetchApi<ApiResponse<void>>(`${API_URL}/crm/leads/${id}`, {
         method: 'DELETE',
       });
       
@@ -309,8 +309,8 @@ export const communicationService = {
   async getAll(search?: string): Promise<Communication[]> {
     try {
       const url = search 
-        ? `${API_BASE_URL}/crm/communications?search=${encodeURIComponent(search)}` 
-        : `${API_BASE_URL}/crm/communications`;
+        ? `${API_URL}/crm/communications?search=${encodeURIComponent(search)}` 
+        : `${API_URL}/crm/communications`;
       
       const response = await fetchApi<ApiResponse<Communication[]>>(url);
       if (response.success) {
@@ -325,7 +325,7 @@ export const communicationService = {
 
   async create(commData: Omit<Communication, '_id' | 'createdAt'>): Promise<Communication> {
     try {
-      const response = await fetchApi<ApiResponse<Communication>>(`${API_BASE_URL}/crm/communications`, {
+      const response = await fetchApi<ApiResponse<Communication>>(`${API_URL}/crm/communications`, {
         method: 'POST',
         body: JSON.stringify(commData),
       });
@@ -343,7 +343,7 @@ export const communicationService = {
 
   async delete(id: string): Promise<void> {
     try {
-      const response = await fetchApi<ApiResponse<void>>(`${API_BASE_URL}/crm/communications/${id}`, {
+      const response = await fetchApi<ApiResponse<void>>(`${API_URL}/crm/communications/${id}`, {
         method: 'DELETE',
       });
       
