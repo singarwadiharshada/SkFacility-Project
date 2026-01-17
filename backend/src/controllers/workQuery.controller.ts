@@ -353,43 +353,65 @@ async createWorkQuery(req: Request, res: Response) {
   }
 
   // Delete work query
-  async deleteWorkQuery(req: Request, res: Response) {
-    try {
-      const { id } = req.params;
-      
-      if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: 'Query ID is required'
-        });
-      }
+ // Update the deleteWorkQuery method in your controller:
 
-      console.log(`🗑️ Deleting work query: ${id}`);
-      
-      const query = await workQueryService.deleteWorkQuery(id);
-      
-      if (!query) {
-        return res.status(404).json({
-          success: false,
-          message: 'Work query not found'
-        });
-      }
-      
-      console.log(`✅ Work query ${id} deleted successfully`);
-      
-      res.status(200).json({
-        success: true,
-        message: 'Work query deleted successfully'
-      });
-    } catch (error: any) {
-      console.error('❌ Error deleting work query:', error);
-      res.status(500).json({
+// Delete work query
+async deleteWorkQuery(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    
+    if (!id) {
+      return res.status(400).json({
         success: false,
-        message: 'Failed to delete work query'
+        message: 'Query ID is required'
       });
     }
-  }
 
+    console.log(`🗑️ Deleting work query: ${id}`);
+    
+    // First, get the query to check status
+    const query = await workQueryService.getWorkQueryById(id);
+    
+    if (!query) {
+      return res.status(404).json({
+        success: false,
+        message: 'Work query not found'
+      });
+    }
+
+    // Optional: Add validation for deletion
+    if (query.status === 'in-progress') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete a query that is in progress'
+      });
+    }
+
+    if (query.status === 'resolved') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete a resolved query'
+      });
+    }
+
+    // Perform deletion
+    const deletedQuery = await workQueryService.deleteWorkQuery(id);
+    
+    console.log(`✅ Work query ${id} deleted successfully`);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Work query deleted successfully',
+      data: deletedQuery
+    });
+  } catch (error: any) {
+    console.error('❌ Error deleting work query:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete work query'
+    });
+  }
+}
   // Get statistics
   async getStatistics(req: Request, res: Response) {
     try {

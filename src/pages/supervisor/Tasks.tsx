@@ -1,1266 +1,1667 @@
 import { useState, useEffect } from "react";
+import { useRole, User } from "@/context/RoleContext";
+import { DashboardHeader } from "@/components/shared/DashboardHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
-  Play, 
-  CheckCircle, 
-  Clock, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Search,
-  Filter,
-  User,
-  Building,
-  Users,
-  AlertCircle,
-  Calendar,
-  MessageSquare,
-  Paperclip,
-  Eye,
-  Download,
-  Upload
+  Plus, Search, Eye, Edit, Trash2, Loader2, AlertCircle, 
+  Users, Shield, ListFilter, RefreshCw, UserCheck, FileText, Building,
+  AlertTriangle
 } from "lucide-react";
 import { toast } from "sonner";
+import { motion } from "framer-motion";
+import { taskService, type Assignee, type Site as TaskServiceSite } from "@/services/TaskService";
 
-// Define types for the data
-interface Attachment {
-  id: string;
-  filename: string;
-  url: string;
-  uploadedAt: string;
-  size: number;
-  type: string;
+// Types - Updated to match your data structure
+interface Employee {
+  _id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  role: "employee" | "staff" | "manager" | "supervisor";
+  site?: string;
+  isActive?: boolean;
+  department?: string;
 }
 
-interface HourlyUpdate {
-  id: string;
-  timestamp: string;
-  content: string;
-  submittedBy: string;
+interface Site {
+  _id: string;
+  name: string;
+  clientName: string;
+  location: string;
+  status: string;
+  managerCount?: number;
+  supervisorCount?: number;
+  employeeCount?: number;
 }
 
+// Task interface for supervisor
 interface Task {
-  id: string;
+  _id: string;
   title: string;
   description: string;
   assignedTo: string;
-  assignedBy: string;
+  assignedToName: string;
   priority: "high" | "medium" | "low";
-  status: "pending" | "in-progress" | "completed";
+  status: "pending" | "in-progress" | "completed" | "cancelled";
   deadline: string;
-  dueDateTime: string;
+  dueDateTime?: string;
   siteId: string;
-  attachments: Attachment[];
-  hourlyUpdates: HourlyUpdate[];
+  siteName: string;
+  clientName: string;
+  taskType?: string;
+  attachments: any[];
+  hourlyUpdates: any[];
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string;
+  createdById?: string;
+  source: "superadmin" | "manager" | "supervisor";
+  isAssignedToMe?: boolean;
+  isCreatedByMe?: boolean;
+  assignedToRole?: "employee" | "supervisor" | "staff" | "manager";
 }
 
-// Mock sites data
-const initialSites = [
-  { id: "1", name: "Tech Park Building", clientName: "Tech Solutions Inc.", status: "active", staffDeployment: [{ role: "Security Guard", count: 2 }, { role: "Housekeeping", count: 1 }] },
-  { id: "2", name: "Green Valley Mall", clientName: "Green Valley Group", status: "active", staffDeployment: [{ role: "Security Guard", count: 3 }, { role: "Supervisor", count: 1 }, { role: "Housekeeping", count: 2 }] },
-  { id: "3", name: "Corporate Tower", clientName: "Global Corp", status: "inactive", staffDeployment: [{ role: "Security Guard", count: 4 }, { role: "Supervisor", count: 1 }] },
-];
+// View modes for supervisor
+type SupervisorViewMode = "assigned" | "created" | "site" | "team" | "all";
 
-// Mock tasks data
-const initialTasks: Task[] = [
-  {
-    id: "1",
-    title: "Security Patrol - Night Shift",
-    description: "Complete nightly security patrols around the perimeter",
-    assignedTo: "EMP001",
-    assignedBy: "supervisor-a",
-    priority: "high",
-    status: "pending",
-    deadline: "2024-01-20",
-    dueDateTime: "2024-01-20T23:00:00",
-    siteId: "1",
-    attachments: [],
-    hourlyUpdates: []
-  },
-  {
-    id: "2",
-    title: "Lobby Cleaning",
-    description: "Thorough cleaning of main lobby area",
-    assignedTo: "EMP002",
-    assignedBy: "supervisor-a",
-    priority: "medium",
-    status: "in-progress",
-    deadline: "2024-01-18",
-    dueDateTime: "2024-01-18T14:00:00",
-    siteId: "1",
-    attachments: [],
-    hourlyUpdates: []
-  },
-  {
-    id: "3",
-    title: "Security Check - Morning",
-    description: "Morning security check of all entry points",
-    assignedTo: "supervisor-a",
-    assignedBy: "admin-1",
-    priority: "high",
-    status: "completed",
-    deadline: "2024-01-15",
-    dueDateTime: "2024-01-15T09:00:00",
-    siteId: "2",
-    attachments: [],
-    hourlyUpdates: []
-  },
-  {
-    id: "4",
-    title: "Parking Lot Inspection",
-    description: "Inspect parking lot security cameras",
-    assignedTo: "EMP004",
-    assignedBy: "supervisor-a",
-    priority: "low",
-    status: "pending",
-    deadline: "2024-01-22",
-    dueDateTime: "2024-01-22T16:00:00",
-    siteId: "2",
-    attachments: [],
-    hourlyUpdates: []
-  },
-  {
-    id: "5",
-    title: "Emergency Drill Preparation",
-    description: "Prepare for monthly emergency drill",
-    assignedTo: "supervisor-a",
-    assignedBy: "admin-1",
-    priority: "high",
-    status: "in-progress",
-    deadline: "2024-01-25",
-    dueDateTime: "2024-01-25T10:00:00",
-    siteId: "2",
-    attachments: [],
-    hourlyUpdates: []
-  }
-];
-
-// Mock current logged-in supervisor
-const currentSupervisor = {
-  id: "supervisor-a",
-  name: "Mike Johnson",
-  role: "supervisor",
-  assignedSiteIds: ["1", "2"], // Sites assigned to this supervisor
-  managedStaff: ["EMP001", "EMP002", "EMP004", "EMP005"] // Staff IDs managed by this supervisor
-};
-
-// Mock staff members for the supervisor
-const supervisorStaff = [
-  { id: "EMP001", name: "Rajesh Kumar", role: "Security Guard", siteId: "1" },
-  { id: "EMP002", name: "Priya Sharma", role: "Housekeeping", siteId: "1" },
-  { id: "EMP003", name: "Amit Patel", role: "Supervisor", siteId: "2" },
-  { id: "EMP004", name: "Sunita Reddy", role: "Security Guard", siteId: "2" },
-  { id: "EMP005", name: "Mohan Das", role: "Housekeeping", siteId: "2" }
-];
-
-const Tasks = () => {
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
-  const [filter, setFilter] = useState("all");
-  const [showAddForm, setShowAddForm] = useState(false);
+const SupervisorTasks = () => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedSite, setSelectedSite] = useState("all");
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [showUpdatesDialog, setShowUpdatesDialog] = useState(false);
-  const [showAttachmentsDialog, setShowAttachmentsDialog] = useState(false);
-  const [hourlyUpdateText, setHourlyUpdateText] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [loading, setLoading] = useState({
+    tasks: false,
+    employees: false,
+    sites: false,
+    myTasks: false
+  });
+  
+  const [viewMode, setViewMode] = useState<SupervisorViewMode>("assigned");
+  const [activeTab, setActiveTab] = useState("all");
+  
+  const { user: currentUser, isAuthenticated } = useRole();
+  
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [sites, setSites] = useState<Site[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [myAssignedTasks, setMyAssignedTasks] = useState<Task[]>([]);
   
   const [newTask, setNewTask] = useState({
     title: "",
     description: "",
     assignedTo: "",
-    priority: "medium",
+    assignedToName: "",
+    assignedToRole: "employee" as "employee" | "self",
+    siteId: "",
+    siteName: "",
+    clientName: "",
+    priority: "medium" as "high" | "medium" | "low",
     deadline: "",
     dueDateTime: "",
-    siteId: ""
+    taskType: "general"
   });
 
-  // Get sites assigned to this supervisor
-  const assignedSites = initialSites.filter(site => 
-    currentSupervisor.assignedSiteIds.includes(site.id)
-  );
-
-  // Get staff managed by this supervisor (only for assigned sites)
-  const managedStaff = supervisorStaff.filter(staff => 
-    currentSupervisor.managedStaff.includes(staff.id) && 
-    currentSupervisor.assignedSiteIds.includes(staff.siteId)
-  );
-
-  // Filter tasks to show only those assigned to supervisor or assigned by supervisor to their staff
-  const filteredTasks = tasks.filter(task => {
-    if (!task) return false;
-    
-    // Show tasks assigned to supervisor OR tasks assigned by supervisor to their staff
-    const isAssignedToSupervisor = task.assignedTo === currentSupervisor.id;
-    const isAssignedBySupervisor = task.assignedBy === currentSupervisor.id;
-    const isAssignedToManagedStaff = managedStaff.some(staff => staff.id === task.assignedTo);
-    
-    if (!(isAssignedToSupervisor || isAssignedBySupervisor || isAssignedToManagedStaff)) {
-      return false;
-    }
-    
-    // Check if task site is in supervisor's assigned sites
-    if (!currentSupervisor.assignedSiteIds.includes(task.siteId)) {
-      return false;
-    }
-    
-    // Apply status filter
-    if (filter !== "all" && task.status !== filter) return false;
-    
-    // Apply site filter
-    if (selectedSite !== "all" && task.siteId !== selectedSite) return false;
-    
-    // Apply search filter
-    const matchesSearch = 
-      task.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.assignedTo?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.description?.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    return matchesSearch;
-  });
-
-  // Get staff for a specific site
-  const getStaffForSite = (siteId: string) => {
-    return managedStaff.filter(staff => staff.siteId === siteId);
+  // Get IDs of employees managed by this supervisor
+  const getSupervisorEmployeeIds = (): string[] => {
+    return employees
+      .filter(emp => emp.role === "employee" || emp.role === "staff")
+      .map(emp => emp._id);
   };
 
-  // Get site name
-  const getSiteName = (siteId: string) => {
-    const site = assignedSites.find(s => s.id === siteId);
-    return site ? site.name : "Unknown Site";
+  // Get supervisor's site IDs and names
+  const getSupervisorSiteIds = (): string[] => {
+    return sites.map(site => site._id);
   };
 
-  // Get client name
-  const getClientName = (siteId: string) => {
-    const site = assignedSites.find(s => s.id === siteId);
-    return site ? site.clientName : "Unknown Client";
+  const getSupervisorSiteNames = (): string[] => {
+    return sites.map(site => site.name);
   };
 
-  // Get staff name
-  const getStaffName = (staffId: string) => {
-    const staff = managedStaff.find(s => s.id === staffId);
-    return staff ? staff.name : staffId;
-  };
-
-  // Get staff role
-  const getStaffRole = (staffId: string) => {
-    const staff = managedStaff.find(s => s.id === staffId);
-    return staff ? staff.role : "Staff";
-  };
-
-  // Get priority color
-  const getPriorityColor = (priority: string) => {
-    const colors = { high: "destructive", medium: "default", low: "secondary" };
-    return colors[priority as keyof typeof colors] || "outline";
-  };
-
-  // Get status color
-  const getStatusColor = (status: string) => {
-    const colors = { 
-      completed: "default", 
-      "in-progress": "default", 
-      pending: "secondary" 
-    };
-    return colors[status as keyof typeof colors] || "outline";
-  };
-
-  // Format date time
-  const formatDateTime = (dateTimeString: string) => {
-    if (!dateTimeString) return "No date set";
+  // Fetch sites assigned to this supervisor
+  const fetchSites = async () => {
+    if (!currentUser) return;
+    
     try {
-      const date = new Date(dateTimeString);
-      return date.toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch {
-      return "Invalid date";
+      setLoading(prev => ({ ...prev, sites: true }));
+      
+      const sitesData = await taskService.getAllSites();
+      
+      let filteredSites: Site[] = [];
+      
+      if (Array.isArray(sitesData)) {
+        filteredSites = sitesData.map((site: any) => ({
+          _id: site._id || site.id,
+          name: site.name,
+          clientName: site.clientName || site.client,
+          location: site.location || "",
+          status: site.status || "active",
+          managerCount: site.managerCount || 0,
+          supervisorCount: site.supervisorCount || 0,
+          employeeCount: site.employeeCount || 0
+        }));
+        
+        if (currentUser.site) {
+          if (typeof currentUser.site === 'string') {
+            filteredSites = filteredSites.filter((site: Site) => 
+              site._id === currentUser.site || site.name === currentUser.site
+            );
+          } else if (Array.isArray(currentUser.site)) {
+            filteredSites = filteredSites.filter((site: Site) => 
+              currentUser.site?.includes(site._id) || currentUser.site?.includes(site.name)
+            );
+          }
+        }
+      }
+      
+      setSites(filteredSites);
+      
+      if (filteredSites.length === 1 && !newTask.siteId) {
+        const site = filteredSites[0];
+        setNewTask(prev => ({
+          ...prev,
+          siteId: site._id,
+          siteName: site.name,
+          clientName: site.clientName
+        }));
+      }
+      
+    } catch (error: any) {
+      console.error('Error fetching sites:', error);
+      toast.error(`Failed to load sites: ${error.message}`);
+      
+      const demoSites: Site[] = [
+        {
+          _id: "site_1",
+          name: "Site A",
+          clientName: "Client A",
+          location: "Location A",
+          status: "active",
+          managerCount: 1,
+          supervisorCount: 2,
+          employeeCount: 10
+        }
+      ];
+      setSites(demoSites);
+    } finally {
+      setLoading(prev => ({ ...prev, sites: false }));
     }
   };
 
-  // Add new task
-  const addTask = () => {
-    if (!newTask.title || !newTask.assignedTo || !newTask.deadline || !newTask.siteId) {
-      toast.error("Please fill all required fields");
-      return;
-    }
-
-    // Check if selected site is assigned to supervisor
-    if (!currentSupervisor.assignedSiteIds.includes(newTask.siteId)) {
-      toast.error("You can only assign tasks to your assigned sites");
-      return;
-    }
-
-    // Check if assigned staff is managed by supervisor
-    if (newTask.assignedTo !== currentSupervisor.id && !managedStaff.some(staff => staff.id === newTask.assignedTo)) {
-      toast.error("You can only assign tasks to yourself or your managed staff");
-      return;
-    }
-
-    const task: Task = {
-      id: Date.now().toString(),
-      title: newTask.title,
-      description: newTask.description,
-      assignedTo: newTask.assignedTo,
-      assignedBy: currentSupervisor.id,
-      priority: newTask.priority as "high" | "medium" | "low",
-      status: "pending",
-      deadline: newTask.deadline,
-      dueDateTime: newTask.dueDateTime,
-      siteId: newTask.siteId,
-      attachments: [],
-      hourlyUpdates: []
-    };
+  // Fetch employees for supervisor - UPDATED VERSION
+  const fetchEmployeesByRole = async () => {
+    if (!currentUser) return;
     
-    setTasks([...tasks, task]);
-    setNewTask({
-      title: "",
-      description: "",
-      assignedTo: "",
-      priority: "medium",
-      deadline: "",
-      dueDateTime: "",
-      siteId: ""
-    });
-    setShowAddForm(false);
-    toast.success("Task assigned successfully!");
+    try {
+      setLoading(prev => ({ ...prev, employees: true }));
+      
+      let employeeAssignees: any[] = [];
+      
+      try {
+        // Method 1: Try to fetch employees from the employee API directly
+        const response = await fetch('/api/employees');
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.employees) {
+            employeeAssignees = result.employees;
+            console.log("Employees fetched from /api/employees:", employeeAssignees);
+          }
+        }
+      } catch (apiError) {
+        console.log("Could not fetch from employee API, trying task service...");
+        
+        try {
+          // Method 2: Get all assignees and filter for employees
+          const allAssignees = await taskService.getAllAssignees();
+          
+          // Filter for employees - exclude managers and supervisors
+          employeeAssignees = allAssignees.filter((assignee: any) => {
+            const role = assignee.role?.toLowerCase();
+            return role !== 'manager' && role !== 'supervisor' && role !== 'superadmin' && role !== 'admin';
+          });
+          
+          console.log("Employees filtered from all assignees:", employeeAssignees);
+          
+        } catch (taskServiceError) {
+          console.error("Error from taskService:", taskServiceError);
+        }
+      }
+      
+      // Always include the supervisor themselves as an assignee option
+      const supervisorAsEmployee: Employee = {
+        _id: currentUser._id,
+        name: currentUser.name,
+        email: currentUser.email || '',
+        phone: currentUser.phone || '',
+        role: "supervisor" as const,
+        site: currentUser.site || '',
+        department: 'Supervisor',
+        isActive: true
+      };
+      
+      // Map fetched employees to Employee interface
+      const fetchedEmployees = employeeAssignees.map((assignee: any) => ({
+        _id: assignee._id || assignee.id,
+        name: assignee.name,
+        email: assignee.email || '',
+        phone: assignee.phone || '',
+        role: (assignee.role?.toLowerCase() === 'staff' ? 'employee' : assignee.role?.toLowerCase() || 'employee') as "employee" | "staff" | "manager" | "supervisor",
+        site: assignee.siteName || assignee.site || currentUser.site,
+        department: assignee.department || 'General',
+        isActive: assignee.status === 'active' || assignee.isActive !== false
+      })) as Employee[];
+      
+      // Combine supervisor with fetched employees
+      const allEmployees = [supervisorAsEmployee, ...fetchedEmployees];
+      
+      console.log("Final employees for supervisor:", allEmployees);
+      setEmployees(allEmployees);
+      
+    } catch (error: any) {
+      console.error('Error fetching employees:', error);
+      toast.error(`Failed to load employees: ${error.message}`);
+      
+      // At minimum, include the supervisor as an employee option
+      const demoEmployees: Employee[] = [
+        {
+          _id: currentUser._id,
+          name: currentUser.name,
+          email: currentUser.email || "supervisor@example.com",
+          phone: currentUser.phone || "123-456-7890",
+          role: "supervisor",
+          site: currentUser.site || "Site A",
+          department: "Supervisor"
+        },
+        {
+          _id: "emp_1",
+          name: "John Doe",
+          email: "john@example.com",
+          phone: "123-456-7890",
+          role: "employee",
+          site: currentUser.site || "Site A",
+          department: "Security"
+        },
+        {
+          _id: "emp_2",
+          name: "Jane Smith",
+          email: "jane@example.com",
+          phone: "123-456-7891",
+          role: "employee",
+          site: currentUser.site || "Site A",
+          department: "Housekeeping"
+        }
+      ];
+      setEmployees(demoEmployees);
+    } finally {
+      setLoading(prev => ({ ...prev, employees: false }));
+    }
+  };
+
+  // Fetch tasks specifically assigned to supervisor (from manager/admin)
+  const fetchMyAssignedTasks = async () => {
+    if (!currentUser) return;
+    
+    try {
+      setLoading(prev => ({ ...prev, myTasks: true }));
+      
+      let assignedTasks: Task[] = [];
+      
+      try {
+        const tasks = await taskService.getTasksByAssignee(currentUser._id);
+        
+        assignedTasks = tasks.map((task: any) => ({
+          ...task,
+          source: task.createdBy === currentUser._id ? "supervisor" : 
+                 (task.createdByRole === 'manager' || task.createdBy === 'manager') ? "manager" : "superadmin",
+          isAssignedToMe: true,
+          isCreatedByMe: task.createdBy === currentUser._id,
+          assignedToRole: "supervisor"
+        }));
+      } catch (error) {
+        console.error("Error fetching assigned tasks:", error);
+        const allTasks = await taskService.getAllTasks();
+        assignedTasks = allTasks
+          .filter((task: any) => task.assignedTo === currentUser._id)
+          .map((task: any) => ({
+            ...task,
+            source: task.createdBy === currentUser._id ? "supervisor" : 
+                   (task.createdByRole === 'manager' || task.createdBy === 'manager') ? "manager" : "superadmin",
+            isAssignedToMe: true,
+            isCreatedByMe: task.createdBy === currentUser._id,
+            assignedToRole: "supervisor"
+          }));
+      }
+      
+      setMyAssignedTasks(assignedTasks);
+      
+    } catch (error: any) {
+      console.error('Error fetching assigned tasks:', error);
+      toast.error(`Failed to load your tasks: ${error.message}`);
+    } finally {
+      setLoading(prev => ({ ...prev, myTasks: false }));
+    }
+  };
+
+  // Fetch tasks based on view mode
+  const fetchTasks = async () => {
+    if (!currentUser) return;
+    
+    try {
+      setLoading(prev => ({ ...prev, tasks: true }));
+      
+      let fetchedTasks: Task[] = [];
+      
+      try {
+        switch(viewMode) {
+          case "assigned":
+            fetchedTasks = await fetchAssignedTasks();
+            break;
+            
+          case "created":
+            fetchedTasks = await fetchCreatedTasks();
+            break;
+            
+          case "team":
+            fetchedTasks = await fetchTeamTasks();
+            break;
+            
+          case "site":
+            fetchedTasks = await fetchSiteTasks();
+            break;
+            
+          case "all":
+          default:
+            fetchedTasks = await fetchAllTasks();
+            break;
+        }
+        
+      } catch (error) {
+        console.error("Error fetching tasks from taskService:", error);
+        
+        fetchedTasks = getDemoTasks();
+        
+        toast.warning("Using demo data. Check your backend connection.");
+      }
+      
+      setTasks(fetchedTasks);
+      
+    } catch (error: any) {
+      console.error('Error in fetchTasks:', error);
+      toast.error(`Failed to load tasks: ${error.message}`);
+      
+      setTasks(getDemoTasks());
+    } finally {
+      setLoading(prev => ({ ...prev, tasks: false }));
+    }
+  };
+
+  // Helper function for assigned tasks - ONLY tasks assigned to logged-in supervisor
+  const fetchAssignedTasks = async (): Promise<Task[]> => {
+    return myAssignedTasks.filter(task => task.isAssignedToMe);
+  };
+
+  // Helper function for created tasks - ONLY tasks created by logged-in supervisor
+  const fetchCreatedTasks = async (): Promise<Task[]> => {
+    try {
+      const tasks = await taskService.getTasksByCreator(currentUser._id);
+      return tasks.map((task: any) => ({
+        ...task,
+        source: "supervisor",
+        isAssignedToMe: task.assignedTo === currentUser._id,
+        isCreatedByMe: true,
+        assignedToRole: task.assignedTo === currentUser._id ? "supervisor" : "employee"
+      }));
+    } catch (error) {
+      console.error("Error fetching created tasks:", error);
+      return [];
+    }
+  };
+
+  // Helper function for team tasks - ONLY tasks assigned to supervisor's employees
+  const fetchTeamTasks = async (): Promise<Task[]> => {
+    try {
+      const allTasks = await taskService.getAllTasks();
+      
+      // Get IDs of employees managed by this supervisor
+      const supervisorEmployeeIds = getSupervisorEmployeeIds();
+      
+      return allTasks
+        .filter((task: any) => 
+          // Show tasks assigned to supervisor's employees (NOT supervisor themselves)
+          supervisorEmployeeIds.includes(task.assignedTo)
+        )
+        .map((task: any) => ({
+          ...task,
+          source: task.createdBy === currentUser._id ? "supervisor" : 
+                 (task.createdByRole === 'manager' || task.createdBy === 'manager') ? "manager" : "superadmin",
+          isAssignedToMe: task.assignedTo === currentUser._id,
+          isCreatedByMe: task.createdBy === currentUser._id,
+          assignedToRole: "employee"
+        }));
+    } catch (error) {
+      console.error("Error fetching team tasks:", error);
+      return [];
+    }
+  };
+
+  // Helper function for site tasks - ONLY tasks on supervisor's sites AND assigned to supervisor/their employees
+  const fetchSiteTasks = async (): Promise<Task[]> => {
+    try {
+      const allTasks = await taskService.getAllTasks();
+      
+      // Get supervisor's data
+      const supervisorEmployeeIds = getSupervisorEmployeeIds();
+      const siteIds = getSupervisorSiteIds();
+      const siteNames = getSupervisorSiteNames();
+      
+      const siteTasks = allTasks
+        .filter((task: any) => {
+          // First check if task is on supervisor's site
+          const isOnSupervisorSite = 
+            siteIds.includes(task.siteId) || 
+            siteNames.includes(task.siteName);
+          
+          if (!isOnSupervisorSite) return false;
+          
+          // Then check if task is assigned to supervisor OR their employees
+          const isAssignedToSupervisorOrTeam = 
+            task.assignedTo === currentUser._id ||
+            supervisorEmployeeIds.includes(task.assignedTo);
+          
+          return isAssignedToSupervisorOrTeam;
+        })
+        .map((task: any) => ({
+          ...task,
+          source: task.createdBy === currentUser._id ? "supervisor" : 
+                 (task.createdByRole === 'manager' || task.createdBy === 'manager') ? "manager" : "superadmin",
+          isAssignedToMe: task.assignedTo === currentUser._id,
+          isCreatedByMe: task.createdBy === currentUser._id,
+          assignedToRole: task.assignedTo === currentUser._id ? "supervisor" : "employee"
+        }));
+      
+      return siteTasks;
+    } catch (error) {
+      console.error("Error fetching site tasks:", error);
+      return [];
+    }
+  };
+
+  // Helper function for all tasks - ONLY tasks supervisor has direct involvement with
+  const fetchAllTasks = async (): Promise<Task[]> => {
+    try {
+      const allTasks = await taskService.getAllTasks();
+      
+      // Get supervisor's data
+      const supervisorEmployeeIds = getSupervisorEmployeeIds();
+      const siteIds = getSupervisorSiteIds();
+      const siteNames = getSupervisorSiteNames();
+      
+      const filteredTasks = allTasks.filter((task: any) => {
+        // Supervisor can see tasks if:
+        
+        // 1. Task is assigned to supervisor
+        const isAssignedToSupervisor = task.assignedTo === currentUser._id;
+        
+        // 2. Task is created by supervisor
+        const isCreatedBySupervisor = task.createdBy === currentUser._id;
+        
+        // 3. Task is assigned to supervisor's employees
+        const isAssignedToSupervisorEmployee = supervisorEmployeeIds.includes(task.assignedTo);
+        
+        // 4. Task is on supervisor's site AND assigned to supervisor/their employees
+        const isOnSupervisorSite = siteIds.includes(task.siteId) || siteNames.includes(task.siteName);
+        const isAssignedToSupervisorOrTeam = task.assignedTo === currentUser._id || supervisorEmployeeIds.includes(task.assignedTo);
+        const isOnSiteAndAssignedToTeam = isOnSupervisorSite && isAssignedToSupervisorOrTeam;
+        
+        return isAssignedToSupervisor || 
+               isCreatedBySupervisor || 
+               isAssignedToSupervisorEmployee || 
+               isOnSiteAndAssignedToTeam;
+      });
+      
+      return filteredTasks.map((task: any) => ({
+        ...task,
+        source: task.createdBy === currentUser._id ? "supervisor" : 
+               (task.createdByRole === 'manager' || task.createdBy === 'manager') ? "manager" : "superadmin",
+        isAssignedToMe: task.assignedTo === currentUser._id,
+        isCreatedByMe: task.createdBy === currentUser._id,
+        assignedToRole: task.assignedTo === currentUser._id ? "supervisor" : "employee"
+      }));
+    } catch (error) {
+      console.error("Error fetching all tasks:", error);
+      return [];
+    }
+  };
+
+  // Helper function for demo tasks - ONLY show tasks for logged-in supervisor
+  const getDemoTasks = (): Task[] => {
+    const today = new Date();
+    const nextWeek = new Date(today);
+    nextWeek.setDate(today.getDate() + 7);
+    const lastWeek = new Date(today);
+    lastWeek.setDate(today.getDate() - 7);
+    
+    // Get supervisor's employee IDs for demo
+    const supervisorEmployeeIds = getSupervisorEmployeeIds();
+    
+    const demoTasks: Task[] = [
+      // Tasks assigned TO current supervisor (from manager/admin)
+      {
+        _id: "assigned_to_sup_1",
+        title: "Weekly Site Review",
+        description: "Review weekly site operations and submit report",
+        assignedTo: currentUser?._id || "supervisor_id",
+        assignedToName: currentUser?.name || "Supervisor",
+        assignedToRole: "supervisor",
+        priority: "high",
+        status: "pending",
+        deadline: nextWeek.toISOString().split('T')[0],
+        siteId: "site_1",
+        siteName: "Site A",
+        clientName: "Client A",
+        taskType: "report",
+        attachments: [],
+        hourlyUpdates: [],
+        createdAt: today.toISOString(),
+        updatedAt: today.toISOString(),
+        createdBy: "manager_id",
+        createdById: "manager_id",
+        source: "manager",
+        isAssignedToMe: true,
+        isCreatedByMe: false
+      },
+      
+      // Tasks created BY current supervisor (assigned to THEIR employees)
+      {
+        _id: "created_by_sup_1",
+        title: "Floor Cleaning Schedule",
+        description: "Clean all floors in building A",
+        assignedTo: supervisorEmployeeIds[0] || "emp_1",
+        assignedToName: "John Doe",
+        assignedToRole: "employee",
+        priority: "medium",
+        status: "in-progress",
+        deadline: today.toISOString().split('T')[0],
+        siteId: "site_1",
+        siteName: "Site A",
+        clientName: "Client A",
+        taskType: "cleaning",
+        attachments: [],
+        hourlyUpdates: [],
+        createdAt: today.toISOString(),
+        updatedAt: today.toISOString(),
+        createdBy: currentUser?._id,
+        createdById: currentUser?._id,
+        source: "supervisor",
+        isAssignedToMe: false,
+        isCreatedByMe: true
+      },
+      
+      // Tasks assigned to supervisor's employees (by others)
+      {
+        _id: "emp_task_1",
+        title: "Security Check",
+        description: "Morning security check of premises",
+        assignedTo: supervisorEmployeeIds[1] || "emp_2",
+        assignedToName: "Jane Smith",
+        assignedToRole: "employee",
+        priority: "high",
+        status: "pending",
+        deadline: nextWeek.toISOString().split('T')[0],
+        siteId: "site_1",
+        siteName: "Site A",
+        clientName: "Client A",
+        taskType: "security",
+        attachments: [],
+        hourlyUpdates: [],
+        createdAt: lastWeek.toISOString(),
+        updatedAt: lastWeek.toISOString(),
+        createdBy: "another_manager_id",
+        createdById: "another_manager_id",
+        source: "manager",
+        isAssignedToMe: false,
+        isCreatedByMe: false
+      }
+    ];
+    
+    return demoTasks;
+  };
+
+  // Initialize data
+  useEffect(() => {
+    if (currentUser && currentUser.role === "supervisor") {
+      fetchSites();
+      fetchEmployeesByRole();
+      fetchMyAssignedTasks();
+      fetchTasks();
+    }
+  }, [currentUser]);
+
+  // Refresh tasks when view mode changes
+  useEffect(() => {
+    if (currentUser) {
+      fetchTasks();
+    }
+  }, [viewMode]);
+
+  // Refresh when myAssignedTasks changes
+  useEffect(() => {
+    if (viewMode === "assigned" && myAssignedTasks.length > 0) {
+      setTasks(myAssignedTasks.filter(task => task.isAssignedToMe));
+    }
+  }, [myAssignedTasks, viewMode]);
+
+  // Refresh employees when sites change
+  useEffect(() => {
+    if (sites.length > 0 && currentUser?.role === "supervisor") {
+      fetchEmployeesByRole();
+    }
+  }, [sites]);
+
+  // Handle form input changes
+  const handleInputChange = (field: string, value: string) => {
+    setNewTask(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Handle site selection
+  const handleSiteSelect = (siteId: string) => {
+    const selectedSite = sites.find(s => s._id === siteId);
+    if (selectedSite) {
+      setNewTask(prev => ({ 
+        ...prev, 
+        siteId: siteId,
+        siteName: selectedSite.name,
+        clientName: selectedSite.clientName,
+        assignedTo: "",
+        assignedToName: ""
+      }));
+      
+      fetchEmployeesByRole();
+    }
+  };
+
+  // Handle assignee selection
+  const handleAssigneeSelect = (assigneeId: string, isSelf: boolean = false) => {
+    if (isSelf) {
+      setNewTask(prev => ({ 
+        ...prev, 
+        assignedTo: currentUser?._id || "",
+        assignedToName: currentUser?.name || "Yourself",
+        assignedToRole: "self"
+      }));
+    } else {
+      const selectedEmployee = employees.find(e => e._id === assigneeId);
+      if (selectedEmployee) {
+        setNewTask(prev => ({ 
+          ...prev, 
+          assignedTo: assigneeId,
+          assignedToName: selectedEmployee.name,
+          assignedToRole: selectedEmployee.role === "supervisor" ? "self" : "employee"
+        }));
+      }
+    }
+  };
+
+  // Add new task (supervisor can assign to employees or self)
+  const handleAddTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!currentUser) {
+      toast.error("Please login to assign tasks");
+      return;
+    }
+
+    if (!newTask.assignedTo || !newTask.siteId) {
+      toast.error("Please select both an assignee and a site");
+      return;
+    }
+    
+    try {
+      const isAssigningToSelf = newTask.assignedToRole === "self" || newTask.assignedTo === currentUser._id;
+      const assigneeName = isAssigningToSelf ? currentUser.name : newTask.assignedToName;
+      
+      const taskData = {
+        title: newTask.title,
+        description: newTask.description,
+        assignedTo: newTask.assignedTo,
+        assignedToName: assigneeName,
+        assignedToRole: isAssigningToSelf ? "supervisor" : "employee",
+        priority: newTask.priority,
+        status: "pending" as const,
+        deadline: newTask.deadline,
+        dueDateTime: newTask.deadline ? `${newTask.deadline}T23:59:59` : "",
+        siteId: newTask.siteId,
+        siteName: newTask.siteName,
+        clientName: newTask.clientName,
+        taskType: newTask.taskType || "general",
+        createdBy: currentUser._id,
+        createdByRole: "supervisor"
+      };
+      
+      const createdTask = await taskService.createTask(taskData);
+      
+      const taskWithSource: Task = {
+        ...createdTask,
+        source: "supervisor",
+        isAssignedToMe: createdTask.assignedTo === currentUser._id,
+        isCreatedByMe: true,
+        assignedToRole: isAssigningToSelf ? "supervisor" : "employee"
+      };
+      
+      setTasks(prev => [...prev, taskWithSource]);
+      
+      if (isAssigningToSelf) {
+        setMyAssignedTasks(prev => [...prev, taskWithSource]);
+      }
+      
+      toast.success("Task assigned successfully!");
+      
+      setDialogOpen(false);
+      setNewTask({ 
+        title: "", 
+        description: "", 
+        assignedTo: "",
+        assignedToName: "",
+        assignedToRole: "employee",
+        siteId: "",
+        siteName: "",
+        clientName: "",
+        priority: "medium", 
+        deadline: "",
+        dueDateTime: "",
+        taskType: "general"
+      });
+      
+      setTimeout(() => fetchTasks(), 1000);
+      
+    } catch (err: any) {
+      console.error('Error creating task:', err);
+      toast.error(err.message || "Failed to assign task. Please try again.");
+      
+      const isAssigningToSelf = newTask.assignedToRole === "self" || newTask.assignedTo === currentUser._id;
+      const assigneeName = isAssigningToSelf ? currentUser.name : newTask.assignedToName;
+      
+      const demoTask: Task = {
+        _id: `demo_${Date.now()}`,
+        title: newTask.title,
+        description: newTask.description,
+        assignedTo: newTask.assignedTo,
+        assignedToName: assigneeName,
+        assignedToRole: isAssigningToSelf ? "supervisor" : "employee",
+        priority: newTask.priority,
+        status: "pending",
+        deadline: newTask.deadline,
+        siteId: newTask.siteId,
+        siteName: newTask.siteName,
+        clientName: newTask.clientName,
+        taskType: newTask.taskType || "general",
+        attachments: [],
+        hourlyUpdates: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        createdBy: currentUser._id,
+        createdById: currentUser._id,
+        source: "supervisor",
+        isAssignedToMe: isAssigningToSelf,
+        isCreatedByMe: true
+      };
+      
+      setTasks(prev => [...prev, demoTask]);
+      
+      if (isAssigningToSelf) {
+        setMyAssignedTasks(prev => [...prev, demoTask]);
+      }
+      
+      toast.success("Task assigned (demo mode)! Check console for details.");
+      
+      setDialogOpen(false);
+      setNewTask({ 
+        title: "", 
+        description: "", 
+        assignedTo: "",
+        assignedToName: "",
+        assignedToRole: "employee",
+        siteId: "",
+        siteName: "",
+        clientName: "",
+        priority: "medium", 
+        deadline: "",
+        dueDateTime: "",
+        taskType: "general"
+      });
+    }
   };
 
   // Update task status
-  const updateStatus = (id: string, newStatus: Task["status"]) => {
-    const task = tasks.find(t => t.id === id);
+  const updateStatus = async (taskId: string, status: string) => {
+    const task = tasks.find(t => t._id === taskId);
     
-    // Check permissions
-    if (!task) return;
+    const canUpdate = 
+      task?.isAssignedToMe || 
+      task?.isCreatedByMe ||
+      (task?.assignedToRole === "employee" && employees.some(e => e._id === task?.assignedTo));
     
-    if (task.assignedTo !== currentSupervisor.id && task.assignedBy !== currentSupervisor.id) {
-      toast.error("You can only update tasks assigned to you or created by you");
+    if (!canUpdate && task?.source === "superadmin") {
+      toast.error("Cannot update superadmin tasks assigned to others");
       return;
     }
     
-    setTasks(tasks.map(task => 
-      task.id === id ? { ...task, status: newStatus } : task
-    ));
-    toast.success(`Task marked as ${newStatus}`);
-  };
-
-  // Start task
-  const startTask = (id: string) => {
-    updateStatus(id, "in-progress");
-  };
-
-  // Complete task
-  const completeTask = (id: string) => {
-    updateStatus(id, "completed");
+    try {
+      await taskService.updateTaskStatus(taskId, { 
+        status: status as "pending" | "in-progress" | "completed" | "cancelled" 
+      });
+      
+      setTasks(tasks.map(t => t._id === taskId ? { 
+        ...t, 
+        status: status as Task['status'] 
+      } : t));
+      
+      if (task?.isAssignedToMe) {
+        setMyAssignedTasks(prev => prev.map(t => t._id === taskId ? { 
+          ...t, 
+          status: status as Task['status'] 
+        } : t));
+      }
+      
+      toast.success("Task status updated!");
+      
+    } catch (err: any) {
+      console.error('Error updating task status:', err);
+      toast.error(err.message || "Failed to update task status");
+    }
   };
 
   // Delete task
-  const deleteTask = (id: string) => {
-    const task = tasks.find(t => t.id === id);
+  const handleDeleteTask = async (taskId: string) => {
+    const task = tasks.find(t => t._id === taskId);
     
-    if (!task) return;
-    
-    // Check permissions
-    if (task.assignedTo !== currentSupervisor.id && task.assignedBy !== currentSupervisor.id) {
-      toast.error("You can only delete tasks assigned to you or created by you");
+    if (!task?.isCreatedByMe) {
+      toast.error("You can only delete tasks you created");
       return;
     }
     
-    if (confirm("Are you sure you want to delete this task?")) {
-      setTasks(tasks.filter(task => task.id !== id));
+    if (!confirm("Are you sure you want to delete this task?")) {
+      return;
+    }
+    
+    try {
+      await taskService.deleteTask(taskId);
+      
+      setTasks(tasks.filter(t => t._id !== taskId));
+      
+      if (task.isAssignedToMe) {
+        setMyAssignedTasks(prev => prev.filter(t => t._id !== taskId));
+      }
+      
       toast.success("Task deleted successfully!");
+    } catch (err: any) {
+      console.error('Error deleting task:', err);
+      toast.error(err.message || "Failed to delete task");
     }
   };
 
-  // Add hourly update
-  const handleAddHourlyUpdate = (taskId: string) => {
-    if (!hourlyUpdateText.trim()) {
-      toast.error("Please enter an update");
-      return;
-    }
+  // View task details
+  const handleViewTask = (task: Task) => {
+    const details = `
+      <div class="space-y-3">
+        <div>
+          <strong>Task:</strong> ${task.title}
+        </div>
+        <div>
+          <strong>Description:</strong> ${task.description}
+        </div>
+        <div>
+          <strong>Assigned To:</strong> ${task.assignedToName}
+          ${task.isAssignedToMe ? '<span style="color: #10b981; font-weight: bold"> ← Assigned to you</span>' : ''}
+          ${task.isCreatedByMe ? '<span style="color: #3b82f6; font-weight: bold"> ← Created by you</span>' : ''}
+        </div>
+        <div>
+          <strong>Role:</strong> ${task.assignedToRole === "supervisor" ? "Supervisor" : "Employee"}
+        </div>
+        <div>
+          <strong>Site:</strong> ${task.siteName}
+        </div>
+        <div>
+          <strong>Client:</strong> ${task.clientName}
+        </div>
+        <div>
+          <strong>Priority:</strong> ${task.priority}
+        </div>
+        <div>
+          <strong>Status:</strong> ${task.status}
+        </div>
+        <div>
+          <strong>Source:</strong> ${task.source === "superadmin" ? "Super Admin" : 
+                                    task.source === "manager" ? "Manager" : "You (Supervisor)"}
+        </div>
+        <div>
+          <strong>Due Date:</strong> ${formatDate(task.deadline)}
+        </div>
+        <div>
+          <strong>Created On:</strong> ${formatDate(task.createdAt)}
+        </div>
+      </div>
+    `;
+    
+    toast.info("Task Details", {
+      description: details,
+      duration: 10000,
+    });
+  };
 
-    const newUpdate: HourlyUpdate = {
-      id: Date.now().toString(),
-      timestamp: new Date().toISOString(),
-      content: hourlyUpdateText,
-      submittedBy: currentSupervisor.id
+  // Filter tasks
+  const filteredTasks = tasks.filter(task => {
+    const matchesSearch = 
+      task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      task.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      task.assignedToName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      task.siteName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      task.clientName.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    let matchesTab = true;
+    if (activeTab === "pending") matchesTab = task.status === "pending";
+    else if (activeTab === "in-progress") matchesTab = task.status === "in-progress";
+    else if (activeTab === "completed") matchesTab = task.status === "completed";
+    else if (activeTab === "cancelled") matchesTab = task.status === "cancelled";
+    else if (activeTab === "assigned-to-me") matchesTab = task.isAssignedToMe === true;
+    else if (activeTab === "created-by-me") matchesTab = task.isCreatedByMe === true;
+    else if (activeTab === "to-employees") matchesTab = task.assignedToRole === "employee" && !task.isAssignedToMe;
+    else if (activeTab === "from-manager") matchesTab = task.source === "manager" && task.isAssignedToMe;
+    
+    return matchesSearch && matchesTab;
+  });
+
+  // Helper functions
+  const getPriorityColor = (priority: string) => {
+    return taskService.getPriorityColor(priority);
+  };
+
+  const getSourceBadge = (task: Task) => {
+    if (task.isAssignedToMe) {
+      return (
+        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+          <UserCheck className="h-3 w-3 mr-1" />
+          Assigned to You
+        </Badge>
+      );
+    }
+    
+    if (task.isCreatedByMe) {
+      return (
+        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+          <FileText className="h-3 w-3 mr-1" />
+          You Created
+        </Badge>
+      );
+    }
+    
+    return task.source === "superadmin" ? (
+      <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+        <Shield className="h-3 w-3 mr-1" />
+        Super Admin
+      </Badge>
+    ) : task.source === "manager" ? (
+      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+        Manager
+      </Badge>
+    ) : (
+      <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">
+        Other Supervisor
+      </Badge>
+    );
+  };
+
+  const getViewModeText = (mode: SupervisorViewMode) => {
+    switch(mode) {
+      case "assigned":
+        return "Tasks Assigned to Me";
+      case "created":
+        return "Tasks I Created";
+      case "team":
+        return "My Team's Tasks";
+      case "site":
+        return "Tasks on My Sites";
+      case "all":
+        return "All My Tasks";
+      default:
+        return "My Tasks";
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return "Not set";
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return dateString;
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch {
+      return dateString;
+    }
+  };
+
+  // Get statistics
+  const getStats = () => {
+    const assignedToMe = tasks.filter(t => t.isAssignedToMe);
+    const createdByMe = tasks.filter(t => t.isCreatedByMe);
+    const teamTasks = tasks.filter(t => t.assignedToRole === "employee" && !t.isAssignedToMe);
+    
+    return {
+      total: tasks.length,
+      assignedToMe: assignedToMe.length,
+      createdByMe: createdByMe.length,
+      teamTasks: teamTasks.length,
+      pending: tasks.filter(t => t.status === "pending").length,
+      inProgress: tasks.filter(t => t.status === "in-progress").length,
+      completed: tasks.filter(t => t.status === "completed").length,
+      sites: sites.length,
+      employees: employees.filter(e => e.role === "employee" || e.role === "staff").length
     };
-
-    setTasks(prev => prev.map(task => {
-      if (task.id === taskId) {
-        const currentUpdates = task.hourlyUpdates || [];
-        return { 
-          ...task, 
-          hourlyUpdates: [...currentUpdates, newUpdate] 
-        };
-      }
-      return task;
-    }));
-
-    setHourlyUpdateText("");
-    toast.success("Hourly update added!");
   };
 
-  // Handle file upload
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, taskId: string) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  const stats = getStats();
 
-    const newAttachments: Attachment[] = Array.from(files).map(file => ({
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-      filename: file.name,
-      url: URL.createObjectURL(file),
-      uploadedAt: new Date().toISOString(),
-      size: file.size,
-      type: file.type
-    }));
-
-    setTasks(prev => prev.map(task => {
-      if (task.id === taskId) {
-        const currentAttachments = task.attachments || [];
-        return { 
-          ...task, 
-          attachments: [...currentAttachments, ...newAttachments] 
-        };
-      }
-      return task;
-    }));
-
-    toast.success(`${files.length} file(s) uploaded successfully!`);
-  };
-
-  // Delete attachment
-  const handleDeleteAttachment = (taskId: string, attachmentId: string) => {
-    setTasks(prev => prev.map(task => {
-      if (task.id === taskId) {
-        const currentAttachments = task.attachments || [];
-        return { 
-          ...task, 
-          attachments: currentAttachments.filter(a => a.id !== attachmentId) 
-        };
-      }
-      return task;
-    }));
-    toast.success("Attachment deleted!");
-  };
-
-  // Get hourly updates count
-  const getHourlyUpdatesCount = (task: Task) => {
-    return (task.hourlyUpdates || []).length;
-  };
-
-  // Get attachments count
-  const getAttachmentsCount = (task: Task) => {
-    return (task.attachments || []).length;
-  };
-
-  // Check if user can modify a task
-  const canModifyTask = (task: Task) => {
-    return task.assignedTo === currentSupervisor.id || task.assignedBy === currentSupervisor.id;
-  };
-
-  // Stats
-  const stats = {
-    total: filteredTasks.length,
-    pending: filteredTasks.filter(t => t.status === "pending").length,
-    inProgress: filteredTasks.filter(t => t.status === "in-progress").length,
-    completed: filteredTasks.filter(t => t.status === "completed").length,
-    myTasks: filteredTasks.filter(t => t.assignedTo === currentSupervisor.id).length,
-    assignedToStaff: filteredTasks.filter(t => t.assignedBy === currentSupervisor.id && t.assignedTo !== currentSupervisor.id).length
-  };
-
-  // Get site staff deployment summary
-  const getSiteStaffSummary = (siteId: string) => {
-    const site = assignedSites.find(s => s.id === siteId);
-    if (!site || !site.staffDeployment) return "No staff data";
-    
-    const totalStaff = site.staffDeployment.reduce((sum, item) => sum + item.count, 0);
-    const managedStaffCount = managedStaff.filter(staff => staff.siteId === siteId).length;
-    
-    return `${managedStaffCount}/${totalStaff} staff managed`;
-  };
-
-  // Hourly Updates Dialog Component
-  const HourlyUpdatesDialog = ({ task, open, onOpenChange }: { 
-    task: Task; 
-    open: boolean; 
-    onOpenChange: (open: boolean) => void;
-  }) => {
-    const hourlyUpdates = task.hourlyUpdates || [];
-    const canAddUpdates = task.assignedTo === currentSupervisor.id || task.assignedBy === currentSupervisor.id;
-    
+  // Check if user is a supervisor
+  if (!isAuthenticated || !currentUser) {
     return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <MessageSquare className="h-5 w-5" />
-              Hourly Updates for: {task.title || "Untitled Task"}
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex items-center gap-2">
-                <User className="h-4 w-4 text-muted-foreground" />
-                <div>
-                  <div className="text-sm font-medium">Assigned to: {getStaffName(task.assignedTo)}</div>
-                  {task.assignedBy && (
-                    <div className="text-xs text-muted-foreground">
-                      Assigned by: {getStaffName(task.assignedBy)}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Building className="h-4 w-4 text-muted-foreground" />
-                <div>
-                  <div className="text-sm font-medium">{getSiteName(task.siteId)}</div>
-                  <div className="text-xs text-muted-foreground">{getClientName(task.siteId)}</div>
-                </div>
-              </div>
-            </div>
-            
-            <div className="space-y-3">
-              {hourlyUpdates.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  No hourly updates yet
-                </div>
-              ) : (
-                hourlyUpdates.map((update, index) => (
-                  <div key={update.id || `update-${index}`} className="border rounded-lg p-4">
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                          <User className="h-4 w-4 text-primary" />
-                        </div>
-                        <div>
-                          <div className="font-medium">{getStaffName(update.submittedBy)}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {formatDateTime(update.timestamp)}
-                          </div>
-                        </div>
-                      </div>
-                      <Badge variant="outline" className="text-xs">
-                        Update #{hourlyUpdates.length - index}
-                      </Badge>
-                    </div>
-                    <p className="text-sm">{update.content}</p>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {canAddUpdates && (
-              <div className="border-t pt-4">
-                <Textarea
-                  placeholder="Add a new hourly update..."
-                  value={hourlyUpdateText}
-                  onChange={(e) => setHourlyUpdateText(e.target.value)}
-                  rows={3}
-                  className="mb-3"
-                />
-                <Button 
-                  onClick={() => handleAddHourlyUpdate(task.id)}
-                  className="w-full"
-                >
-                  Add Hourly Update
-                </Button>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+          <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
+          <p className="text-muted-foreground">Please login to access this page</p>
+        </div>
+      </div>
     );
-  };
+  }
 
-  // Attachments Dialog Component
-  const AttachmentsDialog = ({ task, open, onOpenChange }: { 
-    task: Task; 
-    open: boolean; 
-    onOpenChange: (open: boolean) => void;
-  }) => {
-    const attachments = task.attachments || [];
-    const canUploadFiles = task.assignedTo === currentSupervisor.id || task.assignedBy === currentSupervisor.id;
-    
+  if (currentUser.role !== "supervisor") {
     return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Paperclip className="h-5 w-5" />
-              Attachments for: {task.title || "Untitled Task"}
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div className="flex items-center gap-2">
-                <User className="h-4 w-4" />
-                <span className="text-sm">{getStaffName(task.assignedTo)}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Building className="h-4 w-4" />
-                <div>
-                  <span className="text-sm">{getSiteName(task.siteId)}</span>
-                  <div className="text-xs text-muted-foreground">{getClientName(task.siteId)}</div>
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-muted-foreground">
-                {attachments.length} file(s) attached
-              </span>
-              {canUploadFiles && (
-                <label className="cursor-pointer">
-                  <Button variant="outline" size="sm" asChild>
-                    <div className="flex items-center gap-2">
-                      <Upload className="h-4 w-4" />
-                      Upload Files
-                      <Input
-                        type="file"
-                        multiple
-                        className="hidden"
-                        onChange={(e) => handleFileUpload(e, task.id)}
-                      />
-                    </div>
-                  </Button>
-                </label>
-              )}
-            </div>
-            
-            <div className="space-y-3">
-              {attachments.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  No attachments yet
-                </div>
-              ) : (
-                attachments.map((attachment) => (
-                  <div key={attachment.id} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Paperclip className="h-5 w-5 text-muted-foreground" />
-                        <div>
-                          <div className="font-medium">{attachment.filename || "Unnamed file"}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {attachment.size ? `${(attachment.size / 1024).toFixed(2)} KB` : "Unknown size"} • {formatDateTime(attachment.uploadedAt)}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => window.open(attachment.url, '_blank')}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            const link = document.createElement('a');
-                            link.href = attachment.url;
-                            link.download = attachment.filename || 'download';
-                            link.click();
-                          }}
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
-                        {canUploadFiles && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteAttachment(task.id, attachment.id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Shield className="h-12 w-12 text-primary mx-auto mb-4" />
+          <h2 className="text-xl font-semibold mb-2">Access Restricted</h2>
+          <p className="text-muted-foreground mb-4">This page is only accessible to supervisors</p>
+          <div className="space-y-2">
+            <Badge variant="outline" className="text-lg capitalize">
+              Your role: {currentUser.role}
+            </Badge>
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </div>
     );
-  };
+  }
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Supervisor Header */}
-      <div className="p-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Task Management</h1>
-            <div className="flex items-center gap-2 mt-2">
-              <User className="h-4 w-4 text-green-600" />
-              <p className="text-sm text-muted-foreground">
-                Logged in as <span className="font-medium text-green-600">{currentSupervisor.name}</span>
-              </p>
-              <Badge variant="outline" className="ml-2 bg-green-50 text-green-700 border-green-200">
-                Supervisor
-              </Badge>
-            </div>
-          </div>
-          
-          {/* Add Task Dialog */}
-          <Dialog open={showAddForm} onOpenChange={setShowAddForm}>
-            <DialogTrigger asChild>
-              <Button className="flex items-center gap-2">
-                <Plus className="h-4 w-4" />
-                Assign New Task
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Assign New Task</DialogTitle>
-                <p className="text-sm text-muted-foreground">
-                  Assign task to yourself or your staff members
-                </p>
-              </DialogHeader>
-              
-              <div className="space-y-4">
-                {/* Task Details */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Task Title *</label>
-                  <Input
-                    placeholder="Enter task title"
-                    value={newTask.title}
-                    onChange={(e) => setNewTask({...newTask, title: e.target.value})}
-                  />
+      <DashboardHeader 
+        title="Task Management" 
+        subtitle={getViewModeText(viewMode)} 
+      />
+      
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="p-6 space-y-6"
+      >
+        {/* Supervisor Info Card */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold">{currentUser.name}</h3>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <Badge variant="default" className="text-sm capitalize">
+                    <Shield className="h-3 w-3 mr-1" />
+                    {currentUser.role}
+                  </Badge>
+                  {currentUser.site && (
+                    <Badge variant="outline" className="text-sm">
+                      <Building className="h-3 w-3 mr-1" />
+                      Site: {Array.isArray(currentUser.site) ? currentUser.site.join(', ') : currentUser.site}
+                    </Badge>
+                  )}
+                  {currentUser.email && (
+                    <Badge variant="outline" className="text-sm">
+                      {currentUser.email}
+                    </Badge>
+                  )}
                 </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Task Description</label>
-                  <Textarea
-                    placeholder="Describe the task details..."
-                    value={newTask.description}
-                    onChange={(e) => setNewTask({...newTask, description: e.target.value})}
-                    rows={3}
-                  />
-                </div>
-
-                {/* Site Selection */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Site *</label>
-                  <Select 
-                    value={newTask.siteId} 
-                    onValueChange={(value) => {
-                      setNewTask({...newTask, siteId: value, assignedTo: ""});
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select site" />
+              </div>
+              <div className="flex flex-col items-end gap-2">
+                <div className="flex items-center gap-2">
+                  <ListFilter className="h-4 w-4 text-muted-foreground" />
+                  <Select value={viewMode} onValueChange={(value: SupervisorViewMode) => setViewMode(value)}>
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="Select view" />
                     </SelectTrigger>
                     <SelectContent>
-                      {assignedSites.map(site => (
-                        <SelectItem key={site.id} value={site.id}>
-                          <div className="flex items-center gap-2">
-                            <Building className="h-4 w-4" />
-                            <div>
-                              <div>{site.name}</div>
-                              <div className="text-xs text-muted-foreground">{site.clientName}</div>
+                      <SelectItem value="assigned">
+                        <div className="flex items-center">
+                          <UserCheck className="h-4 w-4 mr-2" />
+                          Tasks Assigned to Me
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="created">
+                        <div className="flex items-center">
+                          <FileText className="h-4 w-4 mr-2" />
+                          Tasks I Created
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="team">
+                        <div className="flex items-center">
+                          <Users className="h-4 w-4 mr-2" />
+                          My Team's Tasks
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="site">
+                        <div className="flex items-center">
+                          <Building className="h-4 w-4 mr-2" />
+                          Tasks on My Sites
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="all">
+                        <div className="flex items-center">
+                          <ListFilter className="h-4 w-4 mr-2" />
+                          All My Tasks
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchTasks}
+                    disabled={loading.tasks}
+                    className="text-xs"
+                  >
+                    <RefreshCw className={`h-3 w-3 mr-1 ${loading.tasks ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {stats.total} tasks • {stats.assignedToMe} to you • {stats.employees} employees
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Stats Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Assigned to Me</p>
+                  <p className="text-2xl font-bold">{stats.assignedToMe}</p>
+                </div>
+                <UserCheck className="h-8 w-8 text-green-500" />
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Created by Me</p>
+                  <p className="text-2xl font-bold">{stats.createdByMe}</p>
+                </div>
+                <FileText className="h-8 w-8 text-blue-500" />
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Team Tasks</p>
+                  <p className="text-2xl font-bold">{stats.teamTasks}</p>
+                </div>
+                <Users className="h-8 w-8 text-amber-500" />
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">My Sites</p>
+                  <p className="text-2xl font-bold">{stats.sites}</p>
+                </div>
+                <Building className="h-8 w-8 text-purple-500" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Tasks Card */}
+        <Card>
+          <CardHeader className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <CardTitle>
+                {getViewModeText(viewMode)}
+              </CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                {viewMode === "assigned" 
+                  ? "Tasks assigned to you by managers/admins"
+                  : viewMode === "created"
+                  ? "Tasks you created (assigned to employees or yourself)"
+                  : viewMode === "team"
+                  ? `Tasks assigned to your ${stats.employees} employees`
+                  : viewMode === "site"
+                  ? `Tasks on your sites involving you or your ${stats.employees} employees`
+                  : "All tasks involving you or your team"
+                }
+              </p>
+            </div>
+            <Button 
+              onClick={() => setDialogOpen(true)} 
+              disabled={loading.sites || sites.length === 0}
+              className="whitespace-nowrap"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Create Task
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {/* Search and Filters */}
+            <div className="mb-6">
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search tasks..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              
+              <Tabs value={activeTab} onValueChange={setActiveTab}>
+                <TabsList className="grid grid-cols-8 h-9">
+                  <TabsTrigger value="all" className="text-xs">All</TabsTrigger>
+                  <TabsTrigger value="pending" className="text-xs">Pending</TabsTrigger>
+                  <TabsTrigger value="in-progress" className="text-xs">In Progress</TabsTrigger>
+                  <TabsTrigger value="completed" className="text-xs">Completed</TabsTrigger>
+                  <TabsTrigger value="assigned-to-me" className="text-xs">To Me</TabsTrigger>
+                  <TabsTrigger value="created-by-me" className="text-xs">My Tasks</TabsTrigger>
+                  <TabsTrigger value="to-employees" className="text-xs">To Employees</TabsTrigger>
+                  <TabsTrigger value="from-manager" className="text-xs">From Manager</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+
+            {/* Tasks Table */}
+            {loading.tasks ? (
+              <div className="text-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+                <p className="text-muted-foreground mt-4">Loading tasks...</p>
+              </div>
+            ) : filteredTasks.length === 0 ? (
+              <div className="text-center py-12">
+                <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">
+                  {searchQuery 
+                    ? "No tasks match your search" 
+                    : `No ${activeTab !== "all" ? activeTab.replace('-', ' ') : ""} tasks found for this view`
+                  }
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={fetchTasks}
+                  className="mt-4"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Refresh Tasks
+                </Button>
+              </div>
+            ) : (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Task</TableHead>
+                      <TableHead>Assigned To</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Site/Client</TableHead>
+                      <TableHead>Source</TableHead>
+                      <TableHead>Priority</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Due Date</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredTasks.map((task) => (
+                      <TableRow key={task._id} className={
+                        task.isAssignedToMe ? 'bg-green-50/50' : 
+                        task.isCreatedByMe ? 'bg-blue-50/50' : ''
+                      }>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium flex items-center gap-2">
+                              {task.title}
+                              {task.isAssignedToMe && (
+                                <Badge variant="outline" className="h-4 px-1 text-[10px] bg-green-100 text-green-800">
+                                  To You
+                                </Badge>
+                              )}
+                              {task.isCreatedByMe && (
+                                <Badge variant="outline" className="h-4 px-1 text-[10px] bg-blue-100 text-blue-800">
+                                  Your Task
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="text-sm text-muted-foreground truncate max-w-xs">
+                              {task.description}
                             </div>
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <div className="flex items-center gap-1">
+                              {task.assignedToName}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {employees.find(e => e._id === task.assignedTo)?.email || 
+                               (task.isAssignedToMe ? currentUser.email : 'N/A')}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={
+                            task.assignedToRole === "supervisor" 
+                              ? "bg-purple-50 text-purple-700 border-purple-200" 
+                              : "bg-gray-50 text-gray-700 border-gray-200"
+                          }>
+                            {task.assignedToRole === "supervisor" ? "Supervisor" : "Employee"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <div>{task.siteName}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {task.clientName}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {getSourceBadge(task)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={getPriorityColor(task.priority)}>
+                            {task.priority === "high" && <AlertTriangle className="h-3 w-3 mr-1" />}
+                            {task.priority}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Select 
+                            value={task.status} 
+                            onValueChange={(value) => updateStatus(task._id, value)}
+                            disabled={
+                              (task.source === "superadmin" && !task.isAssignedToMe && !task.isCreatedByMe) ||
+                              (task.assignedToRole === "employee" && !task.isCreatedByMe && task.source !== "superadmin")
+                            }
+                          >
+                            <SelectTrigger className="w-[130px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="in-progress">In Progress</SelectItem>
+                              <SelectItem value="completed">Completed</SelectItem>
+                              <SelectItem value="cancelled">Cancelled</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span>{formatDate(task.deadline)}</span>
+                            {task.status === "pending" && new Date(task.deadline) < new Date() && (
+                              <span className="text-xs text-red-500">Overdue</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleViewTask(task)}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                if (!task.isCreatedByMe) {
+                                  toast.warning("You can only edit tasks you created");
+                                } else {
+                                  toast.info("Edit feature coming soon");
+                                }
+                              }}
+                              disabled={!task.isCreatedByMe}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteTask(task._id)}
+                              disabled={!task.isCreatedByMe}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Create Task Dialog */}
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle>Create New Task</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleAddTask} className="space-y-4">
+              <div>
+                <Label htmlFor="title">Task Title *</Label>
+                <Input
+                  id="title"
+                  value={newTask.title}
+                  onChange={(e) => handleInputChange('title', e.target.value)}
+                  placeholder="Enter task title"
+                  required
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="description">Description *</Label>
+                <Textarea
+                  id="description"
+                  value={newTask.description}
+                  onChange={(e) => handleInputChange('description', e.target.value)}
+                  placeholder="Enter task description"
+                  rows={3}
+                  required
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="site">Site *</Label>
+                  <Select
+                    value={newTask.siteId}
+                    onValueChange={handleSiteSelect}
+                    required
+                    disabled={loading.sites}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={loading.sites ? "Loading sites..." : "Select site"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sites.map((site) => (
+                        <SelectItem key={site._id} value={site._id}>
+                          {site.name} ({site.clientName})
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-
-                {/* Staff Selection */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Assign To *</label>
-                  <Select 
-                    value={newTask.assignedTo} 
-                    onValueChange={(value) => setNewTask({...newTask, assignedTo: value})}
-                    disabled={!newTask.siteId}
+                
+                <div>
+                  <Label htmlFor="assignee">Assign To *</Label>
+                  <Select
+                    value={newTask.assignedTo}
+                    onValueChange={(value) => {
+                      handleAssigneeSelect(value, value === currentUser._id || value === "self");
+                    }}
+                    required
+                    disabled={loading.sites || !newTask.siteId}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder={newTask.siteId ? "Select staff" : "Select site first"} />
+                      <SelectValue 
+                        placeholder={
+                          !newTask.siteId ? "Select site first" : 
+                          "Select assignee"
+                        } 
+                      />
                     </SelectTrigger>
                     <SelectContent>
-                      {/* Assign to self */}
-                      <SelectItem value={currentSupervisor.id}>
+                      {/* Option to assign to self */}
+                      <SelectItem value={currentUser._id}>
                         <div className="flex items-center gap-2">
-                          <User className="h-4 w-4 text-green-600" />
+                          <UserCheck className="h-4 w-4 text-green-600" />
                           <div>
-                            <div>{currentSupervisor.name} (Yourself)</div>
+                            <div>Yourself ({currentUser.name})</div>
                             <div className="text-xs text-muted-foreground">Supervisor</div>
                           </div>
                         </div>
                       </SelectItem>
                       
-                      {/* Staff at selected site */}
-                      {newTask.siteId && getStaffForSite(newTask.siteId).length > 0 && (
+                      {/* Employees (if available) */}
+                      {employees.filter(emp => emp.role === "employee" || emp.role === "staff").length > 0 && (
                         <>
                           <div className="border-t my-2"></div>
                           <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
-                            Staff at {getSiteName(newTask.siteId)}
+                            Employees at {sites.find(s => s._id === newTask.siteId)?.name}
                           </div>
-                          {getStaffForSite(newTask.siteId).map(staff => (
-                            <SelectItem key={staff.id} value={staff.id}>
-                              <div className="flex items-center gap-2">
-                                <Users className="h-4 w-4 text-blue-600" />
-                                <div>
-                                  <div>{staff.name}</div>
-                                  <div className="text-xs text-muted-foreground">{staff.role}</div>
+                          
+                          {employees
+                            .filter(emp => (emp.role === "employee" || emp.role === "staff") && 
+                                   (!newTask.siteId || emp.site === sites.find(s => s._id === newTask.siteId)?.name))
+                            .map((employee) => (
+                              <SelectItem key={employee._id} value={employee._id}>
+                                <div className="flex items-center gap-2">
+                                  <Users className="h-4 w-4 text-blue-600" />
+                                  <div>
+                                    <div>{employee.name}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {employee.department || 'Employee'} • {employee.email}
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
-                            </SelectItem>
-                          ))}
+                              </SelectItem>
+                            ))}
                         </>
                       )}
                       
-                      {newTask.siteId && getStaffForSite(newTask.siteId).length === 0 && (
-                        <div className="px-2 py-3 text-sm text-muted-foreground text-center">
-                          No staff assigned to this site
+                      {employees.filter(emp => emp.role === "employee" || emp.role === "staff").length === 0 && (
+                        <div className="px-2 py-2 text-center">
+                          <p className="text-sm text-muted-foreground">No employees found at this site</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            You can still assign tasks to yourself
+                          </p>
                         </div>
                       )}
                     </SelectContent>
                   </Select>
                 </div>
-
-                {/* Priority and Deadline */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Priority</label>
-                    <Select value={newTask.priority} onValueChange={(value) => setNewTask({...newTask, priority: value})}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="low">Low</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="high">High</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Deadline *</label>
-                    <Input
-                      type="date"
-                      value={newTask.deadline}
-                      onChange={(e) => setNewTask({...newTask, deadline: e.target.value})}
-                    />
-                  </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="priority">Priority *</Label>
+                  <Select
+                    value={newTask.priority}
+                    onValueChange={(value) => handleInputChange('priority', value)}
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select priority" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="low">Low</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-
-                {/* Due Date Time */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Due Date & Time</label>
+                
+                <div>
+                  <Label htmlFor="deadline">Due Date *</Label>
                   <Input
-                    type="datetime-local"
-                    value={newTask.dueDateTime}
-                    onChange={(e) => setNewTask({...newTask, dueDateTime: e.target.value})}
+                    id="deadline"
+                    type="date"
+                    value={newTask.deadline}
+                    onChange={(e) => handleInputChange('deadline', e.target.value)}
+                    required
+                    min={new Date().toISOString().split('T')[0]}
                   />
                 </div>
-
-                {/* Action Buttons */}
-                <div className="flex gap-3 pt-4">
-                  <Button onClick={addTask} className="flex-1">
-                    Assign Task
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setShowAddForm(false)}
-                  >
-                    Cancel
-                  </Button>
-                </div>
               </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-
-        {/* Supervisor Dashboard Summary */}
-        <div className="grid gap-4 md:grid-cols-6 mb-6">
-          <StatCard 
-            title="My Tasks" 
-            value={stats.myTasks} 
-            icon={<User className="h-4 w-4 text-blue-600" />}
-            color="bg-blue-50 border-blue-200"
-          />
-          <StatCard 
-            title="Assigned to Staff" 
-            value={stats.assignedToStaff} 
-            icon={<Users className="h-4 w-4 text-green-600" />}
-            color="bg-green-50 border-green-200"
-          />
-          <StatCard 
-            title="Pending" 
-            value={stats.pending} 
-            icon={<AlertCircle className="h-4 w-4 text-orange-600" />}
-            color="bg-orange-50 border-orange-200"
-          />
-          <StatCard 
-            title="In Progress" 
-            value={stats.inProgress} 
-            icon={<Clock className="h-4 w-4 text-purple-600" />}
-            color="bg-purple-50 border-purple-200"
-          />
-          <StatCard 
-            title="Completed" 
-            value={stats.completed} 
-            icon={<CheckCircle className="h-4 w-4 text-green-600" />}
-            color="bg-green-50 border-green-200"
-          />
-          <StatCard 
-            title="Assigned Sites" 
-            value={assignedSites.length} 
-            icon={<Building className="h-4 w-4 text-amber-600" />}
-            color="bg-amber-50 border-amber-200"
-          />
-        </div>
-
-        {/* Assigned Sites with Staff Deployment */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Building className="h-5 w-5" />
-              My Assigned Sites & Staff Deployment
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {assignedSites.map(site => (
-                <div key={site.id} className="border rounded-lg p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Building className="h-4 w-4 text-blue-600" />
-                    <div className="flex-1">
-                      <h3 className="font-medium">{site.name}</h3>
-                      <div className="text-xs text-muted-foreground">{site.clientName}</div>
-                    </div>
-                    <Badge variant="outline" className="text-xs">
-                      {site.status}
-                    </Badge>
-                  </div>
-                  
-                  <div className="space-y-3">
-                    <div>
-                      <div className="text-sm font-medium mb-2">Staff Deployment</div>
-                      <div className="text-sm text-muted-foreground">
-                        {getSiteStaffSummary(site.id)}
-                      </div>
-                      {site.staffDeployment && site.staffDeployment.length > 0 && (
-                        <div className="mt-2 space-y-1">
-                          {site.staffDeployment.map((deploy, i) => (
-                            <div key={i} className="flex justify-between text-sm">
-                              <span>{deploy.role}:</span>
-                              <span>{deploy.count}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div>
-                      <div className="text-sm font-medium mb-2">My Managed Staff</div>
-                      <div className="space-y-1">
-                        {getStaffForSite(site.id).map(staff => (
-                          <div key={staff.id} className="flex items-center gap-2 text-sm">
-                            <Users className="h-3 w-3 text-green-600" />
-                            <span>{staff.name}</span>
-                            <Badge variant="outline" className="text-xs ml-auto">
-                              {staff.role}
-                            </Badge>
-                          </div>
-                        ))}
-                        {getStaffForSite(site.id).length === 0 && (
-                          <div className="text-sm text-muted-foreground">No staff managed</div>
-                        )}
-                      </div>
-                    </div>
-                    
-                    <div className="text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Total Tasks:</span>
-                        <span>{filteredTasks.filter(t => t.siteId === site.id).length}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Filters and Search */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-6">
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search tasks by title, description, or assignee..."
-                className="pl-10"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Select value={filter} onValueChange={setFilter}>
-              <SelectTrigger className="w-[180px]">
-                <Filter className="mr-2 h-4 w-4" />
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Tasks</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="in-progress">In Progress</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={selectedSite} onValueChange={setSelectedSite}>
-              <SelectTrigger className="w-[180px]">
-                <Building className="mr-2 h-4 w-4" />
-                <SelectValue placeholder="Filter by site" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Sites</SelectItem>
-                {assignedSites.map(site => (
-                  <SelectItem key={site.id} value={site.id}>
-                    {site.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {/* Tasks Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Task Management</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {filteredTasks.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <User className="h-12 w-12 mx-auto mb-4" />
-                <h3 className="text-lg font-medium mb-2">No Tasks Found</h3>
-                <p className="mb-4">
-                  {searchQuery 
-                    ? "No tasks match your search criteria"
-                    : "You don't have any tasks assigned yet"}
-                </p>
-                <Button onClick={() => setShowAddForm(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Assign Your First Task
-                </Button>
+              
+              <div>
+                <Label htmlFor="taskType">Task Type</Label>
+                <Select
+                  value={newTask.taskType}
+                  onValueChange={(value) => handleInputChange('taskType', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select task type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="general">General</SelectItem>
+                    <SelectItem value="inspection">Inspection</SelectItem>
+                    <SelectItem value="cleaning">Cleaning</SelectItem>
+                    <SelectItem value="security">Security</SelectItem>
+                    <SelectItem value="maintenance">Maintenance</SelectItem>
+                    <SelectItem value="report">Report</SelectItem>
+                    <SelectItem value="meeting">Meeting</SelectItem>
+                    <SelectItem value="training">Training</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Task Details</TableHead>
-                    <TableHead>Site</TableHead>
-                    <TableHead>Assigned To</TableHead>
-                    <TableHead>Priority</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Due Date & Time</TableHead>
-                    <TableHead>Updates</TableHead>
-                    <TableHead>Attachments</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredTasks.map(task => {
-                    const isMyTask = task.assignedTo === currentSupervisor.id;
-                    const canModify = canModifyTask(task);
-                    
-                    return (
-                      <TableRow key={task.id}>
-                        <TableCell className="font-medium">
-                          <div>
-                            <div className="font-semibold">{task.title}</div>
-                            <div className="text-sm text-muted-foreground line-clamp-2 mt-1">
-                              {task.description || "No description"}
-                            </div>
-                          </div>
-                        </TableCell>
-                        
-                        <TableCell>
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1">
-                              <Building className="h-3 w-3" />
-                              <span className="font-medium">{getSiteName(task.siteId)}</span>
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {getClientName(task.siteId)}
-                            </div>
-                          </div>
-                        </TableCell>
-                        
-                        <TableCell>
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              {isMyTask ? (
-                                <User className="h-4 w-4 text-green-600" />
-                              ) : (
-                                <Users className="h-4 w-4 text-blue-600" />
-                              )}
-                              <span className="font-medium">{getStaffName(task.assignedTo)}</span>
-                              {isMyTask && (
-                                <Badge variant="outline" className="text-xs bg-green-50">
-                                  You
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {getStaffRole(task.assignedTo)}
-                            </div>
-                          </div>
-                        </TableCell>
-                        
-                        <TableCell>
-                          <Badge variant={getPriorityColor(task.priority)}>
-                            {task.priority === "high" && <AlertCircle className="mr-1 h-3 w-3" />}
-                            {task.priority}
-                          </Badge>
-                        </TableCell>
-                        
-                        <TableCell>
-                          <Badge variant={getStatusColor(task.status)}>
-                            {task.status}
-                          </Badge>
-                        </TableCell>
-                        
-                        <TableCell>
-                          <div className="flex flex-col">
-                            <div className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              {task.deadline || "No deadline"}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {task.dueDateTime ? formatDateTime(task.dueDateTime) : "No due time"}
-                            </div>
-                          </div>
-                        </TableCell>
-                        
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="flex items-center gap-1"
-                            onClick={() => {
-                              setSelectedTask(task);
-                              setShowUpdatesDialog(true);
-                            }}
-                          >
-                            <MessageSquare className="h-4 w-4" />
-                            {getHourlyUpdatesCount(task)}
-                            <span className="sr-only">View updates</span>
-                          </Button>
-                        </TableCell>
-                        
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="flex items-center gap-1"
-                            onClick={() => {
-                              setSelectedTask(task);
-                              setShowAttachmentsDialog(true);
-                            }}
-                          >
-                            <Paperclip className="h-4 w-4" />
-                            {getAttachmentsCount(task)}
-                            <span className="sr-only">View attachments</span>
-                          </Button>
-                        </TableCell>
-                        
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            {/* Status Action Buttons */}
-                            {canModify && task.status === "pending" && (
-                              <Button size="sm" onClick={() => startTask(task.id)}>
-                                <Play className="h-3 w-3 mr-1" />
-                                Start
-                              </Button>
-                            )}
-                            
-                            {canModify && task.status === "in-progress" && (
-                              <Button size="sm" onClick={() => completeTask(task.id)}>
-                                <CheckCircle className="h-3 w-3 mr-1" />
-                                Complete
-                              </Button>
-                            )}
-                            
-                            {task.status === "completed" && (
-                              <Badge className="bg-green-100 text-green-800">
-                                Done ✓
-                              </Badge>
-                            )}
-
-                            {/* Delete Button */}
-                            {canModify && (
-                              <Button 
-                                size="sm" 
-                                variant="outline"
-                                onClick={() => deleteTask(task.id)}
-                                className="text-red-600 hover:text-red-700"
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Dialogs */}
-      {selectedTask && (
-        <>
-          <HourlyUpdatesDialog
-            task={selectedTask}
-            open={showUpdatesDialog}
-            onOpenChange={setShowUpdatesDialog}
-          />
-          <AttachmentsDialog
-            task={selectedTask}
-            open={showAttachmentsDialog}
-            onOpenChange={setShowAttachmentsDialog}
-          />
-        </>
-      )}
+              
+              <Button type="submit" className="w-full" disabled={loading.sites || loading.employees}>
+                Create Task
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </motion.div>
     </div>
   );
 };
 
-// Stat Card Component
-const StatCard = ({ title, value, icon, color = "bg-background" }: { title: string; value: number; icon: React.ReactNode; color?: string }) => (
-  <Card className={color}>
-    <CardHeader className="pb-2">
-      <div className="flex items-center justify-between">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        {icon}
-      </div>
-    </CardHeader>
-    <CardContent>
-      <div className="text-2xl font-bold">{value}</div>
-    </CardContent>
-  </Card>
-);
-
-export default Tasks;
+export default SupervisorTasks;

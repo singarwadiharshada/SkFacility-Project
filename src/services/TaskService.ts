@@ -19,6 +19,7 @@ export interface ExtendedSite extends Site {
 }
 
 export interface Assignee {
+  [x: string]: string;
   _id: string;
   name: string;
   email: string;
@@ -44,6 +45,7 @@ export interface HourlyUpdate {
 }
 
 export interface Task {
+  createdBy: string;
   _id: string;
   title: string;
   description: string;
@@ -455,7 +457,70 @@ class TaskService {
       throw error;
     }
   }
+  
+  // Add these methods to your TaskService class:
 
+async getTasksByAssignee(assigneeId: string): Promise<Task[]> {
+  try {
+    const response = await fetch(`${API_URL}/tasks/assignee/${assigneeId}`);
+    if (!response.ok) {
+      if (response.status === 404) {
+        // If endpoint doesn't exist, fall back to filtering from all tasks
+        console.log("Endpoint /tasks/assignee/:id not found, filtering from all tasks");
+        const allTasks = await this.getAllTasks();
+        return allTasks.filter(task => task.assignedTo === assigneeId);
+      }
+      throw new Error(`Failed to fetch tasks by assignee: ${response.status}`);
+    }
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error(`Error fetching tasks for assignee ${assigneeId}:`, error);
+    throw error;
+  }
+}
+
+async getTasksByCreator(creatorId: string): Promise<Task[]> {
+  try {
+    // Try dedicated endpoint first
+    const response = await fetch(`${API_URL}/tasks/creator/${creatorId}`);
+    if (!response.ok) {
+      if (response.status === 404) {
+        // Fallback to filtering from all tasks
+        const allTasks = await this.getAllTasks();
+        return allTasks.filter(task => 
+          task.createdBy === creatorId || task.createdBy === creatorId
+        );
+      }
+      throw new Error(`Failed to fetch tasks by creator: ${response.status}`);
+    }
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error(`Error fetching tasks for creator ${creatorId}:`, error);
+    throw error;
+  }
+}
+
+async getTasksBySite(siteName: string): Promise<Task[]> {
+  try {
+    // Try dedicated endpoint first
+    const response = await fetch(`${API_URL}/tasks/site/${encodeURIComponent(siteName)}`);
+    if (!response.ok) {
+      if (response.status === 404) {
+        // Fallback to filtering from all tasks
+        const allTasks = await this.getAllTasks();
+        return allTasks.filter(task => task.siteName === siteName);
+      }
+      throw new Error(`Failed to fetch tasks by site: ${response.status}`);
+    }
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error(`Error fetching tasks for site ${siteName}:`, error);
+    throw error;
+  }
+}
   // Utility Methods
   async downloadAttachment(attachment: Attachment): Promise<void> {
     try {
@@ -518,6 +583,7 @@ class TaskService {
     return colors[status] || 'default';
   }
 }
+
 
 export const taskService = new TaskService();
 export default taskService;

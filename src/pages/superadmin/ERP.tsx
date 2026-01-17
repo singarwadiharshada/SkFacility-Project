@@ -124,7 +124,10 @@ const InventoryPage = () => {
   const [selectedMachineForMaintenance, setSelectedMachineForMaintenance] = useState<string | null>(null);
   const [maintenanceLoading, setMaintenanceLoading] = useState(false);
   
-  // New item form state - UNCHANGED
+  // Track active tab
+  const [activeTab, setActiveTab] = useState("inventory");
+  
+  // New item form state
   const [newItem, setNewItem] = useState<Partial<InventoryItem>>({
     name: "",
     sku: "",
@@ -140,7 +143,7 @@ const InventoryPage = () => {
     description: "",
   });
 
-  // New machine form state - FIXED: Changed machineModel to model
+  // New machine form state
   const [newMachine, setNewMachine] = useState<Partial<Machine>>({
     name: "",
     cost: 0,
@@ -150,7 +153,7 @@ const InventoryPage = () => {
     status: 'operational',
     location: "",
     manufacturer: "",
-    model: "", // CHANGED FROM machineModel to model
+    model: "",
     serialNumber: "",
     department: "",
     assignedTo: "",
@@ -164,7 +167,7 @@ const InventoryPage = () => {
     performedBy: "",
   });
 
-  // Data - UNCHANGED
+  // Data
   const departments: Department[] = [
     { value: "cleaning", label: "Cleaning", icon: Shield },
     { value: "maintenance", label: "Maintenance", icon: Wrench },
@@ -207,7 +210,7 @@ const InventoryPage = () => {
     "Overhaul"
   ];
 
-  // Helper function to calculate stats from items - UNCHANGED
+  // Helper function to calculate stats from items
   const calculateStats = (itemsList: InventoryItem[]): InventoryStats => {
     const totalItems = itemsList.length;
     const lowStockItems = itemsList.filter(item => item.quantity <= item.reorderLevel).length;
@@ -220,25 +223,27 @@ const InventoryPage = () => {
     };
   };
 
-  // Format currency
+  // Format currency - CHANGED TO INDIAN RUPEES
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'INR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
     }).format(amount);
   };
 
   // Format date
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
+    return date.toLocaleDateString('en-IN', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
     });
   };
 
-  // Calculate machine statistics locally if API fails - FIXED
+  // Calculate machine statistics locally if API fails
   const calculateLocalMachineStats = () => {
     const totalMachines = machines.length;
     const totalMachineValue = machines.reduce((sum, machine) => sum + (machine.cost * machine.quantity), 0);
@@ -283,7 +288,7 @@ const InventoryPage = () => {
     };
   };
 
-  // Fetch data from backend on component mount - UPDATED with better error handling
+  // Fetch data from backend on component mount
   useEffect(() => {
     fetchData();
   }, []);
@@ -342,7 +347,7 @@ const InventoryPage = () => {
     }
   };
 
-  // Functions - UNCHANGED
+  // Functions
   const getDepartmentIcon = (department: string) => {
     const dept = departments.find(d => d.value === department);
     return dept ? dept.icon : Package;
@@ -352,7 +357,7 @@ const InventoryPage = () => {
     return categories[dept as keyof typeof categories] || [];
   };
 
-  // Filter items - UNCHANGED
+  // Filter items
   const filteredItems = items.filter(item => {
     const matchesSearch = 
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -366,19 +371,19 @@ const InventoryPage = () => {
     return matchesSearch && matchesDept && matchesCategory && matchesSite;
   });
 
-  // Filter machines - FIXED: Changed machineModel to model
+  // Filter machines
   const filteredMachines = machines.filter(machine => {
     const matchesSearch = 
       machine.name.toLowerCase().includes(machineSearchQuery.toLowerCase()) ||
       machine.manufacturer?.toLowerCase().includes(machineSearchQuery.toLowerCase()) ||
-      machine.model?.toLowerCase().includes(machineSearchQuery.toLowerCase()) || // FIXED
+      machine.model?.toLowerCase().includes(machineSearchQuery.toLowerCase()) ||
       machine.location?.toLowerCase().includes(machineSearchQuery.toLowerCase()) ||
       machine.serialNumber?.toLowerCase().includes(machineSearchQuery.toLowerCase());
     
     return matchesSearch;
   });
 
-  // Handle item actions - UNCHANGED
+  // Handle item actions
   const handleDeleteItem = async (itemId: string) => {
     try {
       await inventoryService.deleteItem(itemId);
@@ -477,7 +482,7 @@ const InventoryPage = () => {
     }
   };
 
-  // Machine functions - FIXED: Changed machineModel to model
+  // Machine functions
   const handleAddMachine = async () => {
     if (!newMachine.name || !newMachine.cost || !newMachine.purchaseDate) {
       toast.error("Please fill in required fields");
@@ -494,7 +499,7 @@ const InventoryPage = () => {
         status: newMachine.status || 'operational',
         location: newMachine.location,
         manufacturer: newMachine.manufacturer,
-        model: newMachine.model, // FIXED
+        model: newMachine.model,
         serialNumber: newMachine.serialNumber,
         department: newMachine.department,
         assignedTo: newMachine.assignedTo,
@@ -541,7 +546,7 @@ const InventoryPage = () => {
       status: machine.status,
       location: machine.location,
       manufacturer: machine.manufacturer,
-      model: machine.model, // FIXED
+      model: machine.model,
       serialNumber: machine.serialNumber,
       department: machine.department,
       assignedTo: machine.assignedTo,
@@ -629,7 +634,7 @@ const InventoryPage = () => {
       status: 'operational',
       location: "",
       manufacturer: "",
-      model: "", // FIXED
+      model: "",
       serialNumber: "",
       department: "",
       assignedTo: "",
@@ -658,7 +663,7 @@ const InventoryPage = () => {
     setItemDialogOpen(true);
   };
 
-  // Handle import - UNCHANGED
+  // Handle import
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -760,7 +765,7 @@ const InventoryPage = () => {
     toast.success("Inventory exported successfully!");
   };
 
-  // Export machines to CSV - FIXED: Simple implementation
+  // Export machines to CSV
   const handleExportMachines = async () => {
     try {
       if (machines.length === 0) {
@@ -778,7 +783,7 @@ const InventoryPage = () => {
           machine.status,
           machine.location || '',
           machine.manufacturer || '',
-          machine.model || '', // FIXED
+          machine.model || '',
           machine.serialNumber || '',
           machine.department || '',
           machine.assignedTo || ''
@@ -800,7 +805,7 @@ const InventoryPage = () => {
     }
   };
 
-  // Import machines from CSV - Simple implementation
+  // Import machines from CSV
   const handleImportMachines = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -826,7 +831,7 @@ const InventoryPage = () => {
   // Get machine stats for display
   const machineStatsDisplay = machineStats || calculateLocalMachineStats();
 
-  // Loading state - UNCHANGED
+  // Loading state
   if (loading) {
     return (
       <div className="container mx-auto p-6">
@@ -871,17 +876,10 @@ const InventoryPage = () => {
             <Upload className="mr-2 h-4 w-4" />
             Import
           </Button>
-          <Button onClick={() => {
-            setEditItem(null);
-            setItemDialogOpen(true);
-          }}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Item
-          </Button>
         </div>
       </div>
 
-      {/* Stats Cards - UNCHANGED */}
+      {/* Stats Cards - CHANGED TO INDIAN RUPEES */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -917,695 +915,628 @@ const InventoryPage = () => {
         </Card>
       </div>
 
-      <Tabs defaultValue="inventory" className="w-full">
-        <TabsList className="mb-4">
-          <TabsTrigger value="inventory">
-            <Package className="mr-2 h-4 w-4" />
-            Inventory ({items.length})
-          </TabsTrigger>
-          <TabsTrigger value="low-stock">
-            <AlertTriangle className="mr-2 h-4 w-4" />
-            Low Stock ({stats.lowStockItems})
-          </TabsTrigger>
-          <TabsTrigger value="machine-statistics">
-            <Cpu className="mr-2 h-4 w-4" />
-            Machine Statistics ({machines.length})
-          </TabsTrigger>
-          <TabsTrigger value="categories">
-            <Tag className="mr-2 h-4 w-4" />
-            Categories
-          </TabsTrigger>
-          <TabsTrigger value="sites">
-            <MapPin className="mr-2 h-4 w-4" />
-            Sites
-          </TabsTrigger>
-        </TabsList>
-
-        {/* INVENTORY TAB - UNCHANGED */}
-        <TabsContent value="inventory">
-          <Card>
-            <CardContent className="pt-6">
-              {/* Filters */}
-              <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search items..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-                
-                <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All Departments" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Departments</SelectItem>
-                    {departments.map(dept => {
-                      const Icon = dept.icon;
-                      return (
-                        <SelectItem key={dept.value} value={dept.value}>
-                          <div className="flex items-center gap-2">
-                            <Icon className="h-4 w-4" />
-                            {dept.label}
-                          </div>
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
-                
-                <Select 
-                  value={selectedCategory} 
-                  onValueChange={setSelectedCategory}
-                  disabled={selectedDepartment === "all"}
+      <div className="flex items-center justify-between mb-4">
+        <Tabs defaultValue="inventory" className="flex-1" onValueChange={setActiveTab}>
+          <div className="flex items-center justify-between">
+            <TabsList>
+              <TabsTrigger value="inventory">
+                <Package className="mr-2 h-4 w-4" />
+                Inventory ({items.length})
+              </TabsTrigger>
+              <TabsTrigger value="low-stock">
+                <AlertTriangle className="mr-2 h-4 w-4" />
+                Low Stock ({stats.lowStockItems})
+              </TabsTrigger>
+              <TabsTrigger value="machine-statistics">
+                <Cpu className="mr-2 h-4 w-4" />
+                Machine Statistics ({machines.length})
+              </TabsTrigger>
+              <TabsTrigger value="categories">
+                <Tag className="mr-2 h-4 w-4" />
+                Categories
+              </TabsTrigger>
+            </TabsList>
+            
+            {/* Add Item Button - ONLY VISIBLE IN INVENTORY TAB */}
+            {activeTab === "inventory" && (
+              <Button 
+                onClick={() => {
+                  setEditItem(null);
+                  setItemDialogOpen(true);
+                }}
+                className="ml-4"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add Item
+              </Button>
+            )}
+            
+            {/* Add Machine Button - ONLY VISIBLE IN MACHINE STATISTICS TAB */}
+            {activeTab === "machine-statistics" && (
+              <div className="flex items-center gap-2 ml-4">
+                <Button 
+                  variant="outline" 
+                  onClick={handleExportMachines}
+                  disabled={machines.length === 0}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="All Categories" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Categories</SelectItem>
-                    {selectedDepartment !== "all" && 
-                      getCategoriesForDepartment(selectedDepartment).map(cat => (
-                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                      ))
-                    }
-                  </SelectContent>
-                </Select>
-                
-                <Select value={selectedSite} onValueChange={setSelectedSite}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All Sites" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Sites</SelectItem>
-                    {sites.map(site => (
-                      <SelectItem key={site.id} value={site.id}>
-                        <div className="flex items-center gap-2">
-                          <Building className="h-4 w-4" />
-                          {site.name}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <Download className="mr-2 h-4 w-4" />
+                  Export Machines
+                </Button>
+                <Button onClick={() => {
+                  setEditMachine(null);
+                  resetNewMachineForm();
+                  setMachineDialogOpen(true);
+                }}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Machine
+                </Button>
               </div>
+            )}
+          </div>
 
-              {/* Table */}
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>SKU</TableHead>
-                      <TableHead>Item Name</TableHead>
-                      <TableHead>Department</TableHead>
-                      <TableHead>Site</TableHead>
-                      <TableHead>Manager</TableHead>
-                      <TableHead>Quantity</TableHead>
-                      <TableHead>Price</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredItems.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8">
-                          <Package className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
-                          <p className="text-lg font-medium">No items found</p>
-                          <p className="text-muted-foreground">
-                            {items.length === 0 
-                              ? "No items in database. Add your first item!" 
-                              : "Try adjusting your search or filters"}
-                          </p>
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filteredItems.map((item) => {
-                        const DeptIcon = getDepartmentIcon(item.department);
-                        const isLowStock = item.quantity <= item.reorderLevel;
-                        const siteName = sites.find(s => s.id === item.site)?.name;
-                        
+          {/* INVENTORY TAB */}
+          <TabsContent value="inventory">
+            <Card>
+              <CardContent className="pt-6">
+                {/* Filters */}
+                <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search items..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  
+                  <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All Departments" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Departments</SelectItem>
+                      {departments.map(dept => {
+                        const Icon = dept.icon;
                         return (
-                          <TableRow key={item.id}>
-                            <TableCell className="font-mono font-medium">{item.sku}</TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <Package className="h-4 w-4 text-muted-foreground" />
-                                <span className="font-medium">{item.name}</span>
-                              </div>
-                              {item.description && (
-                                <p className="text-xs text-muted-foreground truncate max-w-[200px]">
-                                  {item.description}
-                                </p>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="flex items-center gap-1 w-fit">
-                                <DeptIcon className="h-3 w-3" />
-                                {departments.find(d => d.value === item.department)?.label}
-                              </Badge>
-                              <div className="text-xs text-muted-foreground mt-1">{item.category}</div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-1">
-                                <Building className="h-3 w-3" />
-                                {siteName || `Site ${item.site}`}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-1">
-                                <UserCheck className="h-3 w-3" />
-                                {item.assignedManager}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <span className={`font-medium ${isLowStock ? 'text-amber-600' : ''}`}>
-                                  {item.quantity}
-                                </span>
-                                {isLowStock && (
-                                  <Badge variant="outline" className="text-xs border-amber-200 bg-amber-50 text-amber-700">
-                                    <AlertTriangle className="h-3 w-3 mr-1" />
-                                    Low
+                          <SelectItem key={dept.value} value={dept.value}>
+                            <div className="flex items-center gap-2">
+                              <Icon className="h-4 w-4" />
+                              {dept.label}
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                  
+                  <Select 
+                    value={selectedCategory} 
+                    onValueChange={setSelectedCategory}
+                    disabled={selectedDepartment === "all"}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="All Categories" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Categories</SelectItem>
+                      {selectedDepartment !== "all" && 
+                        getCategoriesForDepartment(selectedDepartment).map(cat => (
+                          <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                        ))
+                      }
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Table */}
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>SKU</TableHead>
+                        <TableHead>Item Name</TableHead>
+                        <TableHead>Department</TableHead>
+                        <TableHead>Manager</TableHead>
+                        <TableHead>Quantity</TableHead>
+                        <TableHead>Price</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredItems.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center py-8">
+                            <Package className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+                            <p className="text-lg font-medium">No items found</p>
+                            <p className="text-muted-foreground">
+                              {items.length === 0 
+                                ? "No items in database. Add your first item!" 
+                                : "Try adjusting your search or filters"}
+                            </p>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredItems.map((item) => {
+                          const DeptIcon = getDepartmentIcon(item.department);
+                          const isLowStock = item.quantity <= item.reorderLevel;
+                          
+                          return (
+                            <TableRow key={item.id}>
+                              <TableCell className="font-mono font-medium">{item.sku}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Package className="h-4 w-4 text-muted-foreground" />
+                                  <span className="font-medium">{item.name}</span>
+                                </div>
+                                {item.description && (
+                                  <p className="text-xs text-muted-foreground truncate max-w-[200px]">
+                                    {item.description}
+                                  </p>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className="flex items-center gap-1 w-fit">
+                                  <DeptIcon className="h-3 w-3" />
+                                  {departments.find(d => d.value === item.department)?.label}
+                                </Badge>
+                                <div className="text-xs text-muted-foreground mt-1">{item.category}</div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1">
+                                  <UserCheck className="h-3 w-3" />
+                                  {item.assignedManager}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <span className={`font-medium ${isLowStock ? 'text-amber-600' : ''}`}>
+                                    {item.quantity}
+                                  </span>
+                                  {isLowStock && (
+                                    <Badge variant="outline" className="text-xs border-amber-200 bg-amber-50 text-amber-700">
+                                      <AlertTriangle className="h-3 w-3 mr-1" />
+                                      Low
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  Reorder: {item.reorderLevel}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="font-medium">{formatCurrency(item.price)}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  Cost: {formatCurrency(item.costPrice)}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                {isLowStock ? (
+                                  <Badge variant="destructive" className="text-xs">
+                                    Low Stock
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                                    In Stock
                                   </Badge>
                                 )}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                Reorder: {item.reorderLevel}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="font-medium">{formatCurrency(item.price)}</div>
-                              <div className="text-xs text-muted-foreground">
-                                Cost: {formatCurrency(item.costPrice)}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              {isLowStock ? (
-                                <Badge variant="destructive" className="text-xs">
-                                  Low Stock
-                                </Badge>
-                              ) : (
-                                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
-                                  In Stock
-                                </Badge>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => openEditDialog(item)}
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                                
-                                <Dialog>
-                                  <DialogTrigger asChild>
-                                    <Button variant="ghost" size="icon">
-                                      <Eye className="h-4 w-4" />
-                                    </Button>
-                                  </DialogTrigger>
-                                  <DialogContent className="max-w-2xl">
-                                    <DialogHeader>
-                                      <DialogTitle>Item Details</DialogTitle>
-                                    </DialogHeader>
-                                    <div className="space-y-4">
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div><strong>SKU:</strong> {item.sku}</div>
-                                        <div><strong>Name:</strong> {item.name}</div>
-                                        <div><strong>Department:</strong> {departments.find(d => d.value === item.department)?.label}</div>
-                                        <div><strong>Category:</strong> {item.category}</div>
-                                        <div><strong>Quantity:</strong> {item.quantity}</div>
-                                        <div><strong>Price:</strong> {formatCurrency(item.price)}</div>
-                                        <div><strong>Cost Price:</strong> {formatCurrency(item.costPrice)}</div>
-                                        <div><strong>Supplier:</strong> {item.supplier}</div>
-                                        <div><strong>Reorder Level:</strong> {item.reorderLevel}</div>
-                                        <div><strong>Site:</strong> {siteName || `Site ${item.site}`}</div>
-                                        <div><strong>Manager:</strong> {item.assignedManager}</div>
-                                        {item.description && (
-                                          <div className="col-span-2">
-                                            <strong>Description:</strong> {item.description}
-                                          </div>
-                                        )}
-                                      </div>
-                                      
-                                      {/* Change History */}
-                                      <div>
-                                        <h4 className="font-semibold mb-2">Change History</h4>
-                                        <div className="space-y-2 max-h-40 overflow-y-auto">
-                                          {item.changeHistory && item.changeHistory.length > 0 ? (
-                                            item.changeHistory.map((change, index) => (
-                                              <div key={index} className="flex items-center justify-between text-sm p-2 bg-muted/50 rounded">
-                                                <span>{change.date}</span>
-                                                <span>{change.change}</span>
-                                                <span>by {change.user}</span>
-                                                <span className={`font-medium ${change.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                  {change.quantity > 0 ? '+' : ''}{change.quantity}
-                                                </span>
-                                              </div>
-                                            ))
-                                          ) : (
-                                            <p className="text-sm text-muted-foreground text-center py-2">
-                                              No change history available
-                                            </p>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => openEditDialog(item)}
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  
+                                  <Dialog>
+                                    <DialogTrigger asChild>
+                                      <Button variant="ghost" size="icon">
+                                        <Eye className="h-4 w-4" />
+                                      </Button>
+                                    </DialogTrigger>
+                                    <DialogContent className="max-w-2xl">
+                                      <DialogHeader>
+                                        <DialogTitle>Item Details</DialogTitle>
+                                      </DialogHeader>
+                                      <div className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                          <div><strong>SKU:</strong> {item.sku}</div>
+                                          <div><strong>Name:</strong> {item.name}</div>
+                                          <div><strong>Department:</strong> {departments.find(d => d.value === item.department)?.label}</div>
+                                          <div><strong>Category:</strong> {item.category}</div>
+                                          <div><strong>Quantity:</strong> {item.quantity}</div>
+                                          <div><strong>Price:</strong> {formatCurrency(item.price)}</div>
+                                          <div><strong>Cost Price:</strong> {formatCurrency(item.costPrice)}</div>
+                                          <div><strong>Supplier:</strong> {item.supplier}</div>
+                                          <div><strong>Reorder Level:</strong> {item.reorderLevel}</div>
+                                          <div><strong>Manager:</strong> {item.assignedManager}</div>
+                                          {item.description && (
+                                            <div className="col-span-2">
+                                              <strong>Description:</strong> {item.description}
+                                            </div>
                                           )}
                                         </div>
+                                        
+                                        {/* Change History */}
+                                        <div>
+                                          <h4 className="font-semibold mb-2">Change History</h4>
+                                          <div className="space-y-2 max-h-40 overflow-y-auto">
+                                            {item.changeHistory && item.changeHistory.length > 0 ? (
+                                              item.changeHistory.map((change, index) => (
+                                                <div key={index} className="flex items-center justify-between text-sm p-2 bg-muted/50 rounded">
+                                                  <span>{change.date}</span>
+                                                  <span>{change.change}</span>
+                                                  <span>by {change.user}</span>
+                                                  <span className={`font-medium ${change.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                    {change.quantity > 0 ? '+' : ''}{change.quantity}
+                                                  </span>
+                                                </div>
+                                              ))
+                                            ) : (
+                                              <p className="text-sm text-muted-foreground text-center py-2">
+                                                No change history available
+                                              </p>
+                                            )}
+                                          </div>
+                                        </div>
                                       </div>
-                                    </div>
-                                  </DialogContent>
-                                </Dialog>
-                                
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => setChangeHistoryDialogOpen(item.id)}
-                                >
-                                  <History className="h-4 w-4" />
-                                </Button>
-                                
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleDeleteItem(item.id)}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        {/* LOW STOCK TAB - UNCHANGED */}
-        <TabsContent value="low-stock">
-          <Card>
-            <CardHeader>
-              <CardTitle>Low Stock Items</CardTitle>
-              <CardDescription>Items that need reordering</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {stats.lowStockItems === 0 ? (
-                <div className="text-center py-8">
-                  <AlertTriangle className="h-12 w-12 mx-auto text-green-500 mb-2" />
-                  <p className="text-lg font-medium">All items are in stock!</p>
-                  <p className="text-muted-foreground">No items need reordering at this time.</p>
+                                    </DialogContent>
+                                  </Dialog>
+                                  
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setChangeHistoryDialogOpen(item.id)}
+                                  >
+                                    <History className="h-4 w-4" />
+                                  </Button>
+                                  
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleDeleteItem(item.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {items
-                    .filter(item => item.quantity <= item.reorderLevel)
-                    .map(item => (
-                      <div key={item.id} className="flex items-center justify-between p-4 border rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <Package className="h-5 w-5" />
-                          <div>
-                            <div className="font-medium">{item.name}</div>
-                            <div className="text-sm text-muted-foreground">{item.sku}</div>
-                            <div className="text-sm">{item.supplier}</div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+          
+          {/* LOW STOCK TAB */}
+          <TabsContent value="low-stock">
+            <Card>
+              <CardHeader>
+                <CardTitle>Low Stock Items</CardTitle>
+                <CardDescription>Items that need reordering</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {stats.lowStockItems === 0 ? (
+                  <div className="text-center py-8">
+                    <AlertTriangle className="h-12 w-12 mx-auto text-green-500 mb-2" />
+                    <p className="text-lg font-medium">All items are in stock!</p>
+                    <p className="text-muted-foreground">No items need reordering at this time.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {items
+                      .filter(item => item.quantity <= item.reorderLevel)
+                      .map(item => (
+                        <div key={item.id} className="flex items-center justify-between p-4 border rounded-lg">
+                          <div className="flex items-center gap-3">
+                            <Package className="h-5 w-5" />
+                            <div>
+                              <div className="font-medium">{item.name}</div>
+                              <div className="text-sm text-muted-foreground">{item.sku}</div>
+                              <div className="text-sm">{item.supplier}</div>
+                            </div>
+                          </div>
+                          <div className="text-amber-600 font-medium">
+                            {item.quantity} / {item.reorderLevel}
                           </div>
                         </div>
-                        <div className="text-amber-600 font-medium">
-                          {item.quantity} / {item.reorderLevel}
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+                      ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-        {/* MACHINE STATISTICS TAB - UPDATED with more stats cards */}
-        <TabsContent value="machine-statistics">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
+          {/* MACHINE STATISTICS TAB */}
+          <TabsContent value="machine-statistics">
+            <Card>
+              <CardHeader>
                 <div>
                   <CardTitle>Machine Statistics</CardTitle>
                   <CardDescription>Manage and track machinery equipment</CardDescription>
                 </div>
-                <div className="flex items-center gap-2">
+              </CardHeader>
+              <CardContent>
+                {/* Machine Stats Cards - CHANGED TO INDIAN RUPEES */}
+                <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Total Machines</CardTitle>
+                      <Cpu className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{machineStatsDisplay.totalMachines}</div>
+                      <p className="text-xs text-muted-foreground">Across all locations</p>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Total Value</CardTitle>
+                      <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{formatCurrency(machineStatsDisplay.totalMachineValue)}</div>
+                      <p className="text-xs text-muted-foreground">Machinery value</p>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Operational</CardTitle>
+                      <div className="h-4 w-4 rounded-full bg-green-500" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-green-600">{machineStatsDisplay.operationalMachines}</div>
+                      <p className="text-xs text-muted-foreground">Ready for use</p>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Under Maintenance</CardTitle>
+                      <div className="h-4 w-4 rounded-full bg-yellow-500" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-yellow-600">{machineStatsDisplay.maintenanceMachines}</div>
+                      <p className="text-xs text-muted-foreground">Currently in maintenance</p>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Out of Service</CardTitle>
+                      <div className="h-4 w-4 rounded-full bg-red-500" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-red-600">{machineStatsDisplay.outOfServiceMachines}</div>
+                      <p className="text-xs text-muted-foreground">Not operational</p>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Maintenance Due</CardTitle>
+                      <div className="h-4 w-4 rounded-full bg-orange-500" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-orange-600">{machineStatsDisplay.upcomingMaintenanceCount}</div>
+                      <p className="text-xs text-muted-foreground">Within 30 days</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Machine Search and Actions */}
+                <div className="flex flex-col md:flex-row gap-4 mb-6">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search machines by name, manufacturer, model, or location..."
+                      value={machineSearchQuery}
+                      onChange={(e) => setMachineSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
                   <Button 
                     variant="outline" 
-                    onClick={handleExportMachines}
+                    onClick={() => setMaintenanceDialogOpen(true)}
                     disabled={machines.length === 0}
                   >
-                    <Download className="mr-2 h-4 w-4" />
-                    Export Machines
-                  </Button>
-                  <Button onClick={() => {
-                    setEditMachine(null);
-                    resetNewMachineForm();
-                    setMachineDialogOpen(true);
-                  }}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Machine
+                    <Wrench className="mr-2 h-4 w-4" />
+                    Add Maintenance
                   </Button>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {/* Machine Stats Cards - UPDATED with more cards */}
-              <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Machines</CardTitle>
-                    <Cpu className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{machineStatsDisplay.totalMachines}</div>
-                    <p className="text-xs text-muted-foreground">Across all locations</p>
-                  </CardContent>
-                </Card>
-                
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Value</CardTitle>
-                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{formatCurrency(machineStatsDisplay.totalMachineValue)}</div>
-                    <p className="text-xs text-muted-foreground">Machinery value</p>
-                  </CardContent>
-                </Card>
-                
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Operational</CardTitle>
-                    <div className="h-4 w-4 rounded-full bg-green-500" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-green-600">{machineStatsDisplay.operationalMachines}</div>
-                    <p className="text-xs text-muted-foreground">Ready for use</p>
-                  </CardContent>
-                </Card>
-                
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Under Maintenance</CardTitle>
-                    <div className="h-4 w-4 rounded-full bg-yellow-500" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-yellow-600">{machineStatsDisplay.maintenanceMachines}</div>
-                    <p className="text-xs text-muted-foreground">Currently in maintenance</p>
-                  </CardContent>
-                </Card>
-                
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Out of Service</CardTitle>
-                    <div className="h-4 w-4 rounded-full bg-red-500" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-red-600">{machineStatsDisplay.outOfServiceMachines}</div>
-                    <p className="text-xs text-muted-foreground">Not operational</p>
-                  </CardContent>
-                </Card>
-                
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Maintenance Due</CardTitle>
-                    <div className="h-4 w-4 rounded-full bg-orange-500" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-orange-600">{machineStatsDisplay.upcomingMaintenanceCount}</div>
-                    <p className="text-xs text-muted-foreground">Within 30 days</p>
-                  </CardContent>
-                </Card>
-              </div>
 
-              {/* Machine Search and Actions */}
-              <div className="flex flex-col md:flex-row gap-4 mb-6">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search machines by name, manufacturer, model, or location..."
-                    value={machineSearchQuery}
-                    onChange={(e) => setMachineSearchQuery(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-                <Button 
-                  variant="outline" 
-                  onClick={() => setMaintenanceDialogOpen(true)}
-                  disabled={machines.length === 0}
-                >
-                  <Wrench className="mr-2 h-4 w-4" />
-                  Add Maintenance
-                </Button>
-              </div>
-
-              {/* Machines Table - FIXED: Changed machineModel to model */}
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Machine Name</TableHead>
-                      <TableHead>Model</TableHead>
-                      <TableHead>Quantity</TableHead>
-                      <TableHead>Cost</TableHead>
-                      <TableHead>Purchase Date</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredMachines.length === 0 ? (
+                {/* Machines Table - CHANGED TO INDIAN RUPEES */}
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8">
-                          <Cpu className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
-                          <p className="text-lg font-medium">No machines found</p>
-                          <p className="text-muted-foreground">
-                            {machines.length === 0 
-                              ? "No machines in database. Add your first machine!" 
-                              : "Try adjusting your search"}
-                          </p>
-                        </TableCell>
+                        <TableHead>Machine Name</TableHead>
+                        <TableHead>Model</TableHead>
+                        <TableHead>Quantity</TableHead>
+                        <TableHead>Cost</TableHead>
+                        <TableHead>Purchase Date</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
-                    ) : (
-                      filteredMachines.map((machine) => {
-                        const statusOption = machineStatusOptions.find(s => s.value === machine.status);
-                        const StatusIcon = statusOption?.icon || CheckCircle;
-                        const machineAge = calculateMachineAge(machine.purchaseDate);
-                        
-                        return (
-                          <TableRow key={machine.id}>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <Cpu className="h-4 w-4 text-muted-foreground" />
-                                <div>
-                                  <span className="font-medium">{machine.name}</span>
-                                  {machine.manufacturer && (
-                                    <div className="text-xs text-muted-foreground">{machine.manufacturer}</div>
-                                  )}
+                    </TableHeader>
+                    <TableBody>
+                      {filteredMachines.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-8">
+                            <Cpu className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+                            <p className="text-lg font-medium">No machines found</p>
+                            <p className="text-muted-foreground">
+                              {machines.length === 0 
+                                ? "No machines in database. Add your first machine!" 
+                                : "Try adjusting your search"}
+                            </p>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredMachines.map((machine) => {
+                          const statusOption = machineStatusOptions.find(s => s.value === machine.status);
+                          const StatusIcon = statusOption?.icon || CheckCircle;
+                          const machineAge = calculateMachineAge(machine.purchaseDate);
+                          
+                          return (
+                            <TableRow key={machine.id}>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Cpu className="h-4 w-4 text-muted-foreground" />
+                                  <div>
+                                    <span className="font-medium">{machine.name}</span>
+                                    {machine.manufacturer && (
+                                      <div className="text-xs text-muted-foreground">{machine.manufacturer}</div>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div>{machine.model || 'N/A'}</div> {/* FIXED */}
-                              {machine.serialNumber && (
-                                <div className="text-xs text-muted-foreground">SN: {machine.serialNumber}</div>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <div className="font-medium">{machine.quantity}</div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="font-medium">{formatCurrency(machine.cost)}</div>
-                              <div className="text-xs text-muted-foreground">
-                                Total: {formatCurrency(machine.cost * machine.quantity)}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-1">
-                                <Calendar className="h-3 w-3 text-muted-foreground" />
-                                {formatDate(machine.purchaseDate)}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                Age: {machineAge} year{machineAge !== 1 ? 's' : ''}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge className={`${statusOption?.color} border-0 flex items-center gap-1`}>
-                                <StatusIcon className="h-3 w-3" />
-                                {statusOption?.label}
-                              </Badge>
-                              {machine.nextMaintenanceDate && (
-                                <div className="text-xs text-muted-foreground mt-1">
-                                  Next: {formatDate(machine.nextMaintenanceDate)}
+                              </TableCell>
+                              <TableCell>
+                                <div>{machine.model || 'N/A'}</div>
+                                {machine.serialNumber && (
+                                  <div className="text-xs text-muted-foreground">SN: {machine.serialNumber}</div>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <div className="font-medium">{machine.quantity}</div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="font-medium">{formatCurrency(machine.cost)}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  Total: {formatCurrency(machine.cost * machine.quantity)}
                                 </div>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleViewMachine(machine.id)}
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </Button>
-                                
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleEditMachine(machine)}
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                                
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => {
-                                    setSelectedMachineForMaintenance(machine.id);
-                                    setMaintenanceDialogOpen(true);
-                                  }}
-                                >
-                                  <Wrench className="h-4 w-4" />
-                                </Button>
-                                
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleDeleteMachine(machine.id)}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        {/* CATEGORIES TAB - UNCHANGED */}
-        <TabsContent value="categories">
-          <Card>
-            <CardHeader>
-              <CardTitle>Categories</CardTitle>
-              <CardDescription>Item categories by department</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {departments.map(dept => {
-                  const Icon = dept.icon;
-                  const deptItems = items.filter(item => item.department === dept.value);
-                  const deptCategories = [...new Set(deptItems.map(item => item.category))];
-                  
-                  return (
-                    <Card key={dept.value}>
-                      <CardHeader className="pb-2">
-                        <div className="flex items-center gap-2">
-                          <Icon className="h-5 w-5" />
-                          <CardTitle className="text-lg">{dept.label}</CardTitle>
-                        </div>
-                        <CardDescription>
-                          {deptItems.length} items • {deptCategories.length} categories
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          {deptCategories.length > 0 ? (
-                            deptCategories.map(category => {
-                              const categoryItems = deptItems.filter(item => item.category === category);
-                              return (
-                                <div key={category} className="flex justify-between items-center">
-                                  <span>{category}</span>
-                                  <Badge variant="secondary">{categoryItems.length}</Badge>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1">
+                                  <Calendar className="h-3 w-3 text-muted-foreground" />
+                                  {formatDate(machine.purchaseDate)}
                                 </div>
-                              );
-                            })
-                          ) : (
-                            <p className="text-sm text-muted-foreground">No items in this department</p>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        {/* SITES TAB - UNCHANGED */}
-        <TabsContent value="sites">
-          <Card>
-            <CardHeader>
-              <CardTitle>Sites</CardTitle>
-              <CardDescription>Inventory distribution across sites</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {sites.map(site => {
-                  const siteItems = items.filter(item => item.site === site.id);
-                  const siteValue = siteItems.reduce((sum, item) => sum + (item.quantity * item.costPrice), 0);
-                  
-                  return (
-                    <Card key={site.id}>
-                      <CardHeader className="pb-2">
-                        <div className="flex items-center gap-2">
-                          <Building className="h-5 w-5" />
-                          <CardTitle className="text-lg">{site.name}</CardTitle>
-                        </div>
-                        <CardDescription>
-                          {siteItems.length} items • Value: {formatCurrency(siteValue)}
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          {siteItems.length > 0 ? (
-                            <div className="text-sm">
-                              <div className="grid grid-cols-2 gap-2 mb-2">
-                                <div className="font-medium">Department</div>
-                                <div className="font-medium text-right">Items</div>
-                              </div>
-                              {Object.entries(
-                                siteItems.reduce((acc, item) => {
-                                  acc[item.department] = (acc[item.department] || 0) + 1;
-                                  return acc;
-                                }, {} as Record<string, number>)
-                              ).map(([dept, count]) => (
-                                <div key={dept} className="flex justify-between items-center">
-                                  <span className="capitalize">{dept}</span>
-                                  <Badge variant="secondary">{count}</Badge>
+                                <div className="text-xs text-muted-foreground">
+                                  Age: {machineAge} year{machineAge !== 1 ? 's' : ''}
                                 </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">No items at this site</p>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={`${statusOption?.color} border-0 flex items-center gap-1`}>
+                                  <StatusIcon className="h-3 w-3" />
+                                  {statusOption?.label}
+                                </Badge>
+                                {machine.nextMaintenanceDate && (
+                                  <div className="text-xs text-muted-foreground mt-1">
+                                    Next: {formatDate(machine.nextMaintenanceDate)}
+                                  </div>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleViewMachine(machine.id)}
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                  
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleEditMachine(machine)}
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                      setSelectedMachineForMaintenance(machine.id);
+                                      setMaintenanceDialogOpen(true);
+                                    }}
+                                  >
+                                    <Wrench className="h-4 w-4" />
+                                  </Button>
+                                  
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleDeleteMachine(machine.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+          
+          {/* CATEGORIES TAB */}
+          <TabsContent value="categories">
+            <Card>
+              <CardHeader>
+                <CardTitle>Categories</CardTitle>
+                <CardDescription>Item categories by department</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {departments.map(dept => {
+                    const Icon = dept.icon;
+                    const deptItems = items.filter(item => item.department === dept.value);
+                    const deptCategories = [...new Set(deptItems.map(item => item.category))];
+                    
+                    return (
+                      <Card key={dept.value}>
+                        <CardHeader className="pb-2">
+                          <div className="flex items-center gap-2">
+                            <Icon className="h-5 w-5" />
+                            <CardTitle className="text-lg">{dept.label}</CardTitle>
+                          </div>
+                          <CardDescription>
+                            {deptItems.length} items • {deptCategories.length} categories
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-2">
+                            {deptCategories.length > 0 ? (
+                              deptCategories.map(category => {
+                                const categoryItems = deptItems.filter(item => item.category === category);
+                                return (
+                                  <div key={category} className="flex justify-between items-center">
+                                    <span>{category}</span>
+                                    <Badge variant="secondary">{categoryItems.length}</Badge>
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <p className="text-sm text-muted-foreground">No items in this department</p>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
 
-      {/* ADD/EDIT ITEM DIALOG - UNCHANGED */}
+      {/* ADD/EDIT ITEM DIALOG */}
       <Dialog open={itemDialogOpen} onOpenChange={setItemDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -1692,32 +1623,6 @@ const InventoryPage = () => {
                   {(editItem ? getCategoriesForDepartment(editItem.department) : 
                     getCategoriesForDepartment(newItem.department || '')).map(cat => (
                     <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="site">Site *</Label>
-              <Select
-                value={editItem ? editItem.site : newItem.site}
-                onValueChange={(value) => 
-                  editItem 
-                    ? setEditItem({...editItem, site: value})
-                    : setNewItem({...newItem, site: value})
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select site" />
-                </SelectTrigger>
-                <SelectContent>
-                  {sites.map(site => (
-                    <SelectItem key={site.id} value={site.id}>
-                      <div className="flex items-center gap-2">
-                        <Building className="h-4 w-4" />
-                        {site.name}
-                      </div>
-                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1860,7 +1765,7 @@ const InventoryPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* ADD/EDIT MACHINE DIALOG - FIXED: Changed machineModel to model */}
+      {/* ADD/EDIT MACHINE DIALOG */}
       <Dialog open={machineDialogOpen} onOpenChange={(open) => {
         setMachineDialogOpen(open);
         if (!open) {
@@ -1888,7 +1793,7 @@ const InventoryPage = () => {
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="model">Model</Label> {/* FIXED: Changed from machineModel to model */}
+              <Label htmlFor="model">Model</Label>
               <Input
                 id="model"
                 value={newMachine.model} 
@@ -2053,7 +1958,7 @@ const InventoryPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* VIEW MACHINE DETAILS DIALOG - FIXED */}
+      {/* VIEW MACHINE DETAILS DIALOG */}
       <Dialog open={!!viewMachine} onOpenChange={() => setViewMachine(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -2069,7 +1974,7 @@ const InventoryPage = () => {
                   </Badge>
                 </div>
                 <div><strong>Manufacturer:</strong> {viewMachine.manufacturer || 'N/A'}</div>
-                <div><strong>Model:</strong> {viewMachine.model || 'N/A'}</div> {/* FIXED */}
+                <div><strong>Model:</strong> {viewMachine.model || 'N/A'}</div>
                 <div><strong>Serial Number:</strong> {viewMachine.serialNumber || 'N/A'}</div>
                 <div><strong>Cost:</strong> {formatCurrency(viewMachine.cost)}</div>
                 <div><strong>Total Value:</strong> {formatCurrency(viewMachine.cost * viewMachine.quantity)}</div>
@@ -2150,7 +2055,7 @@ const InventoryPage = () => {
                 <SelectContent>
                   {machines.map(machine => (
                     <SelectItem key={machine.id} value={machine.id}>
-                      {machine.name} {machine.model ? `(${machine.model})` : ''} {/* FIXED */}
+                      {machine.name} {machine.model ? `(${machine.model})` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -2280,7 +2185,7 @@ const InventoryPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* CHANGE HISTORY DIALOG - UNCHANGED */}
+      {/* CHANGE HISTORY DIALOG */}
       <Dialog open={!!changeHistoryDialogOpen} onOpenChange={() => setChangeHistoryDialogOpen(null)}>
         <DialogContent>
           <DialogHeader>

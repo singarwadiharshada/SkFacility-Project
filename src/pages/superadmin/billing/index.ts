@@ -1,4 +1,4 @@
-export { default } from "./Billing";
+//export { default } from "./Billing";
 export { default as InvoicesTab } from "./InvoicesTab";
 export { default as ExpensesTab } from "./ExpensesTab";
 export { default as PaymentSummaryTab } from "./PaymentSummaryTab";

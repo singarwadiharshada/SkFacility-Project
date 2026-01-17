@@ -8,7 +8,27 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogTrigger, 
+  DialogDescription,
+  DialogFooter,
+  DialogClose
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { 
   Search, 
   Plus, 
@@ -33,12 +53,17 @@ import {
   Calendar,
   MapPin,
   Filter,
-  RefreshCw
+  RefreshCw,
+  MoreVertical,
+  Loader2,
+  AlertTriangle,
+  File
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { useWorkQuery } from "@/hooks/useWorkQuery";
 import { format } from "date-fns";
+import { useRole } from "@/context/RoleContext";
 
 // Types matching the API
 interface WorkQueryProofFile {
@@ -97,7 +122,7 @@ interface WorkQuery {
 interface Service {
   _id: string;
   serviceId: string;
-  type: string;  // Changed from specific union to string
+  type: string;
   title: string;
   description: string;
   location: string;
@@ -121,6 +146,82 @@ const getServiceType = (type: string): 'cleaning' | 'waste-management' | 'parkin
       return 'cleaning'; // default fallback
   }
 };
+
+// Fallback static data for dropdowns (in case API fails)
+const FALLBACK_CATEGORIES = [
+  { value: "service-quality", label: "Service Quality Issue", description: "Issues with the quality of service provided" },
+  { value: "service-delay", label: "Service Delay", description: "Services not completed on time" },
+  { value: "safety-issue", label: "Safety Issue", description: "Safety concerns or violations" },
+  { value: "equipment-failure", label: "Equipment Failure", description: "Equipment not working properly" },
+  { value: "staff-behavior", label: "Staff Behavior", description: "Issues with staff conduct or behavior" },
+  { value: "cleanliness", label: "Cleanliness Issue", description: "Poor cleaning or maintenance" },
+  { value: "communication", label: "Communication Issue", description: "Poor communication from service staff" },
+  { value: "other", label: "Other", description: "Other types of issues" }
+];
+
+const FALLBACK_PRIORITIES = [
+  { value: "low", label: "Low Priority", description: "Minor issue, can be addressed later", color: "green" },
+  { value: "medium", label: "Medium Priority", description: "Standard issue, address within 24-48 hours", color: "yellow" },
+  { value: "high", label: "High Priority", description: "Urgent issue, address within 24 hours", color: "orange" },
+  { value: "critical", label: "Critical Priority", description: "Critical issue, address immediately", color: "red" }
+];
+
+const FALLBACK_STATUSES = [
+  { value: "pending", label: "Pending", description: "Query submitted, awaiting review", color: "yellow" },
+  { value: "in-progress", label: "In Progress", description: "Query is being investigated", color: "blue" },
+  { value: "resolved", label: "Resolved", description: "Query has been resolved", color: "green" },
+  { value: "rejected", label: "Rejected", description: "Query was rejected", color: "red" }
+];
+
+const FALLBACK_SERVICE_TYPES = [
+  { value: "cleaning", label: "Cleaning Service", icon: "sparkles", color: "blue" },
+  { value: "waste-management", label: "Waste Management", icon: "trash-2", color: "green" },
+  { value: "parking-management", label: "Parking Management", icon: "car", color: "purple" },
+  { value: "security", label: "Security Service", icon: "shield", color: "orange" },
+  { value: "maintenance", label: "Maintenance", icon: "wrench", color: "red" }
+];
+
+const FALLBACK_SERVICES = [
+  {
+    _id: '1',
+    serviceId: 'CLEAN001',
+    type: 'cleaning',
+    title: 'Office Floor Deep Cleaning',
+    description: 'Complete deep cleaning of office floor',
+    location: 'Floor 3',
+    assignedTo: 'STAFF001',
+    assignedToName: 'Ramesh Kumar',
+    status: 'in-progress',
+    schedule: '2024-02-15T09:00:00',
+    supervisorId: 'SUP001'
+  },
+  {
+    _id: '2',
+    serviceId: 'WASTE001',
+    type: 'waste-management',
+    title: 'Biomedical Waste Collection',
+    description: 'Urgent collection and disposal',
+    location: 'Clinic Wing',
+    assignedTo: 'STAFF002',
+    assignedToName: 'Suresh Patel',
+    status: 'pending',
+    schedule: '2024-02-15T14:00:00',
+    supervisorId: 'SUP001'
+  },
+  {
+    _id: '3',
+    serviceId: 'PARK001',
+    type: 'parking-management',
+    title: 'Parking Lot Management',
+    description: 'Parking slot allocation and management',
+    location: 'Main Parking Lot',
+    assignedTo: 'STAFF003',
+    assignedToName: 'Anil Sharma',
+    status: 'completed',
+    schedule: '2024-02-14T10:00:00',
+    supervisorId: 'SUP001'
+  }
+];
 
 // Reusable Components
 const PriorityBadge = ({ priority }: { priority: string }) => {
@@ -253,8 +354,18 @@ const FilePreview = ({ file, onRemove }: { file: File; onRemove: () => void }) =
 
 // Main Component
 const WorkQueryPage = () => {
-  const supervisorId = "SUP001"; // Replace with actual supervisor ID from auth
-  const supervisorName = "Supervisor User"; // Replace with actual supervisor name
+  const { user, role, isAuthenticated, loading: authLoading } = useRole();
+  
+  // Check if user is a supervisor
+  useEffect(() => {
+    if (!authLoading && (!isAuthenticated || role !== 'supervisor')) {
+      toast.error("Access denied. Only supervisors can access this page.");
+    }
+  }, [isAuthenticated, role, authLoading]);
+
+  // Get supervisor information from logged in user
+  const supervisorId = user?._id || user?.id || "SUP001";
+  const supervisorName = user?.name || "Supervisor User";
   
   const {
     workQueries,
@@ -266,11 +377,10 @@ const WorkQueryPage = () => {
     statuses,
     loading,
     createWorkQuery,
+    deleteWorkQuery,
     fetchWorkQueries,
     fetchServices,
     fetchStatistics,
-    formatFileSize,
-    getFileIcon,
     validateFile,
     downloadFile,
     previewFile,
@@ -290,7 +400,9 @@ const WorkQueryPage = () => {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [serviceTypeFilter, setServiceTypeFilter] = useState<string>("all");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [selectedQueryForView, setSelectedQueryForView] = useState<WorkQuery | null>(null);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
 
   // New query form state
   const [newQuery, setNewQuery] = useState({
@@ -299,12 +411,46 @@ const WorkQueryPage = () => {
     serviceId: "",
     priority: "medium" as "low" | "medium" | "high" | "critical",
     category: "service-quality",
-    supervisorId,
-    supervisorName
+    supervisorId: supervisorId,
+    supervisorName: supervisorName
   });
 
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
+
+  // Use fallback data if API data is empty
+  const displayCategories = categories.length > 0 ? categories : FALLBACK_CATEGORIES;
+  const displayPriorities = priorities.length > 0 ? priorities : FALLBACK_PRIORITIES;
+  const displayStatuses = statuses.length > 0 ? statuses : FALLBACK_STATUSES;
+  const displayServiceTypes = serviceTypes.length > 0 ? serviceTypes : FALLBACK_SERVICE_TYPES;
+  const displayServices = services.length > 0 ? services : FALLBACK_SERVICES;
+
+  // Debug log
+  useEffect(() => {
+    console.log('📊 Data state:', {
+      categories: categories,
+      priorities: priorities,
+      statuses: statuses,
+      serviceTypes: serviceTypes,
+      services: services,
+      displayCategories,
+      displayPriorities,
+      displayStatuses,
+      displayServiceTypes,
+      displayServices
+    });
+  }, [categories, priorities, statuses, serviceTypes, services]);
+
+  // Update newQuery when supervisor data changes
+  useEffect(() => {
+    if (supervisorId && supervisorName) {
+      setNewQuery(prev => ({
+        ...prev,
+        supervisorId,
+        supervisorName
+      }));
+    }
+  }, [supervisorId, supervisorName]);
 
   // Filter work queries
   const filteredQueries = workQueries.filter(query => {
@@ -355,25 +501,66 @@ const WorkQueryPage = () => {
     setUploadedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  // Handle service selection - FIXED: No type error now
+  // Handle service selection
   const handleServiceSelect = (serviceId: string) => {
-    const service = services.find(s => s.serviceId === serviceId);
+    if (!serviceId) {
+      setSelectedService(null);
+      setNewQuery(prev => ({ ...prev, serviceId: "" }));
+      return;
+    }
+    
+    const service = displayServices.find(s => s.serviceId === serviceId);
     setSelectedService(service || null);
     setNewQuery(prev => ({ ...prev, serviceId }));
+  };
+
+  // Reset form when dialog closes
+  const handleDialogClose = () => {
+    setIsCreateDialogOpen(false);
+    // Reset form with a small delay to avoid UI flickering
+    setTimeout(() => {
+      setNewQuery({
+        title: "",
+        description: "",
+        serviceId: "",
+        priority: "medium",
+        category: "service-quality",
+        supervisorId,
+        supervisorName
+      });
+      setUploadedFiles([]);
+      setSelectedService(null);
+    }, 300);
   };
 
   // Handle form submission
   const handleSubmitQuery = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Check if user is authenticated as supervisor
+    if (!isAuthenticated || role !== 'supervisor') {
+      toast.error("You must be logged in as a supervisor to create a work query");
+      return;
+    }
+
     // Validate required fields
-    if (!newQuery.title || !newQuery.description || !newQuery.serviceId) {
-      toast.error("Please fill all required fields");
+    if (!newQuery.title.trim()) {
+      toast.error("Please enter a query title");
+      return;
+    }
+
+    if (!newQuery.description.trim()) {
+      toast.error("Please enter a description");
+      return;
+    }
+
+    if (!newQuery.serviceId) {
+      toast.error("Please select a service");
       return;
     }
 
     if (!selectedService) {
-      toast.error("Please select a service");
+      toast.error("Please select a valid service");
       return;
     }
 
@@ -381,29 +568,12 @@ const WorkQueryPage = () => {
       const result = await createWorkQuery({
         ...newQuery,
         serviceTitle: selectedService.title,
-        serviceTeam: selectedService.type // This is now a string, which matches the API
+        serviceTeam: selectedService.type
       }, uploadedFiles);
       
       if (result.success) {
-        // Reset form
-        setNewQuery({
-          title: "",
-          description: "",
-          serviceId: "",
-          priority: "medium",
-          category: "service-quality",
-          supervisorId,
-          supervisorName
-        });
-        setUploadedFiles([]);
-        setSelectedService(null);
-        setIsDialogOpen(false);
-        
-        // Refresh data
-        fetchWorkQueries();
-        fetchStatistics();
-        
         toast.success("Work query created successfully!");
+        handleDialogClose();
       } else {
         toast.error(result.error || "Failed to create work query");
       }
@@ -411,6 +581,28 @@ const WorkQueryPage = () => {
       console.error("Error creating work query:", error);
       toast.error("Failed to create work query. Please try again.");
     }
+  };
+
+  // Handle delete query
+  const handleDeleteQuery = async (queryId: string, queryTitle: string) => {
+    try {
+      const result = await deleteWorkQuery(queryId);
+      
+      if (result.success) {
+        toast.success(`Work query "${queryTitle}" deleted successfully`);
+      } else {
+        toast.error(result.error || "Failed to delete work query");
+      }
+    } catch (error) {
+      console.error("Error deleting work query:", error);
+      toast.error("Failed to delete work query. Please try again.");
+    }
+  };
+
+  // Handle view query details
+  const handleViewQuery = (query: WorkQuery) => {
+    setSelectedQueryForView(query);
+    setIsViewDialogOpen(true);
   };
 
   // Refresh data
@@ -430,17 +622,44 @@ const WorkQueryPage = () => {
     }
   };
 
-  // Also fix the ServiceTypeBadge usage in the table
-  const TableServiceTypeBadge = ({ type }: { type?: string }) => {
-    if (!type) return null;
-    return <ServiceTypeBadge type={type} />;
-  };
+  // Show loading state while checking authentication
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show access denied if not a supervisor
+  if (!isAuthenticated || role !== 'supervisor') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-red-600">Access Denied</CardTitle>
+            <CardDescription>
+              Only supervisors can access the Work Query Management page.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-center mb-4">
+              Please log in with a supervisor account to continue.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
       <DashboardHeader 
         title="Work Query Management" 
-        subtitle="Report and track issues with facility services"
+        subtitle={`Report and track issues with facility services - ${supervisorName}`}
       />
       
       <motion.div 
@@ -514,228 +733,267 @@ const WorkQueryPage = () => {
                   Manage and track issues with facility services
                 </CardDescription>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={handleRefresh} disabled={loading.queries}>
-                  <RefreshCw className={`h-4 w-4 mr-2 ${loading.queries ? 'animate-spin' : ''}`} />
-                  Refresh
-                </Button>
-                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button disabled={loading.creating}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      New Query
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                      <DialogTitle>Create New Work Query</DialogTitle>
-                      <DialogDescription>
-                        Report an issue with a facility service
-                      </DialogDescription>
-                    </DialogHeader>
-                    
-                    <form onSubmit={handleSubmitQuery} className="space-y-6">
-                      {/* Basic Information */}
-                      <div className="space-y-4">
-                        <h3 className="text-lg font-semibold">Query Details</h3>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="title">Query Title *</Label>
-                            <Input
-                              id="title"
-                              value={newQuery.title}
-                              onChange={(e) => setNewQuery(prev => ({ ...prev, title: e.target.value }))}
-                              placeholder="Brief description of the issue"
-                              required
-                              disabled={loading.creating}
-                            />
-                          </div>
-                          
-                          <div className="space-y-2">
-                            <Label htmlFor="category">Category *</Label>
-                            <Select 
-                              value={newQuery.category} 
-                              onValueChange={(value) => setNewQuery(prev => ({ ...prev, category: value }))}
-                              disabled={loading.creating}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select category" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {categories.map(category => (
-                                  <SelectItem key={category.value} value={category.value}>
-                                    {category.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="description">Detailed Description *</Label>
-                          <Textarea
-                            id="description"
-                            value={newQuery.description}
-                            onChange={(e) => setNewQuery(prev => ({ ...prev, description: e.target.value }))}
-                            placeholder="Provide detailed information about the issue..."
-                            rows={4}
-                            required
-                            disabled={loading.creating}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Service Selection */}
-                      <div className="space-y-4">
-                        <h3 className="text-lg font-semibold">Related Service</h3>
-                        
-                        <div className="space-y-2">
-                          <Label htmlFor="service">Select Service *</Label>
-                          <Select 
-                            value={newQuery.serviceId} 
-                            onValueChange={handleServiceSelect}
-                            disabled={loading.creating || loading.services}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Choose a service">
-                                {selectedService ? selectedService.title : "Select a service"}
-                              </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent>
-                              {services.map(service => (
-                                <SelectItem key={service.serviceId} value={service.serviceId}>
-                                  <div className="flex flex-col">
-                                    <span>{service.title}</span>
-                                    <span className="text-xs text-muted-foreground">
-                                      {service.serviceId} • {service.type}
-                                    </span>
-                                  </div>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {/* Selected Service Details */}
-                        {selectedService && (
-                          <div className="p-4 border rounded-lg bg-gray-50">
-                            <div className="flex items-center justify-between mb-2">
-                              <Label className="font-semibold">Service Details</Label>
-                              <ServiceTypeBadge type={selectedService.type} />
-                            </div>
-                            <div className="space-y-2 text-sm">
-                              <div className="flex items-center gap-2">
-                                <MapPin className="h-3 w-3" />
-                                <span><strong>Location:</strong> {selectedService.location}</span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <User className="h-3 w-3" />
-                                <span><strong>Assigned To:</strong> {selectedService.assignedToName}</span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Calendar className="h-3 w-3" />
-                                <span><strong>Schedule:</strong> {formatDate(selectedService.schedule)}</span>
-                              </div>
-                              <div>
-                                <strong>Description:</strong> {selectedService.description}
-                              </div>
-                            </div>
-                          </div>
+             <div className="flex flex-wrap gap-2">
+  <Button variant="outline" onClick={handleRefresh} disabled={loading.queries}>
+    <RefreshCw className={`h-4 w-4 mr-2 ${loading.queries ? 'animate-spin' : ''}`} />
+    Refresh
+  </Button>
+  
+  {/* Fixed: Removed disabled prop from New Query button */}
+  <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+    <DialogTrigger asChild>
+      <Button>
+        <Plus className="mr-2 h-4 w-4" />
+        New Query
+      </Button>
+    </DialogTrigger>
+    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle>Create New Work Query</DialogTitle>
+        <DialogDescription>
+          Report an issue with a facility service
+        </DialogDescription>
+      </DialogHeader>
+      
+      <form onSubmit={handleSubmitQuery} className="space-y-6">
+        {/* Basic Information */}
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold">Query Details</h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="title">Query Title *</Label>
+              <Input
+                id="title"
+                value={newQuery.title}
+                onChange={(e) => setNewQuery(prev => ({ ...prev, title: e.target.value }))}
+                placeholder="Brief description of the issue"
+                required
+                disabled={loading.creating}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="category">Category *</Label>
+              <Select 
+                value={newQuery.category} 
+                onValueChange={(value) => setNewQuery(prev => ({ ...prev, category: value }))}
+                disabled={loading.creating}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category">
+                    {displayCategories.find(c => c.value === newQuery.category)?.label || "Select category"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {displayCategories.map(category => (
+                    <SelectItem key={category.value} value={category.value}>
+                      <div className="flex flex-col">
+                        <span>{category.label}</span>
+                        {category.description && (
+                          <span className="text-xs text-muted-foreground">
+                            {category.description}
+                          </span>
                         )}
                       </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="priority">Priority Level *</Label>
-                        <Select 
-                          value={newQuery.priority} 
-                          onValueChange={(value) => setNewQuery(prev => ({ ...prev, priority: value as any }))}
-                          disabled={loading.creating}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select priority" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {priorities.map(priority => (
-                              <SelectItem key={priority.value} value={priority.value}>
-                                {priority.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+          <div className="space-y-2">
+            <Label htmlFor="description">Detailed Description *</Label>
+            <Textarea
+              id="description"
+              value={newQuery.description}
+              onChange={(e) => setNewQuery(prev => ({ ...prev, description: e.target.value }))}
+              placeholder="Provide detailed information about the issue..."
+              rows={4}
+              required
+              disabled={loading.creating}
+            />
+          </div>
+        </div>
+
+        {/* Service Selection */}
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold">Related Service</h3>
+          
+          <div className="space-y-2">
+            <Label htmlFor="service">Select Service *</Label>
+            <Select 
+              value={newQuery.serviceId} 
+              onValueChange={handleServiceSelect}
+              disabled={loading.creating || loading.services}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Choose a service">
+                  {selectedService ? selectedService.title : "Select a service"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {displayServices.length > 0 ? (
+                  displayServices.map(service => (
+                    <SelectItem key={service.serviceId} value={service.serviceId}>
+                      <div className="flex flex-col">
+                        <span>{service.title}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {service.serviceId} • {service.type}
+                        </span>
                       </div>
+                    </SelectItem>
+                  ))
+                ) : (
+                  <div className="p-2 text-center text-muted-foreground">
+                    <AlertCircle className="h-4 w-4 mx-auto mb-1" />
+                    <span>No services available</span>
+                  </div>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
 
-                      {/* File Upload Section */}
-                      <div className="space-y-4">
-                        <h3 className="text-lg font-semibold">Supporting Evidence</h3>
-                        
-                        <div className="border-2 border-dashed rounded-lg p-6 text-center">
-                          <Upload className="mx-auto h-8 w-8 text-muted-foreground" />
-                          <p className="mt-2 text-sm text-muted-foreground">
-                            Upload screenshots, photos, documents, or other proof (Max 10 files, 25MB each)
-                          </p>
-                          <Input
-                            type="file"
-                            multiple
-                            onChange={handleFileUpload}
-                            className="hidden"
-                            id="file-upload"
-                            accept="image/*,video/*,.pdf,.doc,.docx,.txt,.xlsx,.xls"
-                            disabled={loading.creating}
-                          />
-                          <Label htmlFor="file-upload">
-                            <Button 
-                              variant="outline" 
-                              className="mt-4" 
-                              type="button"
-                              disabled={loading.creating}
-                            >
-                              Choose Files
-                            </Button>
-                          </Label>
-                        </div>
-
-                        {/* Uploaded Files List */}
-                        {uploadedFiles.length > 0 && (
-                          <div className="space-y-3">
-                            <Label>Uploaded Files ({uploadedFiles.length}/10)</Label>
-                            <div className="space-y-2">
-                              {uploadedFiles.map((file, index) => (
-                                <FilePreview 
-                                  key={index} 
-                                  file={file} 
-                                  onRemove={() => handleRemoveFile(index)} 
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Submit Button */}
-                      <div className="flex gap-2 pt-4">
-                        <Button 
-                          type="button" 
-                          variant="outline" 
-                          onClick={() => setIsDialogOpen(false)}
-                          className="flex-1"
-                          disabled={loading.creating}
-                        >
-                          Cancel
-                        </Button>
-                        <Button 
-                          type="submit" 
-                          className="flex-1"
-                          disabled={loading.creating}
-                        >
-                          {loading.creating ? "Creating..." : "Submit Query"}
-                        </Button>
-                      </div>
-                    </form>
-                  </DialogContent>
-                </Dialog>
+          {/* Selected Service Details */}
+          {selectedService && (
+            <div className="p-4 border rounded-lg bg-gray-50">
+              <div className="flex items-center justify-between mb-2">
+                <Label className="font-semibold">Service Details</Label>
+                <ServiceTypeBadge type={selectedService.type} />
               </div>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <MapPin className="h-3 w-3" />
+                  <span><strong>Location:</strong> {selectedService.location}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <User className="h-3 w-3" />
+                  <span><strong>Assigned To:</strong> {selectedService.assignedToName}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-3 w-3" />
+                  <span><strong>Schedule:</strong> {formatDate(selectedService.schedule)}</span>
+                </div>
+                <div>
+                  <strong>Description:</strong> {selectedService.description}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="priority">Priority Level *</Label>
+          <Select 
+            value={newQuery.priority} 
+            onValueChange={(value) => setNewQuery(prev => ({ ...prev, priority: value as any }))}
+            disabled={loading.creating}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select priority">
+                {displayPriorities.find(p => p.value === newQuery.priority)?.label || "Select priority"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {displayPriorities.map(priority => (
+                <SelectItem key={priority.value} value={priority.value}>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-3 h-3 rounded-full ${
+                      priority.value === 'low' ? 'bg-green-500' :
+                      priority.value === 'medium' ? 'bg-yellow-500' :
+                      priority.value === 'high' ? 'bg-orange-500' : 'bg-red-500'
+                    }`} />
+                    <div className="flex flex-col">
+                      <span>{priority.label}</span>
+                      {priority.description && (
+                        <span className="text-xs text-muted-foreground">
+                          {priority.description}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* File Upload Section */}
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold">Supporting Evidence</h3>
+          
+          <div className="border-2 border-dashed rounded-lg p-6 text-center">
+            <Upload className="mx-auto h-8 w-8 text-muted-foreground" />
+            <p className="mt-2 text-sm text-muted-foreground">
+              Upload screenshots, photos, documents, or other proof (Max 10 files, 25MB each)
+            </p>
+            <Input
+              type="file"
+              multiple
+              onChange={handleFileUpload}
+              className="hidden"
+              id="file-upload"
+              accept="image/*,video/*,.pdf,.doc,.docx,.txt,.xlsx,.xls"
+              disabled={loading.creating}
+            />
+            <Label htmlFor="file-upload">
+              <Button 
+                variant="outline" 
+                className="mt-4" 
+                type="button"
+                disabled={loading.creating}
+              >
+                Choose Files
+              </Button>
+            </Label>
+          </div>
+
+          {/* Uploaded Files List */}
+          {uploadedFiles.length > 0 && (
+            <div className="space-y-3">
+              <Label>Uploaded Files ({uploadedFiles.length}/10)</Label>
+              <div className="space-y-2">
+                {uploadedFiles.map((file, index) => (
+                  <FilePreview 
+                    key={index} 
+                    file={file} 
+                    onRemove={() => handleRemoveFile(index)} 
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Submit Button */}
+        <div className="flex gap-2 pt-4">
+          <Button 
+            type="button" 
+            variant="outline" 
+            onClick={() => setIsCreateDialogOpen(false)}
+            className="flex-1"
+            disabled={loading.creating}
+          >
+            Cancel
+          </Button>
+          <Button 
+            type="submit" 
+            className="flex-1"
+            disabled={loading.creating}
+          >
+            {loading.creating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Creating...
+              </>
+            ) : "Submit Query"}
+          </Button>
+        </div>
+      </form>
+    </DialogContent>
+  </Dialog>
+</div>
             </div>
           </CardHeader>
           
@@ -759,13 +1017,29 @@ const WorkQueryPage = () => {
                 <Label>Status</Label>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger>
-                    <SelectValue placeholder="All Status" />
+                    <SelectValue placeholder="All Status">
+                      {statusFilter === "all" ? "All Status" : displayStatuses.find(s => s.value === statusFilter)?.label || statusFilter}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Status</SelectItem>
-                    {statuses.map(status => (
+                    {displayStatuses.map(status => (
                       <SelectItem key={status.value} value={status.value}>
-                        {status.label}
+                        <div className="flex items-center gap-2">
+                          <div className={`w-3 h-3 rounded-full ${
+                            status.value === 'pending' ? 'bg-yellow-500' :
+                            status.value === 'in-progress' ? 'bg-blue-500' :
+                            status.value === 'resolved' ? 'bg-green-500' : 'bg-red-500'
+                          }`} />
+                          <div className="flex flex-col">
+                            <span>{status.label}</span>
+                            {status.description && (
+                              <span className="text-xs text-muted-foreground">
+                                {status.description}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -776,13 +1050,22 @@ const WorkQueryPage = () => {
                 <Label>Service Type</Label>
                 <Select value={serviceTypeFilter} onValueChange={setServiceTypeFilter}>
                   <SelectTrigger>
-                    <SelectValue placeholder="All Types" />
+                    <SelectValue placeholder="All Types">
+                      {serviceTypeFilter === "all" ? "All Types" : displayServiceTypes.find(t => t.value === serviceTypeFilter)?.label || serviceTypeFilter}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Types</SelectItem>
-                    {serviceTypes.map(type => (
+                    {displayServiceTypes.map(type => (
                       <SelectItem key={type.value} value={type.value}>
-                        {type.label}
+                        <div className="flex items-center gap-2">
+                          {type.value === 'cleaning' && <Sparkles className="h-4 w-4 text-blue-600" />}
+                          {type.value === 'waste-management' && <Trash2 className="h-4 w-4 text-green-600" />}
+                          {type.value === 'parking-management' && <Car className="h-4 w-4 text-purple-600" />}
+                          {type.value === 'security' && <Shield className="h-4 w-4 text-orange-600" />}
+                          {type.value === 'maintenance' && <Wrench className="h-4 w-4 text-red-600" />}
+                          <span>{type.label}</span>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -858,13 +1141,15 @@ const WorkQueryPage = () => {
                             <div className="max-w-xs">
                               <div className="font-medium text-sm">{query.serviceTitle || query.serviceId}</div>
                               {query.serviceType && (
-                                <TableServiceTypeBadge type={query.serviceType} />
+                                <Badge variant="outline" className="mt-1">
+                                  {query.serviceType.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                                </Badge>
                               )}
                             </div>
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline">
-                              {categories.find(c => c.value === query.category)?.label || query.category}
+                              {displayCategories.find(c => c.value === query.category)?.label || query.category}
                             </Badge>
                           </TableCell>
                           <TableCell>
@@ -884,141 +1169,222 @@ const WorkQueryPage = () => {
                               <span className="text-sm">{query.proofFiles.length}</span>
                             </div>
                           </TableCell>
-                          <TableCell className="text-right">
-                            <Dialog>
-                              <DialogTrigger asChild>
-                                <Button size="sm" variant="outline">
-                                  <Eye className="h-3 w-3 mr-1" />
-                                  View
-                                </Button>
-                              </DialogTrigger>
-                              <DialogContent className="max-w-4xl">
-                                <DialogHeader>
-                                  <DialogTitle>Query Details - {query.queryId}</DialogTitle>
-                                </DialogHeader>
-                                <div className="space-y-6">
-                                  {/* Query Information */}
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                      <Label className="font-semibold">Title</Label>
-                                      <p className="mt-1">{query.title}</p>
-                                    </div>
-                                    <div>
-                                      <Label className="font-semibold">Category</Label>
-                                      <Badge className="mt-1">
-                                        {categories.find(c => c.value === query.category)?.label || query.category}
-                                      </Badge>
-                                    </div>
-                                    <div>
-                                      <Label className="font-semibold">Priority</Label>
-                                      <div className="mt-1">
-                                        <PriorityBadge priority={query.priority} />
-                                      </div>
-                                    </div>
-                                    <div>
-                                      <Label className="font-semibold">Status</Label>
-                                      <div className="mt-1">
-                                        <StatusBadge status={query.status} />
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  {/* Description */}
-                                  <div>
-                                    <Label className="font-semibold">Description</Label>
-                                    <p className="mt-1 text-sm whitespace-pre-wrap bg-gray-50 p-3 rounded-lg">
-                                      {query.description}
-                                    </p>
-                                  </div>
-
-                                  {/* Service Information */}
-                                  <div>
-                                    <Label className="font-semibold">Service Information</Label>
-                                    <div className="mt-1 p-3 border rounded-lg">
-                                      <div className="font-medium">{query.serviceTitle || query.serviceId}</div>
-                                      {query.serviceType && (
-                                        <div className="mt-2">
-                                          <TableServiceTypeBadge type={query.serviceType} />
-                                        </div>
-                                      )}
-                                      {query.serviceStaffName && (
-                                        <div className="mt-2 text-sm">
-                                          <strong>Service Staff:</strong> {query.serviceStaffName}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* Proof Files */}
-                                  {query.proofFiles.length > 0 && (
-                                    <div>
-                                      <Label className="font-semibold">Supporting Evidence</Label>
-                                      <div className="grid gap-2 mt-2">
-                                        {query.proofFiles.map((file, index) => (
-                                          <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                                            <div className="flex items-center gap-3">
-                                              <div className="p-2 bg-gray-100 rounded-lg">
-                                                <FileIcon type={file.type} />
-                                              </div>
-                                              <div>
-                                                <div className="font-medium">{file.name}</div>
-                                                <div className="text-xs text-muted-foreground">
-                                                  {file.size} • {file.type} • {formatDate(file.uploadDate)}
-                                                </div>
-                                              </div>
-                                            </div>
-                                            <div className="flex gap-2">
-                                              <Button 
-                                                size="sm" 
-                                                variant="outline"
-                                                onClick={() => previewFile(file.url)}
-                                              >
-                                                <Eye className="h-3 w-3 mr-1" />
-                                                View
-                                              </Button>
-                                              <Button 
-                                                size="sm" 
-                                                variant="outline"
-                                                onClick={() => downloadFile(file.url, file.name)}
-                                              >
-                                                <Download className="h-3 w-3 mr-1" />
-                                                Download
-                                              </Button>
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {/* Superadmin Response */}
-                                  {query.superadminResponse && (
-                                    <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                                      <Label className="font-semibold text-blue-900">Superadmin Response</Label>
-                                      <p className="mt-1 text-sm text-blue-800 whitespace-pre-wrap">
-                                        {query.superadminResponse}
-                                      </p>
-                                      {query.responseDate && (
-                                        <div className="text-xs text-blue-600 mt-2">
-                                          Responded on: {formatDate(query.responseDate)}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-
-                                  {/* Created Info */}
-                                  <div className="text-sm text-muted-foreground">
-                                    Created by {query.reportedBy.name} on {formatDate(query.createdAt)}
-                                  </div>
-                                </div>
-                              </DialogContent>
-                            </Dialog>
+                          <TableCell>
+                            <div className="flex justify-end gap-2">
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => handleViewQuery(query)}
+                              >
+                                <Eye className="h-3 w-3 mr-1" />
+                                View
+                              </Button>
+                              
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button 
+                                    size="sm" 
+                                    variant="destructive"
+                                    disabled={
+                                      (query.status === 'in-progress' || query.status === 'resolved') ||
+                                      loading.deleting
+                                    }
+                                  >
+                                    <Trash2 className="h-3 w-3 mr-1" />
+                                    Delete
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete Work Query</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Are you sure you want to delete this work query? This action cannot be undone.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      className="bg-red-600 hover:bg-red-700"
+                                      onClick={() => handleDeleteQuery(query._id, query.title)}
+                                    >
+                                      Delete
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </div>
+
+                {/* View Query Details Dialog */}
+                <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+                  <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                    {selectedQueryForView && (
+                      <>
+                        <DialogHeader>
+                          <DialogTitle>Query Details - {selectedQueryForView.queryId}</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-6">
+                          {/* Query Information */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <Label className="font-semibold">Title</Label>
+                              <p className="mt-1">{selectedQueryForView.title}</p>
+                            </div>
+                            <div>
+                              <Label className="font-semibold">Category</Label>
+                              <Badge className="mt-1">
+                                {displayCategories.find(c => c.value === selectedQueryForView.category)?.label || selectedQueryForView.category}
+                              </Badge>
+                            </div>
+                            <div>
+                              <Label className="font-semibold">Priority</Label>
+                              <div className="mt-1">
+                                <PriorityBadge priority={selectedQueryForView.priority} />
+                              </div>
+                            </div>
+                            <div>
+                              <Label className="font-semibold">Status</Label>
+                              <div className="mt-1">
+                                <StatusBadge status={selectedQueryForView.status} />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Description */}
+                          <div>
+                            <Label className="font-semibold">Description</Label>
+                            <p className="mt-1 text-sm whitespace-pre-wrap bg-gray-50 p-3 rounded-lg">
+                              {selectedQueryForView.description}
+                            </p>
+                          </div>
+
+                          {/* Service Information */}
+                          <div>
+                            <Label className="font-semibold">Service Information</Label>
+                            <div className="mt-1 p-3 border rounded-lg">
+                              <div className="font-medium">{selectedQueryForView.serviceTitle || selectedQueryForView.serviceId}</div>
+                              {selectedQueryForView.serviceType && (
+                                <div className="mt-2">
+                                  <ServiceTypeBadge type={selectedQueryForView.serviceType} />
+                                </div>
+                              )}
+                              {selectedQueryForView.serviceStaffName && (
+                                <div className="mt-2 text-sm">
+                                  <strong>Service Staff:</strong> {selectedQueryForView.serviceStaffName}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Proof Files */}
+                          {selectedQueryForView.proofFiles.length > 0 && (
+                            <div>
+                              <Label className="font-semibold">Supporting Evidence ({selectedQueryForView.proofFiles.length})</Label>
+                              <div className="grid gap-2 mt-2">
+                                {selectedQueryForView.proofFiles.map((file, index) => (
+                                  <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                                    <div className="flex items-center gap-3">
+                                      <div className="p-2 bg-gray-100 rounded-lg">
+                                        <FileIcon type={file.type} />
+                                      </div>
+                                      <div>
+                                        <div className="font-medium">{file.name}</div>
+                                        <div className="text-xs text-muted-foreground">
+                                          {file.size} • {file.type} • {formatDate(file.uploadDate)}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <Button 
+                                        size="sm" 
+                                        variant="outline"
+                                        onClick={() => previewFile(file.url)}
+                                      >
+                                        <Eye className="h-3 w-3 mr-1" />
+                                        View
+                                      </Button>
+                                      <Button 
+                                        size="sm" 
+                                        variant="outline"
+                                        onClick={() => downloadFile(file.url, file.name)}
+                                      >
+                                        <Download className="h-3 w-3 mr-1" />
+                                        Download
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Superadmin Response */}
+                          {selectedQueryForView.superadminResponse && (
+                            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                              <Label className="font-semibold text-blue-900">Superadmin Response</Label>
+                              <p className="mt-1 text-sm text-blue-800 whitespace-pre-wrap">
+                                {selectedQueryForView.superadminResponse}
+                              </p>
+                              {selectedQueryForView.responseDate && (
+                                <div className="text-xs text-blue-600 mt-2">
+                                  Responded on: {formatDate(selectedQueryForView.responseDate)}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Created Info */}
+                          <div className="text-sm text-muted-foreground">
+                            Created by {selectedQueryForView.reportedBy.name} on {formatDate(selectedQueryForView.createdAt)}
+                          </div>
+
+                          {/* Actions in View Dialog */}
+                          <DialogFooter>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button 
+                                  variant="destructive"
+                                  disabled={
+                                    (selectedQueryForView.status === 'in-progress' || selectedQueryForView.status === 'resolved') ||
+                                    loading.deleting
+                                  }
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete Query
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Work Query</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete this work query? This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    className="bg-red-600 hover:bg-red-700"
+                                    onClick={() => {
+                                      handleDeleteQuery(selectedQueryForView._id, selectedQueryForView.title);
+                                      setIsViewDialogOpen(false);
+                                    }}
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </DialogFooter>
+                        </div>
+                      </>
+                    )}
+                  </DialogContent>
+                </Dialog>
 
                 {/* Pagination */}
                 {pagination.totalPages > 1 && (

@@ -3,163 +3,532 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useOutletContext } from "react-router-dom";
-import { useRole } from "@/context/RoleContext"; // CHANGE: Use useRole instead of useAuth
+import { useRole } from "@/context/RoleContext";
 import { DashboardHeader } from "@/components/shared/DashboardHeader";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search, Edit, Trash2, UserCheck, UserX, Users, Briefcase, Mail, Phone, MapPin, AlertCircle } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Plus,
+  Search,
+  Edit,
+  Mail,
+  Phone,
+  MapPin,
+  Users,
+  Building,
+  UserCheck,
+  RefreshCw,
+  Shield,
+  Briefcase,
+  Loader2,
+  AlertCircle,
+  Calendar,
+  FileText,
+  CheckCircle,
+  XCircle,
+  Clock,
+} from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import supervisorService, { Supervisor, CreateSupervisorData, UpdateSupervisorData } from "@/services/supervisorService";
-import managerService, { Manager } from "@/services/managerService";
+import supervisorService, {
+  Supervisor,
+  CreateSupervisorData,
+  UpdateSupervisorData,
+} from "@/services/supervisorService";
+import { siteService, Site } from "@/services/SiteService";
+import { taskService, Assignee, Task } from "@/services/TaskService";
 
-// Simplified schema for manager dashboard
-const supervisorSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters").max(100),
-  email: z.string().email("Invalid email address"),
-  phone: z.string().min(10, "Phone must be at least 10 digits").max(15),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  department: z.string().optional(),
-  site: z.string().optional(),
-  reportsTo: z.string().optional(),
+/* ------------------------------------------------------------------ */
+/* SCHEMAS */
+/* ------------------------------------------------------------------ */
+
+const createSupervisorSchema = z.object({
+  name: z.string().min(2),
+  email: z.string().email(),
+  phone: z.string().min(10),
+  password: z.string().min(6),
+  department: z.string(),
+  site: z.string(),
 });
 
-type SupervisorFormData = z.infer<typeof supervisorSchema>;
+const updateSupervisorSchema = createSupervisorSchema.extend({
+  password: z.string().optional(),
+});
 
-const departments = ['Operations', 'IT', 'HR', 'Finance', 'Marketing', 'Sales', 'Admin'];
-const sites = ['Mumbai Office', 'Delhi Branch', 'Bangalore Tech Park', 'Chennai Center', 'Hyderabad Campus'];
+type CreateFormData = z.infer<typeof createSupervisorSchema>;
+type UpdateFormData = z.infer<typeof updateSupervisorSchema>;
+
+const departments = [
+  "Operations",
+  "IT",
+  "HR",
+  "Finance",
+  "Marketing",
+  "Sales",
+  "Admin",
+];
+
+/* ------------------------------------------------------------------ */
+/* TYPES */
+/* ------------------------------------------------------------------ */
+
+interface EnhancedSupervisor extends Supervisor {
+  // Task-related information
+  assignedTasks?: Task[];
+  pendingTasks?: number;
+  inProgressTasks?: number;
+  completedTasks?: number;
+  overdueTasks?: number;
+  // Site info from tasks
+  primarySite?: string;
+  assignedSites?: string[];
+}
+
+/* ------------------------------------------------------------------ */
+/* COMPONENT */
+/* ------------------------------------------------------------------ */
 
 const Supervisors = () => {
   const { onMenuClick } = useOutletContext<{ onMenuClick: () => void }>();
-  const { role, user: currentManager } = useRole(); // CHANGE: Get user from useRole
-  
-  const [searchQuery, setSearchQuery] = useState("");
+  const { user: currentUser, role } = useRole();
+
+  const [supervisors, setSupervisors] = useState<EnhancedSupervisor[]>([]);
+  const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSupervisor, setEditingSupervisor] = useState<Supervisor | null>(null);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [supervisorToDelete, setSupervisorToDelete] = useState<string | null>(null);
-  const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [stats, setStats] = useState({
-    total: 0,
-    active: 0,
-    inactive: 0
-  });
+  const [searchQuery, setSearchQuery] = useState("");
+  
+  // Site selection state
+  const [sites, setSites] = useState<Site[]>([]);
+  const [selectedSiteId, setSelectedSiteId] = useState<string>("");
+  const [selectedSiteName, setSelectedSiteName] = useState<string>("");
+  const [canCreateSupervisor, setCanCreateSupervisor] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [assignees, setAssignees] = useState<Assignee[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loadingTasks, setLoadingTasks] = useState(false);
 
-  const form = useForm<SupervisorFormData>({
-    resolver: zodResolver(supervisorSchema),
+  /* ------------------------------------------------------------------ */
+  /* FORM */
+  /* ------------------------------------------------------------------ */
+
+  const form = useForm<CreateFormData | UpdateFormData>({
+    resolver: zodResolver(
+      editingSupervisor
+        ? updateSupervisorSchema
+        : createSupervisorSchema
+    ),
     defaultValues: {
       name: "",
       email: "",
       phone: "",
       password: "",
       department: "Operations",
-      site: "Mumbai Office",
-      reportsTo: "",
+      site: "",
     },
   });
 
-  // Debug function to check localStorage
-  const debugLocalStorage = () => {
-    console.log("=== LOCALSTORAGE DEBUG ===");
-    console.log("Current role:", role);
-    console.log("Current user from context:", currentManager);
-    
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      try {
-        const user = JSON.parse(userData);
-        console.log("User from localStorage:", user);
-      } catch (e) {
-        console.error("Failed to parse user data:", e);
-      }
+  /* ------------------------------------------------------------------ */
+  /* FETCH TASKS (USING assignedTo FIELD) */
+  /* ------------------------------------------------------------------ */
+
+  const fetchAllTasks = async () => {
+    try {
+      setLoadingTasks(true);
+      const allTasks = await taskService.getAllTasks();
+      setTasks(allTasks);
+      return allTasks;
+    } catch (error: any) {
+      console.error("Error fetching tasks:", error);
+      toast.error("Could not load tasks. Some supervisor data may be incomplete.");
+      return [];
+    } finally {
+      setLoadingTasks(false);
     }
-    console.log("==========================");
   };
 
-  // Fetch supervisors
-  const fetchSupervisors = async () => {
+  /* ------------------------------------------------------------------ */
+  /* FETCH ASSIGNEES FROM TASK SERVICE */
+  /* ------------------------------------------------------------------ */
+
+  const fetchAssignees = async () => {
     try {
-      setLoading(true);
-      setError(null);
+      const allAssignees = await taskService.getAllAssignees();
+      // Filter for supervisors only
+      const supervisorAssignees = allAssignees.filter(
+        assignee => assignee.role === "supervisor"
+      );
+      setAssignees(supervisorAssignees);
+      return supervisorAssignees;
+    } catch (error: any) {
+      console.error("Error fetching assignees:", error);
+      toast.error("Could not load assignees. Check if TaskService API is running.");
+      return [];
+    }
+  };
+
+  /* ------------------------------------------------------------------ */
+  /* FETCH SITES */
+  /* ------------------------------------------------------------------ */
+
+  const fetchSites = async () => {
+    try {
+      const sitesData = await siteService.getAllSites();
       
-      console.log("=== FETCHING SUPERVISORS ===");
-      console.log("Current role:", role);
-      console.log("Current user:", currentManager);
-      
-      // Get all supervisors
-      const allSupervisors = await supervisorService.getAllSupervisors();
-      console.log("Total supervisors in system:", allSupervisors.length);
-      
-      // Filter supervisors based on current manager
-      let filteredSupervisors = allSupervisors;
-      
-      if (currentManager && currentManager.email) {
-        console.log(`Filtering for manager: ${currentManager.email} (${currentManager.name})`);
-        
-        // Filter 1: Supervisors who report to this manager
-        const supervisorsReportingToManager = allSupervisors.filter(s => 
-          s.reportsTo && s.reportsTo.toLowerCase() === currentManager.email.toLowerCase()
-        );
-        console.log(`Direct reports to ${currentManager.email}:`, supervisorsReportingToManager.length);
-        
-        // Filter 2: Supervisors at same site
-        const supervisorsAtSameSite = allSupervisors.filter(s => 
-          s.site === currentManager.site
-        );
-        console.log(`Supervisors at ${currentManager.site} site:`, supervisorsAtSameSite.length);
-        
-        // Combine both filters (remove duplicates)
-        const combinedSupervisors = [...supervisorsReportingToManager];
-        supervisorsAtSameSite.forEach(supervisor => {
-          if (!combinedSupervisors.find(s => s._id === supervisor._id)) {
-            combinedSupervisors.push(supervisor);
-          }
-        });
-        
-        filteredSupervisors = combinedSupervisors;
-      } else {
-        console.log("No current manager, showing all supervisors");
+      if (!Array.isArray(sitesData)) {
+        console.error("Sites data is not an array:", sitesData);
+        toast.error("Invalid sites data format");
+        setSites([]);
+        return;
       }
       
-      console.log("Filtered supervisors:", filteredSupervisors.length);
-      setSupervisors(filteredSupervisors);
+      const activeSites = sitesData.filter(site => site.status === 'active');
+      setSites(activeSites);
       
-      // Update stats
-      const active = filteredSupervisors.filter(s => s.isActive).length;
-      const inactive = filteredSupervisors.length - active;
-      setStats({
-        total: filteredSupervisors.length,
-        active,
-        inactive
+      // Set default site selection
+      if (activeSites.length > 0) {
+        if (role === "manager" || role === "supervisor") {
+          // Find user's site
+          const userSite = activeSites.find(s => 
+            s.name === currentUser?.site
+          );
+          
+          if (userSite) {
+            setSelectedSiteId(userSite._id);
+            setSelectedSiteName(userSite.name);
+            form.setValue("site", userSite.name);
+          } else {
+            // Fallback to first site
+            const firstSite = activeSites[0];
+            setSelectedSiteId(firstSite._id);
+            setSelectedSiteName(firstSite.name);
+            form.setValue("site", firstSite.name);
+          }
+        } else {
+          // For admin/superadmin, select first site
+          const firstSite = activeSites[0];
+          setSelectedSiteId(firstSite._id);
+          setSelectedSiteName(firstSite.name);
+          form.setValue("site", firstSite.name);
+        }
+      }
+      
+    } catch (error: any) {
+      console.error("Error fetching sites:", error);
+      toast.error(`Failed to load sites: ${error.message}`);
+      setSites([]);
+    }
+  };
+
+  /* ------------------------------------------------------------------ */
+  /* EXTRACT SUPERVISORS FROM TASKS (USING assignedTo FIELD) */
+  /* ------------------------------------------------------------------ */
+
+  const extractSupervisorsFromTasks = (tasks: Task[], assignees: Assignee[]) => {
+    // Group tasks by assignee
+    const tasksByAssignee = new Map<string, {
+      supervisorInfo: Partial<EnhancedSupervisor>;
+      tasks: Task[];
+      sites: Set<string>;
+    }>();
+    
+    // Process each task
+    tasks.forEach(task => {
+      if (!task.assignedTo || !task.assignedToName) {
+        return; // Skip tasks without assignee
+      }
+      
+      // Try to find supervisor by different identifiers
+      const supervisorId = task.assignedTo;
+      const supervisorName = task.assignedToName;
+      
+      // Find matching assignee for additional info
+      const matchedAssignee = assignees.find(assignee => 
+        assignee._id === supervisorId || 
+        assignee.name?.toLowerCase() === supervisorName.toLowerCase() ||
+        assignee.email?.toLowerCase() === supervisorId.toLowerCase()
+      );
+      
+      const assigneeKey = matchedAssignee?._id || supervisorId;
+      
+      if (!tasksByAssignee.has(assigneeKey)) {
+        // Create new supervisor entry
+        tasksByAssignee.set(assigneeKey, {
+          supervisorInfo: {
+            _id: assigneeKey,
+            name: supervisorName,
+            email: matchedAssignee?.email || supervisorId.includes('@') ? supervisorId : `${supervisorName.toLowerCase().replace(/\s+/g, '.')}@example.com`,
+            phone: matchedAssignee?.phone || "Not provided",
+            department: matchedAssignee?.department || "Operations",
+            site: task.siteName || "",
+            role: "supervisor" as const,
+            employees: 0,
+            tasks: 0,
+            assignedProjects: [],
+            reportsTo: "",
+            isActive: true,
+            status: "active" as const,
+            joinDate: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            primarySite: task.siteName,
+            assignedSites: []
+          },
+          tasks: [],
+          sites: new Set<string>()
+        });
+      }
+      
+      const supervisorData = tasksByAssignee.get(assigneeKey)!;
+      supervisorData.tasks.push(task);
+      
+      // Add site to sites set
+      if (task.siteName) {
+        supervisorData.sites.add(task.siteName);
+      }
+    });
+    
+    // Convert map to array and enrich with task statistics
+    const supervisorsFromTasks: EnhancedSupervisor[] = Array.from(tasksByAssignee.values()).map(data => {
+      const tasks = data.tasks;
+      const sites = Array.from(data.sites);
+      
+      // Count task statuses
+      const pendingTasks = tasks.filter(t => t.status === 'pending').length;
+      const inProgressTasks = tasks.filter(t => t.status === 'in-progress').length;
+      const completedTasks = tasks.filter(t => t.status === 'completed').length;
+      
+      // Check for overdue tasks
+      const today = new Date();
+      const overdueTasks = tasks.filter(t => {
+        if (t.deadline && t.status !== 'completed') {
+          const deadline = new Date(t.deadline);
+          return deadline < today;
+        }
+        return false;
+      }).length;
+      
+      // Determine primary site (site with most tasks)
+      const siteTaskCount: Record<string, number> = {};
+      tasks.forEach(task => {
+        if (task.siteName) {
+          siteTaskCount[task.siteName] = (siteTaskCount[task.siteName] || 0) + 1;
+        }
       });
       
-    } catch (error) {
-      console.error("❌ Error fetching supervisors:", error);
-      setError("Failed to load supervisors. Please try again.");
-      toast.error("Failed to fetch supervisors");
+      const primarySite = Object.entries(siteTaskCount)
+        .sort(([, a], [, b]) => b - a)[0]?.[0] || sites[0] || "Not assigned";
       
-      // Set empty state
+      return {
+        ...data.supervisorInfo as EnhancedSupervisor,
+        tasks: tasks.length,
+        pendingTasks,
+        inProgressTasks,
+        completedTasks,
+        overdueTasks,
+        assignedTasks: tasks,
+        assignedSites: sites,
+        primarySite,
+        site: primarySite
+      };
+    });
+    
+    return supervisorsFromTasks;
+  };
+
+  /* ------------------------------------------------------------------ */
+  /* COMBINE SUPERVISOR DATA FROM MULTIPLE SOURCES */
+  /* ------------------------------------------------------------------ */
+
+  const combineSupervisorData = async () => {
+    try {
+      // Fetch all data in parallel
+      const [allTasks, assigneeList, supervisorServiceList] = await Promise.allSettled([
+        fetchAllTasks(),
+        fetchAssignees(),
+        supervisorService.getAllSupervisors().catch(() => [])
+      ]);
+      
+      const tasks = allTasks.status === 'fulfilled' ? allTasks.value : [];
+      const assignees = assigneeList.status === 'fulfilled' ? assigneeList.value : [];
+      const serviceSupervisors = supervisorServiceList.status === 'fulfilled' ? supervisorServiceList.value : [];
+      
+      // Extract supervisors from tasks (primary source)
+      const taskSupervisors = extractSupervisorsFromTasks(tasks, assignees);
+      
+      // Convert assignees to supervisor format
+      const assigneeSupervisors: EnhancedSupervisor[] = assignees
+        .filter(assignee => assignee.role === "supervisor")
+        .map(assignee => {
+          // Find tasks for this assignee
+          const assigneeTasks = tasks.filter(task => 
+            task.assignedTo === assignee._id || 
+            task.assignedToName?.toLowerCase() === assignee.name?.toLowerCase()
+          );
+          
+          // Calculate task statistics
+          const pendingTasks = assigneeTasks.filter(t => t.status === 'pending').length;
+          const inProgressTasks = assigneeTasks.filter(t => t.status === 'in-progress').length;
+          const completedTasks = assigneeTasks.filter(t => t.status === 'completed').length;
+          
+          // Get unique sites from tasks
+          const assignedSites = [...new Set(assigneeTasks.map(t => t.siteName).filter(Boolean))];
+          
+          return {
+            _id: assignee._id || `assignee-${assignee.email}`,
+            name: assignee.name || "Unknown Supervisor",
+            email: assignee.email,
+            phone: assignee.phone || "Not provided",
+            department: assignee.department || "Operations",
+            site: assignedSites[0] || "",
+            role: "supervisor" as const,
+            employees: 0,
+            tasks: assigneeTasks.length,
+            assignedProjects: [],
+            reportsTo: "",
+            isActive: true,
+            status: "active" as const,
+            joinDate: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            pendingTasks,
+            inProgressTasks,
+            completedTasks,
+            overdueTasks: 0,
+            assignedTasks: assigneeTasks,
+            assignedSites,
+            primarySite: assignedSites[0] || "Not assigned"
+          };
+        });
+      
+      // Merge all supervisor sources
+      const allSupervisors = [...serviceSupervisors, ...taskSupervisors, ...assigneeSupervisors];
+      
+      // Remove duplicates by email (primary key)
+      const uniqueSupervisors = Array.from(
+        new Map(allSupervisors.map(s => [s.email.toLowerCase(), s])).values()
+      );
+      
+      // Filter by site if needed
+      let filteredSupervisors = uniqueSupervisors;
+      
+      if (selectedSiteId !== "all" && selectedSiteName) {
+        filteredSupervisors = uniqueSupervisors.filter(supervisor => {
+          // Check if supervisor is assigned to this site via tasks
+          const hasSiteTasks = supervisor.assignedSites?.includes(selectedSiteName) || false;
+          const siteMatches = supervisor.site === selectedSiteName;
+          const primarySiteMatches = supervisor.primarySite === selectedSiteName;
+          
+          return hasSiteTasks || siteMatches || primarySiteMatches;
+        });
+      }
+      
+      // Exclude current user if they are a supervisor
+      if (role === "supervisor" && currentUser) {
+        filteredSupervisors = filteredSupervisors.filter(s => 
+          s.email.toLowerCase() !== currentUser.email?.toLowerCase()
+        );
+      }
+      
+      setSupervisors(filteredSupervisors);
+      
+    } catch (error: any) {
+      console.error("Error combining supervisor data:", error);
+      toast.error("Could not load supervisors");
       setSupervisors([]);
-      setStats({ total: 0, active: 0, inactive: 0 });
-    } finally {
-      setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchSupervisors();
-  }, [currentManager]); // Refetch when currentManager changes
+  /* ------------------------------------------------------------------ */
+  /* FETCH SUPERVISORS - MAIN FUNCTION */
+  /* ------------------------------------------------------------------ */
 
-  const handleOpenDialog = (supervisor?: Supervisor) => {
+  const fetchAllSupervisors = async () => {
+    try {
+      setLoading(true);
+      await combineSupervisorData();
+    } catch (error: any) {
+      console.error("Error loading supervisors:", error);
+      toast.error("Could not load supervisors");
+      setSupervisors([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  /* ------------------------------------------------------------------ */
+  /* INITIAL DATA LOAD */
+  /* ------------------------------------------------------------------ */
+
+  useEffect(() => {
+    const initializeData = async () => {
+      if (!currentUser) {
+        return;
+      }
+      
+      // Check permissions
+      const canCreate = ["superadmin", "admin", "manager"].includes(role);
+      setCanCreateSupervisor(canCreate);
+      
+      // Fetch initial data
+      await fetchSites();
+    };
+    
+    initializeData();
+  }, [currentUser, role]);
+
+  /* ------------------------------------------------------------------ */
+  /* FETCH SUPERVISORS WHEN SITE CHANGES */
+  /* ------------------------------------------------------------------ */
+
+  useEffect(() => {
+    if (selectedSiteId && currentUser) {
+      fetchAllSupervisors();
+    }
+  }, [selectedSiteId, selectedSiteName, currentUser]);
+
+  /* ------------------------------------------------------------------ */
+  /* HANDLERS */
+  /* ------------------------------------------------------------------ */
+
+  const openDialog = (supervisor?: Supervisor) => {
     if (supervisor) {
       setEditingSupervisor(supervisor);
       form.reset({
@@ -167,9 +536,7 @@ const Supervisors = () => {
         email: supervisor.email,
         phone: supervisor.phone,
         department: supervisor.department,
-        site: supervisor.site,
-        reportsTo: supervisor.reportsTo || "",
-        password: "", // Don't show existing password for editing
+        site: supervisor.site || selectedSiteName,
       });
     } else {
       setEditingSupervisor(null);
@@ -179,465 +546,452 @@ const Supervisors = () => {
         phone: "",
         password: "",
         department: "Operations",
-        site: currentManager?.site || "Mumbai Office",
-        reportsTo: currentManager?.email || "", // Auto-fill reportsTo with manager's email
+        site: selectedSiteName || "",
       });
     }
     setDialogOpen(true);
   };
 
-  const onSubmit = async (values: SupervisorFormData) => {
-    try {
-      if (editingSupervisor) {
-        // Update supervisor
-        const updateData: UpdateSupervisorData = {
-          name: values.name,
-          email: values.email,
-          phone: values.phone,
-          department: values.department,
-          site: values.site,
-          reportsTo: values.reportsTo || currentManager?.email,
-        };
-        
-        const updatedSupervisor = await supervisorService.updateSupervisor(
-          editingSupervisor._id,
-          updateData
-        );
-        
-        setSupervisors(supervisors.map(s => 
-          s._id === editingSupervisor._id ? updatedSupervisor : s
-        ));
-        toast.success("Supervisor updated successfully!");
+  const handleSiteChange = (siteId: string) => {
+    if (siteId === "all") {
+      setSelectedSiteId("all");
+      setSelectedSiteName("All Sites");
+    } else {
+      const selected = sites.find(s => s._id === siteId);
+      if (selected) {
+        setSelectedSiteId(selected._id);
+        setSelectedSiteName(selected.name);
       } else {
-        // Create new supervisor - auto-assign to current manager
-        const createData: CreateSupervisorData = {
-          name: values.name,
-          email: values.email,
-          phone: values.phone,
-          password: values.password,
-          department: values.department,
-          site: values.site || currentManager?.site,
-          reportsTo: values.reportsTo || currentManager?.email,
-        };
-        
-        const newSupervisor = await supervisorService.createSupervisor(createData);
-        setSupervisors([newSupervisor, ...supervisors]);
-        toast.success("Supervisor added successfully!");
+        console.error("Selected site not found:", siteId);
+        toast.error("Selected site not found");
+      }
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchSites();
+    await fetchAllSupervisors();
+    toast.success("Data refreshed");
+  };
+
+  const onSubmit = async (data: CreateFormData | UpdateFormData) => {
+    try {
+      // Ensure site is set
+      const siteValue = data.site || selectedSiteName;
+      
+      if (!siteValue) {
+        toast.error("Please select a site");
+        return;
       }
       
+      if (editingSupervisor) {
+        const payload: UpdateSupervisorData = {
+          name: data.name,
+          email: data.email,
+          phone: data.phone,
+          department: data.department,
+          site: siteValue,
+          reportsTo: role === "manager" ? currentUser?.email : undefined,
+        };
+
+        await supervisorService.updateSupervisor(
+          editingSupervisor._id,
+          payload
+        );
+        toast.success("Supervisor updated successfully");
+      } else {
+        const payload: CreateSupervisorData = {
+          name: data.name,
+          email: data.email,
+          phone: data.phone,
+          password: (data as CreateFormData).password,
+          department: data.department,
+          site: siteValue,
+          reportsTo: role === "manager" ? currentUser?.email : undefined,
+        };
+
+        await supervisorService.createSupervisor(payload);
+        toast.success("Supervisor created successfully");
+      }
+
       setDialogOpen(false);
-      form.reset();
-      fetchSupervisors(); // Refresh data
+      // Refresh data
+      await handleRefresh();
     } catch (error: any) {
-      toast.error(error.response?.data?.message || "Failed to save supervisor");
-      console.error(error);
+      console.error("Failed to save supervisor:", error);
+      const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.error || 
+                          error.message ||
+                          "Failed to save supervisor";
+      toast.error(errorMessage);
     }
   };
 
-  const handleDelete = async () => {
-    if (!supervisorToDelete) return;
+  /* ------------------------------------------------------------------ */
+  /* HELPER FUNCTIONS */
+  /* ------------------------------------------------------------------ */
+
+  const getTaskStatusBadge = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'completed':
+        return <Badge variant="default" className="bg-green-100 text-green-800"><CheckCircle className="h-3 w-3 mr-1" />Completed</Badge>;
+      case 'in-progress':
+        return <Badge variant="default" className="bg-blue-100 text-blue-800"><Clock className="h-3 w-3 mr-1" />In Progress</Badge>;
+      case 'pending':
+        return <Badge variant="default" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Pending</Badge>;
+      case 'cancelled':
+        return <Badge variant="default" className="bg-gray-100 text-gray-800"><XCircle className="h-3 w-3 mr-1" />Cancelled</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  const getTaskCountBadge = (count: number, type: 'pending' | 'inProgress' | 'completed' | 'overdue') => {
+    const colors = {
+      pending: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+      inProgress: 'bg-blue-50 text-blue-700 border-blue-200',
+      completed: 'bg-green-50 text-green-700 border-green-200',
+      overdue: 'bg-red-50 text-red-700 border-red-200'
+    };
     
-    try {
-      await supervisorService.deleteSupervisor(supervisorToDelete);
-      setSupervisors(supervisors.filter(s => s._id !== supervisorToDelete));
-      toast.success("Supervisor deleted successfully!");
-      setDeleteDialogOpen(false);
-      setSupervisorToDelete(null);
-      fetchSupervisors(); // Refresh stats
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || "Failed to delete supervisor");
-    }
+    return (
+      <Badge variant="outline" className={`text-xs ${colors[type]}`}>
+        {type === 'pending' && <Clock className="h-3 w-3 mr-1" />}
+        {type === 'inProgress' && <Clock className="h-3 w-3 mr-1" />}
+        {type === 'completed' && <CheckCircle className="h-3 w-3 mr-1" />}
+        {type === 'overdue' && <AlertCircle className="h-3 w-3 mr-1" />}
+        {count}
+      </Badge>
+    );
   };
 
-  const toggleStatus = async (id: string) => {
-    try {
-      const updatedSupervisor = await supervisorService.toggleSupervisorStatus(id);
-      setSupervisors(supervisors.map(s => 
-        s._id === id ? updatedSupervisor : s
-      ));
-      
-      // Update stats
-      const active = supervisors.filter(s => s._id !== id && s.isActive).length + (updatedSupervisor.isActive ? 1 : 0);
-      const inactive = supervisors.length - active;
-      setStats({
-        ...stats,
-        active,
-        inactive
-      });
-      
-      toast.success("Supervisor status updated!");
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || "Failed to update status");
-    }
-  };
+  /* ------------------------------------------------------------------ */
+  /* FILTER SUPERVISORS BASED ON SEARCH */
+  /* ------------------------------------------------------------------ */
 
-  const filteredSupervisors = supervisors.filter(s => 
-    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.department.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.site.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredSupervisors = supervisors.filter(
+    (s) =>
+      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.department && s.department.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (s.site && s.site.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (s.primarySite && s.primarySite.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  const getStatusColor = (status: string) => {
-    return status === "active" ? "default" : "secondary";
-  };
+  /* ------------------------------------------------------------------ */
+  /* RENDER */
+  /* ------------------------------------------------------------------ */
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric'
-    });
-  };
+  // If no current user, show loading
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
-      <DashboardHeader 
-        title="Supervisors" 
+      <DashboardHeader
+        title="Supervisors"
         subtitle={
-          currentManager 
-            ? `Managing supervisors for ${currentManager.name}`
-            : "Supervisor Management"
+          role === "supervisor" 
+            ? `Supervisors at ${selectedSiteName || "your site"}` 
+            : role === "manager" 
+              ? `Supervisors at ${selectedSiteName || "your site"}`
+              : selectedSiteId === "all"
+                ? "All Supervisors"
+                : `Supervisors at ${selectedSiteName || "Select a site"}`
         }
         onMenuClick={onMenuClick}
       />
-      
-      <motion.div 
+
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="p-6 space-y-6"
       >
-        {/* Error Display */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-            <div className="flex items-center text-red-800">
-              <AlertCircle className="h-5 w-5 mr-2" />
-              <h3 className="font-semibold">Error Loading Data</h3>
-            </div>
-            <p className="text-red-700 text-sm mt-1">{error}</p>
-            <div className="flex gap-2 mt-3">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => {
-                  setError(null);
-                  fetchSupervisors();
-                }}
-              >
-                Retry
-              </Button>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={debugLocalStorage}
-              >
-                Debug localStorage
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Manager Info Card */}
         <Card>
-          <CardHeader>
-            <CardTitle>Manager Information</CardTitle>
-            {!currentManager && (
-              <p className="text-sm text-yellow-600">
-                Note: Could not identify current manager. Showing all supervisors.
-              </p>
-            )}
-          </CardHeader>
-          <CardContent>
-            {currentManager ? (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-muted-foreground">Manager Name</p>
-                  <p className="text-lg font-semibold">{currentManager.name}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-muted-foreground">Email</p>
-                  <p className="text-lg font-semibold break-all">{currentManager.email}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-muted-foreground">Assigned Site</p>
-                  <Badge variant="outline" className="text-lg">
-                    {currentManager.site || "Not assigned"}
+          <CardHeader className="flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                <CardTitle>Supervisors (from Tasks & Assignees)</CardTitle>
+                <Badge variant="outline" className="ml-2">
+                  {filteredSupervisors.length} found
+                </Badge>
+                <Badge variant="secondary" className="ml-2">
+                  <FileText className="h-3 w-3 mr-1" />
+                  {tasks.length} tasks analyzed
+                </Badge>
+                {loadingTasks && (
+                  <Badge variant="outline" className="ml-2 bg-yellow-50 text-yellow-700">
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    Loading tasks
                   </Badge>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-muted-foreground">Department</p>
-                  <Badge variant="outline" className="text-lg">
-                    {currentManager.department || "Operations"}
+                )}
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleRefresh}
+                  disabled={refreshing || loading || loadingTasks}
+                >
+                  <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                </Button>
+                
+                {canCreateSupervisor && selectedSiteId && selectedSiteId !== "all" && (
+                  <Button onClick={() => openDialog()}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Supervisor
+                  </Button>
+                )}
+              </div>
+            </div>
+            
+            {/* Filters */}
+            <div className="flex flex-col sm:flex-row gap-4">
+              {/* Site Selection */}
+              <div className="flex items-center gap-2">
+                <Building className="h-4 w-4" />
+                <span className="text-sm font-medium whitespace-nowrap">Site:</span>
+                <Select
+                  value={selectedSiteId}
+                  onValueChange={handleSiteChange}
+                  disabled={loading || loadingTasks}
+                >
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder={sites.length === 0 ? "Loading sites..." : "Select site"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(role === "admin" || role === "superadmin") && (
+                      <SelectItem value="all">All Sites</SelectItem>
+                    )}
+                    {sites.map((site) => (
+                      <SelectItem key={site._id} value={site._id}>
+                        {site.name}
+                        {site.location && ` - ${site.location}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedSiteName && (
+                  <Badge variant="outline" className="ml-2">
+                    <Briefcase className="h-3 w-3 mr-1" />
+                    {selectedSiteName}
                   </Badge>
-                </div>
+                )}
               </div>
-            ) : (
-              <div className="text-center py-4 text-muted-foreground">
-                <p>No manager information found. Please log in as a manager.</p>
-                <div className="mt-4 flex justify-center gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={fetchSupervisors}
-                  >
-                    Retry
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={debugLocalStorage}
-                  >
-                    Debug
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                {currentManager ? "My Supervisors" : "All Supervisors"}
-              </CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.total}</div>
-              <p className="text-xs text-muted-foreground">
-                {currentManager 
-                  ? "Supervisors under your management" 
-                  : "Total supervisors"}
-              </p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Supervisors</CardTitle>
-              <UserCheck className="h-4 w-4 text-green-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.active}</div>
-              <p className="text-xs text-muted-foreground">Currently active</p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Inactive Supervisors</CardTitle>
-              <UserX className="h-4 w-4 text-red-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.inactive}</div>
-              <p className="text-xs text-muted-foreground">Currently inactive</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <div>
-              <CardTitle>Supervisors List</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                {loading 
-                  ? "Loading supervisors..." 
-                  : currentManager
-                    ? `Showing ${filteredSupervisors.length} supervisors under ${currentManager.name}'s management`
-                    : `Showing ${filteredSupervisors.length} of ${supervisors.length} supervisors`}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={debugLocalStorage} size="sm">
-                Debug
-              </Button>
-              <Button onClick={() => handleOpenDialog()}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Supervisor
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="mb-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              
+              {/* Search */}
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search supervisors by name, email, department, or site..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10"
+                  disabled={loading || loadingTasks}
                 />
               </div>
             </div>
-            
-            {loading ? (
-              <div className="py-8 text-center">
-                <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto"></div>
-                <p className="mt-2 text-muted-foreground">Loading supervisors...</p>
+          </CardHeader>
+
+          <CardContent>
+            {loading || loadingTasks ? (
+              <div className="text-center py-10">
+                <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+                <p className="mt-2 text-muted-foreground">
+                  {loadingTasks ? "Analyzing tasks to find supervisors..." : "Loading supervisors..."}
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Found {tasks.length} tasks, extracting supervisor information...
+                </p>
+              </div>
+            ) : !selectedSiteId ? (
+              <div className="text-center py-10">
+                <Building className="h-12 w-12 mx-auto text-muted-foreground" />
+                <h3 className="mt-4 text-lg font-semibold">No Site Selected</h3>
+                <p className="text-muted-foreground mt-1">
+                  Please select a site to view supervisors
+                </p>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Contact</TableHead>
-                    <TableHead>Department</TableHead>
-                    <TableHead>Site</TableHead>
-                    <TableHead>Reports To</TableHead>
-                    <TableHead>Metrics</TableHead>
-                    <TableHead>Join Date</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredSupervisors.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                        {searchQuery 
-                          ? "No supervisors found matching your search" 
-                          : currentManager
-                            ? `No supervisors assigned to ${currentManager.name} yet`
-                            : "No supervisors in the system"}
-                        <div className="mt-4">
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={fetchSupervisors}
-                          >
-                            Refresh Data
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredSupervisors.map((supervisor) => (
-                      <TableRow key={supervisor._id}>
-                        <TableCell className="font-medium">
-                          <div>
-                            <div>{supervisor.name}</div>
-                            <div className="text-xs text-muted-foreground mt-1">
-                              ID: {supervisor._id.slice(-6)}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1">
-                              <Mail className="h-3 w-3 text-muted-foreground" />
-                              <span className="text-sm">{supervisor.email}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Phone className="h-3 w-3 text-muted-foreground" />
-                              <span className="text-sm">{supervisor.phone}</span>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {supervisor.department}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <MapPin className="h-3 w-3 text-muted-foreground" />
-                            {supervisor.site}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {supervisor.reportsTo ? (
-                            <Badge variant="secondary">
-                              {currentManager && supervisor.reportsTo.toLowerCase() === currentManager.email.toLowerCase() 
-                                ? "You" 
-                                : supervisor.reportsTo}
-                            </Badge>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">Not assigned</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1">
-                              <Users className="h-3 w-3 text-muted-foreground" />
-                              <span className="text-sm">{supervisor.employees} employees</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Briefcase className="h-3 w-3 text-muted-foreground" />
-                              <span className="text-sm">{supervisor.tasks} tasks</span>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            {formatDate(supervisor.joinDate)}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={getStatusColor(supervisor.status)}>
-                            {supervisor.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => handleOpenDialog(supervisor)}
-                              title="Edit"
-                            >
-                              <Edit className="h-3 w-3" />
-                            </Button>
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => toggleStatus(supervisor._id)}
-                              title={supervisor.isActive ? "Deactivate" : "Activate"}
-                            >
-                              {supervisor.isActive ? (
-                                <UserX className="h-3 w-3 text-destructive" />
-                              ) : (
-                                <UserCheck className="h-3 w-3 text-primary" />
+              <>
+                {filteredSupervisors.length === 0 ? (
+                  <div className="text-center py-10">
+                    <UserCheck className="h-12 w-12 mx-auto text-muted-foreground" />
+                    <h3 className="mt-4 text-lg font-semibold">No Supervisors Found</h3>
+                    <p className="text-muted-foreground mt-1">
+                      {searchQuery
+                        ? "No supervisors match your search criteria"
+                        : selectedSiteId === "all"
+                        ? "No supervisors found in any site"
+                        : `No supervisors found at ${selectedSiteName}`
+                      }
+                    </p>
+                    
+                    <div className="mt-6 bg-blue-50 p-4 rounded-lg border border-blue-200 max-w-md mx-auto">
+                      <h4 className="font-medium text-blue-800 mb-2">Why no supervisors?</h4>
+                      <ul className="text-sm text-blue-700 text-left space-y-1">
+                        <li>• No tasks have been assigned to supervisors at this site</li>
+                        <li>• Tasks might not have the <code>assignedTo</code> field populated</li>
+                        <li>• Check if supervisors exist in the Assignees list</li>
+                        <li>• Verify that tasks have correct <code>assignedToName</code> values</li>
+                      </ul>
+                    </div>
+                    
+                    {canCreateSupervisor && !searchQuery && selectedSiteId !== "all" && (
+                      <Button className="mt-6" onClick={() => openDialog()}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add Your First Supervisor
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Supervisor</TableHead>
+                          <TableHead>Contact</TableHead>
+                          <TableHead>Task Statistics</TableHead>
+                          <TableHead>Site(s)</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredSupervisors.map((supervisor) => (
+                          <TableRow key={supervisor._id}>
+                            <TableCell className="font-medium">
+                              <div className="flex flex-col">
+                                <div className="flex items-center">
+                                  <Shield className="h-4 w-4 mr-2 text-blue-500" />
+                                  <span>{supervisor.name}</span>
+                                </div>
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  ID: {supervisor._id?.slice(-8) || 'From Tasks'}
+                                  {supervisor._id?.includes('assignee') && ' (From Assignees)'}
+                                  {supervisor._id?.includes('task') && ' (From Tasks)'}
+                                </div>
+                                <div className="mt-2">
+                                  <Badge variant="outline" className="text-xs">
+                                    <FileText className="h-3 w-3 mr-1" />
+                                    {supervisor.tasks || 0} total tasks
+                                  </Badge>
+                                </div>
+                                {supervisor.reportsTo === currentUser?.email && (
+                                  <Badge variant="secondary" className="mt-1 w-fit text-xs">
+                                    Reports to you
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col space-y-1">
+                                <div className="flex items-center text-sm">
+                                  <Mail className="h-3 w-3 mr-2 flex-shrink-0" />
+                                  <span className="truncate">{supervisor.email}</span>
+                                </div>
+                                <div className="flex items-center text-sm text-muted-foreground">
+                                  <Phone className="h-3 w-3 mr-2 flex-shrink-0" />
+                                  <span>{supervisor.phone || "Not provided"}</span>
+                                </div>
+                                <div className="text-xs mt-2">
+                                  <Badge variant="outline">
+                                    {supervisor.department || "Operations"}
+                                  </Badge>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col space-y-2">
+                                <div className="flex flex-wrap gap-1">
+                                  {supervisor.pendingTasks && supervisor.pendingTasks > 0 && 
+                                    getTaskCountBadge(supervisor.pendingTasks, 'pending')}
+                                  {supervisor.inProgressTasks && supervisor.inProgressTasks > 0 && 
+                                    getTaskCountBadge(supervisor.inProgressTasks, 'inProgress')}
+                                  {supervisor.completedTasks && supervisor.completedTasks > 0 && 
+                                    getTaskCountBadge(supervisor.completedTasks, 'completed')}
+                                  {supervisor.overdueTasks && supervisor.overdueTasks > 0 && 
+                                    getTaskCountBadge(supervisor.overdueTasks, 'overdue')}
+                                </div>
+                                {supervisor.assignedTasks && supervisor.assignedTasks.length > 0 && (
+                                  <div className="text-xs text-muted-foreground">
+                                    Latest task: {supervisor.assignedTasks[0]?.title?.substring(0, 30)}...
+                                  </div>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="space-y-2">
+                                <div className="flex items-center">
+                                  <MapPin className="h-3 w-3 mr-2 flex-shrink-0" />
+                                  <span className="font-medium">{supervisor.primarySite || "Not assigned"}</span>
+                                </div>
+                                {supervisor.assignedSites && supervisor.assignedSites.length > 1 && (
+                                  <div className="text-xs text-muted-foreground">
+                                    Also at: {supervisor.assignedSites.slice(1).join(', ')}
+                                  </div>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="space-y-1">
+                                <Badge
+                                  variant={supervisor.isActive ? "default" : "secondary"}
+                                  className={
+                                    supervisor.isActive
+                                      ? "bg-green-100 text-green-800 hover:bg-green-100"
+                                      : "bg-gray-100 text-gray-800 hover:bg-gray-100"
+                                  }
+                                >
+                                  {supervisor.isActive ? "Active" : "Inactive"}
+                                </Badge>
+                                {supervisor.assignedTasks && supervisor.assignedTasks.length > 0 && (
+                                  <div className="text-xs text-muted-foreground">
+                                    Last active: {new Date(supervisor.updatedAt).toLocaleDateString()}
+                                  </div>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {canCreateSupervisor && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openDialog(supervisor)}
+                                >
+                                  <Edit className="h-3 w-3" />
+                                </Button>
                               )}
-                            </Button>
-                            <Button 
-                              variant="destructive" 
-                              size="sm"
-                              onClick={() => {
-                                setSupervisorToDelete(supervisor._id);
-                                setDeleteDialogOpen(true);
-                              }}
-                              title="Delete"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
       </motion.div>
 
-      {/* Add/Edit Supervisor Dialog */}
+      {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>
               {editingSupervisor ? "Edit Supervisor" : "Add New Supervisor"}
-              {currentManager && (
-                <p className="text-sm text-muted-foreground font-normal mt-1">
-                  This supervisor will report to {currentManager.name}
-                </p>
-              )}
             </DialogTitle>
           </DialogHeader>
+          
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
@@ -654,7 +1008,7 @@ const Supervisors = () => {
                 )}
               />
               
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
                   name="email"
@@ -662,12 +1016,13 @@ const Supervisors = () => {
                     <FormItem>
                       <FormLabel>Email *</FormLabel>
                       <FormControl>
-                        <Input type="email" placeholder="Enter email" {...field} />
+                        <Input type="email" placeholder="email@example.com" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+                
                 <FormField
                   control={form.control}
                   name="phone"
@@ -675,14 +1030,14 @@ const Supervisors = () => {
                     <FormItem>
                       <FormLabel>Phone *</FormLabel>
                       <FormControl>
-                        <Input placeholder="Enter phone number" {...field} />
+                        <Input placeholder="+91 9876543210" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               </div>
-
+              
               {!editingSupervisor && (
                 <FormField
                   control={form.control}
@@ -691,102 +1046,97 @@ const Supervisors = () => {
                     <FormItem>
                       <FormLabel>Password *</FormLabel>
                       <FormControl>
-                        <Input type="password" placeholder="Enter password" {...field} />
+                        <Input type="password" placeholder="••••••••" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="department"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Department</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select department" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {departments.map(dept => (
-                            <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="site"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Site</FormLabel>
-                      <Select 
-                        onValueChange={field.onChange} 
-                        defaultValue={field.value || currentManager?.site}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select site" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {sites.map(site => (
-                            <SelectItem key={site} value={site}>{site}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              {currentManager && (
-                <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
-                  <p className="text-sm font-medium text-blue-800">Supervisor will report to:</p>
-                  <p className="text-sm text-blue-700">{currentManager.name} ({currentManager.email})</p>
-                </div>
-              )}
-
+              
+              <FormField
+                control={form.control}
+                name="department"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Department</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select department" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {departments.map((dept) => (
+                          <SelectItem key={dept} value={dept}>
+                            {dept}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={form.control}
+                name="site"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Site *</FormLabel>
+                    <Select 
+                      onValueChange={field.onChange} 
+                      defaultValue={field.value}
+                      disabled={role === "manager" || role === "supervisor"}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select site" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {sites.map((site) => (
+                          <SelectItem key={site._id} value={site.name}>
+                            {site.name}
+                            {site.location && ` (${site.location})`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {(role === "manager" || role === "supervisor") && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Site is automatically set to: {selectedSiteName}
+                      </p>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
               <div className="flex justify-end gap-2 pt-4">
-                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setDialogOpen(false)}
+                >
                   Cancel
                 </Button>
-                <Button type="submit">
-                  {editingSupervisor ? "Update Supervisor" : "Create Supervisor"}
+                <Button type="submit" disabled={loading}>
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    editingSupervisor ? "Update" : "Create"
+                  )}
                 </Button>
               </div>
             </form>
           </Form>
         </DialogContent>
       </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Supervisor</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this supervisor? 
-              This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete Supervisor
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 };

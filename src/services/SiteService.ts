@@ -104,6 +104,9 @@ const defaultStats: SiteStats = {
 
 // API Service Class
 class SiteService {
+  static getAllSites() {
+    throw new Error("Method not implemented.");
+  }
   // Generic fetch method with error handling
   private async fetchApi<T>(
     endpoint: string, 

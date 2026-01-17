@@ -32,6 +32,13 @@ import userService from "@/services/userService";
 import { useRole } from "@/context/RoleContext";
 import { User as UserType } from "@/types/user";
 
+// Create a type for the user from the service
+type ServiceUser = ReturnType<typeof userService.getAllUsers> extends Promise<infer R> 
+  ? R extends { allUsers: Array<infer U> } 
+    ? U 
+    : never 
+  : never;
+
 const ManagerProfile = () => {
   const { user: authUser, isAuthenticated } = useRole();
   const [loading, setLoading] = useState(true);
@@ -68,10 +75,31 @@ const fetchCurrentUser = async () => {
     const allUsersResponse = await userService.getAllUsers();
     const foundUser = allUsersResponse.allUsers.find(user => 
       user._id === userId || user.id === userId
-    );
+    ) as ServiceUser | undefined;
     
     if (foundUser) {
-      setCurrentUser(foundUser);
+      // Convert service user type to app user type
+      const userData: UserType = {
+        _id: foundUser._id,
+        id: foundUser.id,
+        username: foundUser.username,
+        email: foundUser.email,
+        name: foundUser.name,
+        firstName: foundUser.firstName,
+        lastName: foundUser.lastName,
+        // Map role from service to app type
+        role: (foundUser.role === "superadmin" ? "super_admin" : foundUser.role) as any,
+        department: foundUser.department,
+        site: foundUser.site,
+        phone: foundUser.phone,
+        isActive: foundUser.isActive,
+        joinDate: foundUser.joinDate,
+        createdAt: foundUser.createdAt,
+        updatedAt: foundUser.updatedAt,
+        status: "active"
+      };
+      
+      setCurrentUser(userData);
       setFormData({
         name: foundUser.name || "",
         email: foundUser.email || "",
@@ -83,7 +111,7 @@ const fetchCurrentUser = async () => {
       // Fallback to localStorage
       const storedUser = localStorage.getItem('sk_user');
       if (storedUser) {
-        const parsedUser = JSON.parse(storedUser);
+        const parsedUser = JSON.parse(storedUser) as UserType;
         setCurrentUser(parsedUser);
         setFormData({
           name: parsedUser.name || "",
@@ -141,13 +169,25 @@ const fetchCurrentUser = async () => {
       const updatedUser = await userService.updateUser(currentUser._id, updateData);
       
       // Update local state
-      setCurrentUser(prev => prev ? { ...prev, ...updatedUser } : null);
+      setCurrentUser(prev => {
+        if (!prev) return null;
+        
+        // Convert service user type to app user type
+        const convertedUser: UserType = {
+          ...prev,
+          ...updatedUser,
+          // Map role from service to app type if needed
+          role: updatedUser.role === "superadmin" ? "super_admin" as any : prev.role
+        };
+        
+        return convertedUser;
+      });
       
       // Update localStorage
       const storedUser = localStorage.getItem('sk_user');
       if (storedUser) {
-        const parsedUser = JSON.parse(storedUser);
-        const updatedStoredUser = {
+        const parsedUser = JSON.parse(storedUser) as UserType;
+        const updatedStoredUser: UserType = {
           ...parsedUser,
           name: formData.name,
           email: formData.email,
@@ -177,6 +217,7 @@ const fetchCurrentUser = async () => {
 
   const getRoleColor = (role: string) => {
     switch (role?.toLowerCase()) {
+      case 'super_admin':
       case 'superadmin': return 'destructive';
       case 'admin': return 'destructive';
       case 'manager': return 'default';
@@ -280,7 +321,7 @@ const fetchCurrentUser = async () => {
                   <h1 className="text-2xl font-bold">{formData.name}</h1>
                   <Badge variant={getRoleColor(currentUser?.role || '')}>
                     <Shield className="h-3 w-3 mr-1" />
-                    {currentUser?.role?.toUpperCase() || 'MANAGER'}
+                    {(currentUser?.role?.toUpperCase() || 'MANAGER').replace('_', ' ')}
                   </Badge>
                   <Badge variant={currentUser?.isActive ? 'default' : 'secondary'}>
                     {getStatusIcon(currentUser?.isActive || false)}
@@ -455,7 +496,7 @@ const fetchCurrentUser = async () => {
                     <Label className="text-muted-foreground">Role</Label>
                     <div className="flex items-center gap-2 mt-1">
                       <Badge variant={getRoleColor(currentUser?.role || '')}>
-                        {currentUser?.role?.toUpperCase() || 'MANAGER'}
+                        {(currentUser?.role?.toUpperCase() || 'MANAGER').replace('_', ' ')}
                       </Badge>
                     </div>
                   </div>

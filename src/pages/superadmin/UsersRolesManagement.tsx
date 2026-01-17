@@ -3,7 +3,7 @@
 import { DashboardHeader } from "@/components/shared/DashboardHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";6
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -62,7 +62,6 @@ interface FormUserData {
   password: string;
   role: UserRole;
   department: string;
-  site: string;
   phone: string;
   status: 'active' | 'inactive';
   joinDate: string;
@@ -72,7 +71,6 @@ interface FormUserData {
 }
 
 const departments = ['IT', 'HR', 'Finance', 'Operations', 'Marketing', 'Sales', 'Admin'];
-const sites = ['Mumbai Office', 'Delhi Branch', 'Bangalore Tech Park', 'Chennai Center', 'Hyderabad Campus'];
 const roles: UserRole[] = ['admin', 'manager', 'supervisor', 'employee'];
 
 // User Form Component
@@ -91,7 +89,6 @@ const UserForm = ({
     password: '',
     role: user?.role || 'employee',
     department: user?.department || '',
-    site: user?.site || '',
     phone: user?.phone || '',
     status: user?.status || 'active',
     joinDate: user?.joinDate ? 
@@ -181,22 +178,6 @@ const UserForm = ({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Site *</Label>
-          <Select 
-            value={formData.site} 
-            onValueChange={(value) => setFormData({...formData, site: value})}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select site" />
-            </SelectTrigger>
-            <SelectContent>
-              {sites.map(site => (
-                <SelectItem key={site} value={site}>{site}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
           <Label>Join Date *</Label>
           <Input
             type="date"
@@ -205,9 +186,6 @@ const UserForm = ({
             required
           />
         </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="phone">Phone *</Label>
           <Input
@@ -217,21 +195,22 @@ const UserForm = ({
             required
           />
         </div>
-        <div className="space-y-2">
-          <Label>Status *</Label>
-          <Select 
-            value={formData.status} 
-            onValueChange={(value: 'active' | 'inactive') => setFormData({...formData, status: value})}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="inactive">Inactive</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Status *</Label>
+        <Select 
+          value={formData.status} 
+          onValueChange={(value: 'active' | 'inactive') => setFormData({...formData, status: value})}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="inactive">Inactive</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <Button type="submit" className="w-full">
@@ -298,7 +277,7 @@ const UserList = ({
         firstName,
         lastName,
         department: formData.department,
-        site: formData.site,
+        site: '', // Empty site field as removed from form
         phone: formData.phone,
         joinDate: formatDateForAPI(formData.joinDate)
       };
@@ -323,7 +302,7 @@ const UserList = ({
         email: formData.email,
         role: formData.role,
         department: formData.department,
-        site: formData.site,
+        site: '', // Empty site field as removed from form
         phone: formData.phone,
         isActive: formData.status === 'active',
         firstName,

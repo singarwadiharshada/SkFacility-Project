@@ -156,8 +156,17 @@ export const useWorkQuery = (options: UseWorkQueryOptions = {}) => {
   const fetchStaticData = useCallback(async () => {
     console.log('📋 Fetching static data...');
     
+    // Set loading states for static data
+    setLoading(prev => ({ 
+      ...prev, 
+      categories: true,
+      serviceTypes: true,
+      priorities: true,
+      statuses: true
+    }));
+    
     try {
-      const [categoriesRes, serviceTypesRes, prioritiesRes, statusesRes] = await Promise.all([
+      const [categoriesRes, serviceTypesRes, prioritiesRes, statusesRes] = await Promise.allSettled([
         workQueryApi.getCategories(),
         workQueryApi.getServiceTypes(),
         workQueryApi.getPriorities(),
@@ -165,25 +174,50 @@ export const useWorkQuery = (options: UseWorkQueryOptions = {}) => {
       ]);
       
       if (isMounted.current) {
-        if (categoriesRes.success) {
-          setCategories(categoriesRes.data);
+        // Handle categories
+        if (categoriesRes.status === 'fulfilled' && categoriesRes.value.success) {
+          setCategories(categoriesRes.value.data);
           console.log('✅ Fetched categories');
+        } else {
+          console.error('❌ Failed to fetch categories:', categoriesRes.status === 'rejected' ? categoriesRes.reason : 'API error');
         }
-        if (serviceTypesRes.success) {
-          setServiceTypes(serviceTypesRes.data);
+        
+        // Handle service types
+        if (serviceTypesRes.status === 'fulfilled' && serviceTypesRes.value.success) {
+          setServiceTypes(serviceTypesRes.value.data);
           console.log('✅ Fetched service types');
+        } else {
+          console.error('❌ Failed to fetch service types:', serviceTypesRes.status === 'rejected' ? serviceTypesRes.reason : 'API error');
         }
-        if (prioritiesRes.success) {
-          setPriorities(prioritiesRes.data);
+        
+        // Handle priorities
+        if (prioritiesRes.status === 'fulfilled' && prioritiesRes.value.success) {
+          setPriorities(prioritiesRes.value.data);
           console.log('✅ Fetched priorities');
+        } else {
+          console.error('❌ Failed to fetch priorities:', prioritiesRes.status === 'rejected' ? prioritiesRes.reason : 'API error');
         }
-        if (statusesRes.success) {
-          setStatuses(statusesRes.data);
+        
+        // Handle statuses
+        if (statusesRes.status === 'fulfilled' && statusesRes.value.success) {
+          setStatuses(statusesRes.value.data);
           console.log('✅ Fetched statuses');
+        } else {
+          console.error('❌ Failed to fetch statuses:', statusesRes.status === 'rejected' ? statusesRes.reason : 'API error');
         }
       }
     } catch (error) {
-      console.error('❌ Error fetching static data:', error);
+      console.error('❌ Error in fetchStaticData:', error);
+    } finally {
+      if (isMounted.current) {
+        setLoading(prev => ({ 
+          ...prev, 
+          categories: false,
+          serviceTypes: false,
+          priorities: false,
+          statuses: false
+        }));
+      }
     }
   }, []);
 
@@ -228,6 +262,37 @@ export const useWorkQuery = (options: UseWorkQueryOptions = {}) => {
       return { success: false, error: errorMessage };
     } finally {
       setLoading(prev => ({ ...prev, creating: false }));
+    }
+  }, [fetchStatistics]);
+
+  // Delete work query
+  const deleteWorkQuery = useCallback(async (queryId: string) => {
+    setLoading(prev => ({ ...prev, deleting: true }));
+    
+    try {
+      console.log(`🗑️ Deleting work query: ${queryId}`);
+      const response = await workQueryApi.deleteWorkQuery(queryId);
+      
+      if (response.success) {
+        console.log(`✅ Work query deleted successfully`);
+        
+        // Remove query from state
+        setWorkQueries(prev => prev.filter(q => q._id !== queryId));
+        
+        // Update statistics
+        await fetchStatistics();
+        
+        toast.success('Work query deleted successfully!');
+        return { success: true };
+      }
+      
+      return { success: false, error: response.message };
+    } catch (err: any) {
+      const errorMessage = handleApiError(err);
+      toast.error(`Failed to delete work query: ${errorMessage}`);
+      return { success: false, error: errorMessage };
+    } finally {
+      setLoading(prev => ({ ...prev, deleting: false }));
     }
   }, [fetchStatistics]);
 
@@ -286,22 +351,43 @@ export const useWorkQuery = (options: UseWorkQueryOptions = {}) => {
     fetchServices,
     fetchStatistics,
     fetchCategories: async () => {
-      const res = await workQueryApi.getCategories();
-      if (res.success) setCategories(res.data);
+      setLoading(prev => ({ ...prev, categories: true }));
+      try {
+        const res = await workQueryApi.getCategories();
+        if (res.success) setCategories(res.data);
+      } finally {
+        setLoading(prev => ({ ...prev, categories: false }));
+      }
     },
     fetchServiceTypes: async () => {
-      const res = await workQueryApi.getServiceTypes();
-      if (res.success) setServiceTypes(res.data);
+      setLoading(prev => ({ ...prev, serviceTypes: true }));
+      try {
+        const res = await workQueryApi.getServiceTypes();
+        if (res.success) setServiceTypes(res.data);
+      } finally {
+        setLoading(prev => ({ ...prev, serviceTypes: false }));
+      }
     },
     fetchPriorities: async () => {
-      const res = await workQueryApi.getPriorities();
-      if (res.success) setPriorities(res.data);
+      setLoading(prev => ({ ...prev, priorities: true }));
+      try {
+        const res = await workQueryApi.getPriorities();
+        if (res.success) setPriorities(res.data);
+      } finally {
+        setLoading(prev => ({ ...prev, priorities: false }));
+      }
     },
     fetchStatuses: async () => {
-      const res = await workQueryApi.getStatuses();
-      if (res.success) setStatuses(res.data);
+      setLoading(prev => ({ ...prev, statuses: true }));
+      try {
+        const res = await workQueryApi.getStatuses();
+        if (res.success) setStatuses(res.data);
+      } finally {
+        setLoading(prev => ({ ...prev, statuses: false }));
+      }
     },
     createWorkQuery,
+    deleteWorkQuery,
     updateWorkQueryStatus: async (
       queryId: string,
       status: 'pending' | 'in-progress' | 'resolved' | 'rejected',
@@ -312,15 +398,6 @@ export const useWorkQuery = (options: UseWorkQueryOptions = {}) => {
         setWorkQueries(prev => prev.map(q => q._id === res.data._id ? res.data : q));
         await fetchStatistics();
         toast.success('Status updated successfully');
-      }
-      return res;
-    },
-    deleteWorkQuery: async (id: string) => {
-      const res = await workQueryApi.deleteWorkQuery(id);
-      if (res.success) {
-        setWorkQueries(prev => prev.filter(q => q._id !== id));
-        await fetchStatistics();
-        toast.success('Work query deleted');
       }
       return res;
     },

@@ -88,9 +88,9 @@ import ManagerAttendance from "./pages/manager/ManagerAttendance";
 import WorkQuery from "./pages/supervisor/WorkQuery";
 import SuperAdminWorkIssues from "./pages/superadmin/SuperAdminWorkIssues";
 import AdminAttendanceView from "./pages/admin/AdminAttendanceView";
-import ManagerOperations from "./pages/manager/ManagerOperations";
+//import ManagerOperations from "./pages/manager/ManagerOperations";
 import AdminHRMS from "./pages/admin/AdminHRMS";
-import { AuthProvider } from "./contexts/AuthContext";
+//import { AuthProvider } from "./contexts/AuthContext";
 // import AdminCRM from "./pages/admin/AdminCRM";
 
 
@@ -99,7 +99,7 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <RoleProvider>
-      <AuthProvider>
+      {/* <AuthProvider> */}
       <TooltipProvider>
         <Toaster />
         <Sonner />
@@ -180,7 +180,7 @@ const App = () => (
               <Route path="tasks" element={<ManagerTasks />} />
               <Route path="reports" element={<ManagerReports />} />
               <Route path="leave" element={<ManagerLeave />} />
-               <Route path="operations" element={<ManagerOperations />} />
+               {/* <Route path="operations" element={<ManagerOperations />} /> */}
               <Route path="managerattendance" element={<ManagerAttendance />}/>
               <Route path="notifications" element={<ManagerNotifications />} />
               <Route path="settings" element={<ManagerSettings />} />
@@ -229,7 +229,7 @@ const App = () => (
           </Routes>
         </BrowserRouter>
       </TooltipProvider>
-      </AuthProvider>
+      {/* </AuthProvider> */}
     </RoleProvider>
   </QueryClientProvider>
 );

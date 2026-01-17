@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 export interface Supervisor {
+  role: string;
   _id: string;
   name: string;
   email: string;

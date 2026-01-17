@@ -2,6 +2,10 @@ import axios, { AxiosInstance, AxiosResponse, AxiosError, InternalAxiosRequestCo
 
 // Types for user data
 export interface User {
+  updatedAt: string;
+  createdAt: string;
+  createdAt: string;
+  updatedAt: string;
   _id: string;
   id: string;
   username: string;

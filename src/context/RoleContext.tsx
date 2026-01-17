@@ -3,7 +3,8 @@ import { toast } from "sonner";
 
 export type UserRole = "superadmin" | "admin" | "manager" | "supervisor" | "employee" | null;
 
-interface User {
+export interface User {
+  [x: string]: any;
   site: string;
   department: string;
   contactNumber: any;

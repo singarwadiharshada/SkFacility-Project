@@ -541,32 +541,33 @@ async createWorkQuery(data: CreateWorkQueryData, files: Express.Multer.File[] = 
     }
   }
 
-  // DELETE WORK QUERY
-  async deleteWorkQuery(id: string): Promise<IWorkQuery | null> {
-    try {
-      console.log(`🗑️ Deleting work query: ${id}`);
-      
-      const query = await WorkQuery.findByIdAndDelete(id);
-      
-      if (!query) {
-        console.log(`❌ Query ${id} not found`);
-        return null;
-      }
-      
-      // Delete files from Cloudinary if any
-      if (query.proofFiles && query.proofFiles.length > 0) {
-        const publicIds = query.proofFiles.map(file => file.public_id);
-        await deleteWorkQueryProofs(publicIds);
-        console.log(`🗑️ Deleted ${publicIds.length} files from Cloudinary`);
-      }
-      
-      console.log(`✅ Query ${id} deleted successfully`);
-      return query;
-    } catch (error: any) {
-      console.error('❌ Error deleting work query:', error);
+
+// DELETE WORK QUERY
+async deleteWorkQuery(id: string): Promise<IWorkQuery | null> {
+  try {
+    console.log(`🗑️ Deleting work query: ${id}`);
+    
+    const query = await WorkQuery.findByIdAndDelete(id);
+    
+    if (!query) {
+      console.log(`❌ Query ${id} not found`);
       return null;
     }
+    
+    // Delete files from Cloudinary if any
+    if (query.proofFiles && query.proofFiles.length > 0) {
+      const publicIds = query.proofFiles.map(file => file.public_id);
+      await deleteWorkQueryProofs(publicIds);
+      console.log(`🗑️ Deleted ${publicIds.length} files from Cloudinary`);
+    }
+    
+    console.log(`✅ Query ${id} deleted successfully`);
+    return query;
+  } catch (error: any) {
+    console.error('❌ Error deleting work query:', error);
+    return null;
   }
+}
 
   // ADD FILES TO WORK QUERY
   async addFilesToWorkQuery(queryId: string, files: Express.Multer.File[]): Promise<IWorkQuery | null> {
