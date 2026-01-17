@@ -3,6 +3,8 @@ import deductionController from '../controllers/deductionController';
 
 const router = express.Router();
 
+router.get('/health', (req, res) => res.status(200).json({ status: 'OK' }));
+
 // Deduction CRUD routes
 router.get('/deductions', deductionController.getAllDeductions);
 router.get('/deductions/stats', deductionController.getDeductionStats);

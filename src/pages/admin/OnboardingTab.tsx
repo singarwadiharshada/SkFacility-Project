@@ -5,12 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileText, Plus, Upload, Trash2, Camera, X, Save, Edit, Download, Loader2, UserCheck } from "lucide-react";
+import { FileText, Plus, Upload, Trash2, Camera, X, Save, Edit, Download, Loader2, UserCheck, User } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // Define the API Base URL
-const API_BASE_URL = "http://localhost:5001/api";
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 // Types
 interface Employee {
@@ -22,9 +22,11 @@ interface Employee {
   aadharNumber: string;
   department: string;
   position: string;
-  joinDate: string;
+  joinDate?: string;
+  dateOfJoining?: string;
   status: "active" | "inactive" | "left";
   salary: number | string;
+  uanNumber?: string;
   uan?: string;
   esicNumber?: string;
   panNumber?: string;
@@ -60,6 +62,8 @@ interface Employee {
   apronIssued?: boolean;
   employeeSignature?: string;
   authorizedSignature?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface SalaryStructure {
@@ -240,6 +244,51 @@ const FormField = ({
   </div>
 );
 
+// Reset form function
+const resetNewEmployeeForm = () => ({
+  name: "",
+  email: "",
+  phone: "",
+  aadharNumber: "",
+  panNumber: "",
+  esicNumber: "",
+  uanNumber: "",
+  siteName: "",
+  dateOfBirth: "",
+  dateOfJoining: new Date().toISOString().split("T")[0],
+  dateOfExit: "",
+  bloodGroup: "",
+  permanentAddress: "",
+  permanentPincode: "",
+  localAddress: "",
+  localPincode: "",
+  bankName: "",
+  accountNumber: "",
+  ifscCode: "",
+  branchName: "",
+  fatherName: "",
+  motherName: "",
+  spouseName: "",
+  numberOfChildren: "",
+  emergencyContactName: "",
+  emergencyContactPhone: "",
+  emergencyContactRelation: "",
+  nomineeName: "",
+  nomineeRelation: "",
+  pantSize: "",
+  shirtSize: "",
+  capSize: "",
+  idCardIssued: false,
+  westcoatIssued: false,
+  apronIssued: false,
+  department: "",
+  position: "",
+  salary: "",
+  photo: null,
+  employeeSignature: null,
+  authorizedSignature: null
+});
+
 const OnboardingTab = ({ 
   employees, 
   setEmployees, 
@@ -252,50 +301,7 @@ const OnboardingTab = ({
 }: OnboardingTabProps) => {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("onboarding");
-  const [newEmployee, setNewEmployee] = useState<NewEmployeeForm>({
-    name: "",
-    email: "",
-    phone: "",
-    aadharNumber: "",
-    panNumber: "",
-    esicNumber: "",
-    uanNumber: "",
-    siteName: "",
-    dateOfBirth: "",
-    dateOfJoining: new Date().toISOString().split("T")[0],
-    dateOfExit: "",
-    bloodGroup: "",
-    permanentAddress: "",
-    permanentPincode: "",
-    localAddress: "",
-    localPincode: "",
-    bankName: "",
-    accountNumber: "",
-    ifscCode: "",
-    branchName: "",
-    fatherName: "",
-    motherName: "",
-    spouseName: "",
-    numberOfChildren: "",
-    emergencyContactName: "",
-    emergencyContactPhone: "",
-    emergencyContactRelation: "",
-    nomineeName: "",
-    nomineeRelation: "",
-    pantSize: "",
-    shirtSize: "",
-    capSize: "",
-    idCardIssued: false,
-    westcoatIssued: false,
-    apronIssued: false,
-    department: "",
-    position: "",
-    salary: "",
-    photo: null,
-    employeeSignature: null,
-    authorizedSignature: null
-  });
-
+  const [newEmployee, setNewEmployee] = useState<NewEmployeeForm>(resetNewEmployeeForm());
   const [uploadedDocuments, setUploadedDocuments] = useState<File[]>([]);
   const [showCamera, setShowCamera] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
@@ -352,11 +358,16 @@ const OnboardingTab = ({
     
     const today = new Date().toISOString().split("T")[0];
     
-    const salary = typeof employee.salary === 'string' 
-      ? parseFloat(employee.salary) 
-      : employee.salary;
+    // Safely get salary with fallbacks
+    let salaryValue = 0;
+    if (employee.salary) {
+      salaryValue = typeof employee.salary === 'string' 
+        ? parseFloat(employee.salary) 
+        : Number(employee.salary) || 0;
+    }
     
-    setEpfFormData({
+    // Safely get other properties with fallbacks
+    const epfData: EPFForm11Data = {
       memberName: employee.name || "",
       fatherOrSpouseName: employee.fatherName || employee.spouseName || "",
       relationshipType: employee.fatherName ? "father" : "spouse",
@@ -369,7 +380,7 @@ const OnboardingTab = ({
       previousEPFMember: false,
       previousPensionMember: false,
       
-      previousUAN: employee.uan || "",
+      previousUAN: employee.uanNumber || employee.uan || "",
       previousPFAccountNumber: "",
       dateOfExit: "",
       schemeCertificateNumber: "",
@@ -387,8 +398,8 @@ const OnboardingTab = ({
       panNumber: employee.panNumber || "",
       
       firstEPFMember: true,
-      enrolledDate: employee.joinDate || today,
-      firstEmploymentWages: salary?.toString() || "0",
+      enrolledDate: employee.joinDate || employee.dateOfJoining || today,
+      firstEmploymentWages: salaryValue.toString() || "0",
       epfMemberBeforeSep2014: false,
       epfAmountWithdrawn: false,
       epsAmountWithdrawn: false,
@@ -397,8 +408,9 @@ const OnboardingTab = ({
       declarationDate: today,
       declarationPlace: "Mumbai",
       employerDeclarationDate: today
-    });
+    };
     
+    setEpfFormData(epfData);
     setActiveTab("epf-form");
     toast.success("Employee created successfully! Please fill EPF Form 11.");
   };
@@ -563,59 +575,111 @@ const OnboardingTab = ({
   };
 
   const handleAddEmployee = async () => {
-    if (!newEmployee.name || !newEmployee.email || !newEmployee.aadharNumber || !newEmployee.position) {
-      toast.error("Please fill all required fields (Name, Email, Aadhar Number, Position)");
+    // Validate required fields
+    if (!newEmployee.name || !newEmployee.email || !newEmployee.aadharNumber || !newEmployee.position || !newEmployee.department) {
+      toast.error("Please fill all required fields (Name, Email, Aadhar Number, Position, Department)");
+      return;
+    }
+
+    // Validate phone number
+    if (newEmployee.phone && !/^\d{10}$/.test(newEmployee.phone)) {
+      toast.error("Please enter a valid 10-digit phone number");
+      return;
+    }
+
+    // Validate Aadhar number
+    if (!/^\d{12}$/.test(newEmployee.aadharNumber)) {
+      toast.error("Please enter a valid 12-digit Aadhar number");
+      return;
+    }
+
+    // Validate PAN number if provided
+    if (newEmployee.panNumber && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(newEmployee.panNumber.toUpperCase())) {
+      toast.error("Please enter a valid PAN number (format: ABCDE1234F)");
+      return;
+    }
+
+    // Validate salary
+    if (!newEmployee.salary || parseFloat(newEmployee.salary) <= 0) {
+      toast.error("Please enter a valid salary amount");
       return;
     }
 
     setLoading(true);
 
     try {
+      // Create FormData object
       const formData = new FormData();
 
-      const cleanedEmployeeData: any = { ...newEmployee };
-      
-      Object.keys(cleanedEmployeeData).forEach(key => {
-        const value = cleanedEmployeeData[key];
-        
-        if (value === '' || value === null || value === undefined) {
-          delete cleanedEmployeeData[key];
-        }
-        
-        if (key === 'numberOfChildren' && value === '') {
-          delete cleanedEmployeeData[key];
-        }
-        
-        if (key === 'salary' && value === '') {
-          toast.error("Salary is required");
-          throw new Error("Salary is required");
-        }
-        
-        if (key === 'panNumber' && value) {
-          cleanedEmployeeData[key] = value.toUpperCase();
-        }
-        if (key === 'ifscCode' && value) {
-          cleanedEmployeeData[key] = value.toUpperCase();
-        }
-      });
+      // Add employee photo if exists
+      if (newEmployee.photo instanceof File) {
+        formData.append('photo', newEmployee.photo);
+      }
 
-      Object.entries(cleanedEmployeeData).forEach(([key, value]) => {
-        if (key === "photo" || key === "employeeSignature" || key === "authorizedSignature") {
-          if (value instanceof File) {
-            formData.append(key, value);
-          }
-        } else if (typeof value === "boolean") {
+      // Add employee signature if exists
+      if (newEmployee.employeeSignature instanceof File) {
+        formData.append('employeeSignature', newEmployee.employeeSignature);
+      }
+
+      // Add authorized signature if exists
+      if (newEmployee.authorizedSignature instanceof File) {
+        formData.append('authorizedSignature', newEmployee.authorizedSignature);
+      }
+
+      // Add other form data
+      const employeeDataToSend = {
+        name: newEmployee.name,
+        email: newEmployee.email,
+        phone: newEmployee.phone,
+        aadharNumber: newEmployee.aadharNumber,
+        panNumber: newEmployee.panNumber?.toUpperCase() || '',
+        esicNumber: newEmployee.esicNumber,
+        uanNumber: newEmployee.uanNumber,
+        siteName: newEmployee.siteName,
+        dateOfBirth: newEmployee.dateOfBirth,
+        dateOfJoining: newEmployee.dateOfJoining,
+        dateOfExit: newEmployee.dateOfExit,
+        bloodGroup: newEmployee.bloodGroup,
+        gender: newEmployee.gender,
+        maritalStatus: newEmployee.maritalStatus,
+        permanentAddress: newEmployee.permanentAddress,
+        permanentPincode: newEmployee.permanentPincode,
+        localAddress: newEmployee.localAddress,
+        localPincode: newEmployee.localPincode,
+        bankName: newEmployee.bankName,
+        accountNumber: newEmployee.accountNumber,
+        ifscCode: newEmployee.ifscCode.toUpperCase(),
+        branchName: newEmployee.branchName,
+        fatherName: newEmployee.fatherName,
+        motherName: newEmployee.motherName,
+        spouseName: newEmployee.spouseName,
+        numberOfChildren: newEmployee.numberOfChildren,
+        emergencyContactName: newEmployee.emergencyContactName,
+        emergencyContactPhone: newEmployee.emergencyContactPhone,
+        emergencyContactRelation: newEmployee.emergencyContactRelation,
+        nomineeName: newEmployee.nomineeName,
+        nomineeRelation: newEmployee.nomineeRelation,
+        pantSize: newEmployee.pantSize,
+        shirtSize: newEmployee.shirtSize,
+        capSize: newEmployee.capSize,
+        idCardIssued: newEmployee.idCardIssued,
+        westcoatIssued: newEmployee.westcoatIssued,
+        apronIssued: newEmployee.apronIssued,
+        department: newEmployee.department,
+        position: newEmployee.position,
+        salary: newEmployee.salary
+      };
+
+      // Append all other data
+      Object.entries(employeeDataToSend).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
           formData.append(key, value.toString());
-        } else if (value !== null && value !== undefined) {
-          formData.append(key, value.toString());
         }
       });
 
-      uploadedDocuments.forEach((doc, index) => {
-        formData.append("documents", doc);
-      });
+      console.log('Sending employee data to backend...');
 
-      const response = await fetch(`${API_BASE_URL}/employees`, {
+      const response = await fetch(`${API_URL}/employees`, {
         method: "POST",
         body: formData
       });
@@ -623,60 +687,83 @@ const OnboardingTab = ({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || "Failed to create employee");
+        throw new Error(data.message || data.error || "Failed to create employee");
       }
 
       toast.success("Employee created successfully!");
       
-      const createdEmployee = data.employee || data.data || data;
-      setEmployees([...employees, createdEmployee]);
+      // The backend returns the employee data with Cloudinary URLs
+      const createdEmployee = data.employee;
       
-      initializeEPFForm(createdEmployee);
+      // Debug: Log the created employee data
+      console.log('Created employee data:', createdEmployee);
       
-      setNewEmployee({
-        name: "",
-        email: "",
-        phone: "",
-        aadharNumber: "",
-        panNumber: "",
-        esicNumber: "",
-        uanNumber: "",
-        siteName: "",
-        dateOfBirth: "",
-        dateOfJoining: new Date().toISOString().split("T")[0],
-        dateOfExit: "",
-        bloodGroup: "",
-        permanentAddress: "",
-        permanentPincode: "",
-        localAddress: "",
-        localPincode: "",
-        bankName: "",
-        accountNumber: "",
-        ifscCode: "",
-        branchName: "",
-        fatherName: "",
-        motherName: "",
-        spouseName: "",
-        numberOfChildren: "",
-        emergencyContactName: "",
-        emergencyContactPhone: "",
-        emergencyContactRelation: "",
-        nomineeName: "",
-        nomineeRelation: "",
-        pantSize: "",
-        shirtSize: "",
-        capSize: "",
-        idCardIssued: false,
-        westcoatIssued: false,
-        apronIssued: false,
-        department: "",
-        position: "",
-        salary: "",
-        photo: null,
-        employeeSignature: null,
-        authorizedSignature: null
-      });
+      if (!createdEmployee) {
+        throw new Error('No employee data returned from server');
+      }
+      
+      // Ensure the employee object has all required properties
+      const processedEmployee: Employee = {
+        _id: createdEmployee._id,
+        employeeId: createdEmployee.employeeId,
+        name: createdEmployee.name,
+        email: createdEmployee.email,
+        phone: createdEmployee.phone,
+        aadharNumber: createdEmployee.aadharNumber,
+        department: createdEmployee.department,
+        position: createdEmployee.position,
+        joinDate: createdEmployee.joinDate || createdEmployee.dateOfJoining,
+        dateOfJoining: createdEmployee.dateOfJoining,
+        status: createdEmployee.status || 'active',
+        salary: createdEmployee.salary || 0,
+        uanNumber: createdEmployee.uanNumber,
+        uan: createdEmployee.uan,
+        esicNumber: createdEmployee.esicNumber,
+        panNumber: createdEmployee.panNumber,
+        photo: createdEmployee.photo,
+        siteName: createdEmployee.siteName,
+        dateOfBirth: createdEmployee.dateOfBirth,
+        bloodGroup: createdEmployee.bloodGroup,
+        gender: createdEmployee.gender,
+        maritalStatus: createdEmployee.maritalStatus,
+        permanentAddress: createdEmployee.permanentAddress,
+        permanentPincode: createdEmployee.permanentPincode,
+        localAddress: createdEmployee.localAddress,
+        localPincode: createdEmployee.localPincode,
+        bankName: createdEmployee.bankName,
+        accountNumber: createdEmployee.accountNumber,
+        ifscCode: createdEmployee.ifscCode,
+        branchName: createdEmployee.branchName,
+        fatherName: createdEmployee.fatherName,
+        motherName: createdEmployee.motherName,
+        spouseName: createdEmployee.spouseName,
+        numberOfChildren: createdEmployee.numberOfChildren,
+        emergencyContactName: createdEmployee.emergencyContactName,
+        emergencyContactPhone: createdEmployee.emergencyContactPhone,
+        emergencyContactRelation: createdEmployee.emergencyContactRelation,
+        nomineeName: createdEmployee.nomineeName,
+        nomineeRelation: createdEmployee.nomineeRelation,
+        pantSize: createdEmployee.pantSize,
+        shirtSize: createdEmployee.shirtSize,
+        capSize: createdEmployee.capSize,
+        idCardIssued: createdEmployee.idCardIssued || false,
+        westcoatIssued: createdEmployee.westcoatIssued || false,
+        apronIssued: createdEmployee.apronIssued || false,
+        employeeSignature: createdEmployee.employeeSignature,
+        authorizedSignature: createdEmployee.authorizedSignature,
+        createdAt: createdEmployee.createdAt,
+        updatedAt: createdEmployee.updatedAt
+      };
+      
+      // Update employees list with the new employee
+      setEmployees(prev => [...prev, processedEmployee]);
+      
+      // Reset form FIRST
+      setNewEmployee(resetNewEmployeeForm());
       setUploadedDocuments([]);
+      
+      // Then initialize EPF Form and switch tabs
+      initializeEPFForm(processedEmployee);
 
     } catch (error: any) {
       console.error("Error creating employee:", error);
@@ -724,10 +811,28 @@ const OnboardingTab = ({
       return;
     }
 
+    // Validate Aadhar number
+    if (!/^\d{12}$/.test(epfFormData.aadharNumber)) {
+      toast.error("Please enter a valid 12-digit Aadhar number");
+      return;
+    }
+
+    // Validate PAN number if provided
+    if (epfFormData.panNumber && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(epfFormData.panNumber)) {
+      toast.error("Please enter a valid PAN number (format: ABCDE1234F)");
+      return;
+    }
+
     try {
-      const employeeId = createdEmployeeData.employeeId || createdEmployeeData._id;
+      // Use _id (MongoDB ObjectId) instead of employeeId
+      const employeeId = createdEmployeeData._id;
       
-      const response = await fetch(`${API_BASE_URL}/epf-forms`, {
+      if (!employeeId) {
+        toast.error("Invalid employee data");
+        return;
+      }
+      
+      const response = await fetch(`${API_URL}/epf-forms`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -735,10 +840,11 @@ const OnboardingTab = ({
         body: JSON.stringify({
           ...epfFormData,
           employeeId: employeeId,
+          employeeNumber: createdEmployeeData.employeeId,
           firstEmploymentWages: parseFloat(epfFormData.firstEmploymentWages) || 0,
-          enrolledDate: new Date(epfFormData.enrolledDate || createdEmployeeData.joinDate),
-          declarationDate: new Date(epfFormData.declarationDate),
-          employerDeclarationDate: new Date(epfFormData.employerDeclarationDate)
+          enrolledDate: new Date(epfFormData.enrolledDate || createdEmployeeData.joinDate || createdEmployeeData.dateOfJoining || new Date()),
+          declarationDate: new Date(epfFormData.declarationDate || new Date()),
+          employerDeclarationDate: new Date(epfFormData.employerDeclarationDate || new Date())
         })
       });
 
@@ -752,6 +858,43 @@ const OnboardingTab = ({
         toast.success("EPF Form saved successfully!");
         setActiveTab("onboarding");
         setCreatedEmployeeData(null);
+        // Reset EPF form data
+        setEpfFormData({
+          memberName: "",
+          fatherOrSpouseName: "",
+          relationshipType: "father",
+          dateOfBirth: "",
+          gender: "",
+          maritalStatus: "",
+          email: "",
+          mobileNumber: "",
+          previousEPFMember: false,
+          previousPensionMember: false,
+          previousUAN: "",
+          previousPFAccountNumber: "",
+          dateOfExit: "",
+          schemeCertificateNumber: "",
+          pensionPaymentOrder: "",
+          internationalWorker: false,
+          countryOfOrigin: "",
+          passportNumber: "",
+          passportValidityFrom: "",
+          passportValidityTo: "",
+          bankAccountNumber: "",
+          ifscCode: "",
+          aadharNumber: "",
+          panNumber: "",
+          firstEPFMember: true,
+          enrolledDate: new Date().toISOString().split("T")[0],
+          firstEmploymentWages: "",
+          epfMemberBeforeSep2014: false,
+          epfAmountWithdrawn: false,
+          epsAmountWithdrawn: false,
+          epsAmountWithdrawnAfterSep2014: false,
+          declarationDate: new Date().toISOString().split("T")[0],
+          declarationPlace: "Mumbai",
+          employerDeclarationDate: new Date().toISOString().split("T")[0]
+        });
       } else {
         toast.error(data.message || "Failed to save EPF Form");
       }
@@ -1121,7 +1264,7 @@ const OnboardingTab = ({
               
               <div class="field-row">
                 <div class="field-group full-width">
-                  <div class="label">A. The member Mr./Ms./Mrs. ${epfFormData.memberName} has joined on ${epfFormData.enrolledDate} and has been allotted PF Number ${createdEmployeeData?.uan || "Pending"}</div>
+                  <div class="label">A. The member Mr./Ms./Mrs. ${epfFormData.memberName} has joined on ${epfFormData.enrolledDate} and has been allotted PF Number ${createdEmployeeData?.uanNumber || createdEmployeeData?.uan || "Pending"}</div>
                 </div>
               </div>
 
@@ -1192,6 +1335,11 @@ const OnboardingTab = ({
       </html>
     `);
     printWindow.document.close();
+  };
+
+  // Function to manually open EPF form for an existing employee
+  const handleOpenEPFForm = (employee: Employee) => {
+    initializeEPFForm(employee);
   };
 
   return (
@@ -1280,7 +1428,9 @@ const OnboardingTab = ({
                       <div className="border-2 border-dashed border-gray-400 w-20 h-24 md:w-24 md:h-32 flex items-center justify-center text-xs text-muted-foreground text-center p-2 mx-auto md:mx-0">
                         {newEmployee.photo ? (
                           <img 
-                            src={URL.createObjectURL(newEmployee.photo)} 
+                            src={newEmployee.photo instanceof File 
+                              ? URL.createObjectURL(newEmployee.photo) 
+                              : newEmployee.photo} 
                             alt="Employee" 
                             className="w-full h-full object-cover"
                           />
@@ -1292,7 +1442,7 @@ const OnboardingTab = ({
                       <div className="text-center md:text-right space-y-2 w-full md:w-auto">
                         <div className="text-sm font-semibold">New Joining</div>
                         <div className="text-sm">
-                          Code No. / Ref No.: <span className="border-b border-gray-400 inline-block min-w-[100px]">SK-___________</span>
+                          Code No. / Ref No.: <span className="border-b border-gray-400 inline-block min-w-[100px]">Auto-generated</span>
                         </div>
                       </div>
                     </div>
@@ -1403,8 +1553,10 @@ const OnboardingTab = ({
                         id="phone"
                         value={newEmployee.phone}
                         onChange={(e) => setNewEmployee({...newEmployee, phone: e.target.value})}
-                        placeholder="Enter phone number"
+                        placeholder="Enter 10-digit phone number"
                         required
+                        pattern="[0-9]{10}"
+                        maxLength={10}
                       />
                     </FormField>
         
@@ -1445,8 +1597,10 @@ const OnboardingTab = ({
                         id="aadharNumber"
                         value={newEmployee.aadharNumber}
                         onChange={(e) => setNewEmployee({...newEmployee, aadharNumber: e.target.value})}
-                        placeholder="Enter Aadhar number"
+                        placeholder="Enter 12-digit Aadhar number"
                         required
+                        pattern="[0-9]{12}"
+                        maxLength={12}
                       />
                     </FormField>
                     
@@ -1531,6 +1685,7 @@ const OnboardingTab = ({
                         value={newEmployee.permanentPincode}
                         onChange={(e) => setNewEmployee({...newEmployee, permanentPincode: e.target.value})}
                         placeholder="Enter pin code"
+                        maxLength={6}
                       />
                     </FormField>
                   </div>
@@ -1552,6 +1707,7 @@ const OnboardingTab = ({
                         value={newEmployee.localPincode}
                         onChange={(e) => setNewEmployee({...newEmployee, localPincode: e.target.value})}
                         placeholder="Enter pin code"
+                        maxLength={6}
                       />
                     </FormField>
                   </div>
@@ -1663,6 +1819,8 @@ const OnboardingTab = ({
                         value={newEmployee.emergencyContactPhone}
                         onChange={(e) => setNewEmployee({...newEmployee, emergencyContactPhone: e.target.value})}
                         placeholder="Enter emergency contact phone"
+                        pattern="[0-9]{10}"
+                        maxLength={10}
                       />
                     </FormField>
                     
@@ -1826,6 +1984,8 @@ const OnboardingTab = ({
                         onChange={(e) => setNewEmployee({...newEmployee, salary: e.target.value})}
                         placeholder="Enter monthly salary"
                         required
+                        min="0"
+                        step="0.01"
                       />
                     </FormField>
                   </div>
@@ -1968,19 +2128,21 @@ const OnboardingTab = ({
                   </div>
                 </div>
 
-                <Button onClick={handleAddEmployee} className="w-full" size="lg" disabled={loading}>
-                  {loading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Creating Employee...
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Create Employee & Open EPF Form
-                    </>
-                  )}
-                </Button>
+                <div className="flex gap-4">
+                  <Button onClick={handleAddEmployee} className="flex-1" size="lg" disabled={loading}>
+                    {loading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Creating Employee...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Create Employee & Fill EPF Form
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -1994,10 +2156,11 @@ const OnboardingTab = ({
                   <FileText className="h-5 w-5" />
                   EPF Form 11 - Declaration Form
                 </CardTitle>
-                <p className="text-sm text-muted-foreground">
+                <div className="text-sm text-muted-foreground">
                   For Employee: <span className="font-semibold">{createdEmployeeData.name}</span> 
                   | Employee ID: <span className="font-semibold">{createdEmployeeData.employeeId}</span>
-                </p>
+                  | Department: <span className="font-semibold">{createdEmployeeData.department}</span>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-6">
@@ -2560,15 +2723,17 @@ const OnboardingTab = ({
                     </div>
                   </div>
 
-                  <div className="flex gap-4 justify-end pt-4 border-t">
-                    <Button onClick={handleSaveEPFForm} className="flex items-center gap-2">
-                      <Save className="h-4 w-4" />
-                      Save Form
-                    </Button>
-                    <Button onClick={handlePrintEPFForm} variant="outline" className="flex items-center gap-2">
-                      <Download className="h-4 w-4" />
-                      Print Form
-                    </Button>
+                  <div className="flex gap-4 justify-between pt-4 border-t">
+                    <div className="flex gap-4">
+                      <Button onClick={handleSaveEPFForm} className="flex items-center gap-2">
+                        <Save className="h-4 w-4" />
+                        Save EPF Form
+                      </Button>
+                      <Button onClick={handlePrintEPFForm} variant="outline" className="flex items-center gap-2">
+                        <Download className="h-4 w-4" />
+                        Print Form
+                      </Button>
+                    </div>
                     <Button variant="outline" onClick={() => setActiveTab("onboarding")}>
                       Back to Onboarding
                     </Button>
@@ -2581,7 +2746,7 @@ const OnboardingTab = ({
               <CardContent className="pt-6">
                 <div className="text-center py-12">
                   <FileText className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No Employee Created Yet</h3>
+                  <h3 className="text-lg font-semibold mb-2">No Employee Selected</h3>
                   <p className="text-muted-foreground mb-6">
                     Please create an employee first to fill the EPF Form 11.
                   </p>

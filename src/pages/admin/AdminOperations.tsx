@@ -11,7 +11,7 @@ import RosterSectionA from "./components/RosterSectionaA";
 import ServicesSectionA from "./components/ServicesSectionA";
 import AlertsSectionA from "./components/AlertsSectionA";
 import PriceCalculatorA from "./components/PriceCalculatorA";
-import { initialTasks, initialSites, initialRosterA, serviceTypes, initialAlertsA } from "./datas";
+import { initialTasks, initialSites } from "./datas";
 
 const Operations = () => {
   const [activeTab, setActiveTab] = useState("sites"); // Changed default to "sites"
@@ -30,7 +30,7 @@ const Operations = () => {
         
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5">
-            {/* Removed Tasks tab */}
+            <TabsTrigger value="tasks">Tasks</TabsTrigger>
             <TabsTrigger value="sites">Sites</TabsTrigger>
             <TabsTrigger value="roster">Roster</TabsTrigger>
             <TabsTrigger value="services">Services</TabsTrigger>
@@ -40,25 +40,21 @@ const Operations = () => {
               Calculator
             </TabsTrigger>
           </TabsList>
-
-          {/* Removed Tasks TabsContent */}
-
+         <TabsContent value="tasks">
+            <TasksSectionA />
+          </TabsContent> 
           <TabsContent value="sites">
             <SitesSectionA />
           </TabsContent>
-
           <TabsContent value="roster">
             <RosterSectionA />
           </TabsContent>
-
           <TabsContent value="services">
             <ServicesSectionA />
           </TabsContent>
-
           <TabsContent value="alerts">
             <AlertsSectionA />
           </TabsContent>
-
           <TabsContent value="calculator">
             <PriceCalculatorA />
           </TabsContent>

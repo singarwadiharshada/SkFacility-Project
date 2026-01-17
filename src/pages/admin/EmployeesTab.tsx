@@ -97,7 +97,7 @@ const EmployeesTab = ({
   const [error, setError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  const [isDeleting, setIsDeleting] = useState<number | null>(null);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
   
   const [epfFormData, setEpfFormData] = useState<EPFForm11Data>({
     memberName: "",
@@ -174,57 +174,79 @@ const EmployeesTab = ({
       
       const response = await axios.get(`${API_URL}/employees`, { params });
       
-      if (response.data.success) {
+      console.log("API Response:", response.data); // Debug log
+      
+      if (response.data && response.data.success) {
+        // Check if data exists and is an array
+        const apiData = response.data.data || response.data.employees || [];
+        
+        if (!Array.isArray(apiData)) {
+          console.error("API data is not an array:", apiData);
+          setError("Invalid data format received from server");
+          setEmployees([]);
+          setTotalEmployees(0);
+          return;
+        }
+        
         // Transform API data to match Employee interface
-        const transformedEmployees = response.data.data.map((emp: any, index: number) => ({
-          id: emp._id ? parseInt(emp._id.slice(-6), 16) || index + 1 : index + 1,
-          employeeId: emp.employeeId || `EMP${String(index + 1).padStart(4, '0')}`,
-          name: emp.name || "Unknown",
-          email: emp.email || "",
-          phone: emp.phone || "",
-          aadharNumber: emp.aadharNumber || "",
-          panNumber: emp.panNumber || "",
-          esicNumber: emp.esicNumber || "",
-          uan: emp.uanNumber || "",
-          dateOfBirth: emp.dateOfBirth ? new Date(emp.dateOfBirth).toISOString().split('T')[0] : "",
-          joinDate: emp.dateOfJoining ? new Date(emp.dateOfJoining).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          exitDate: emp.dateOfExit ? new Date(emp.dateOfExit).toISOString().split('T')[0] : "",
-          bloodGroup: emp.bloodGroup || "",
-          gender: emp.gender || "",
-          maritalStatus: emp.maritalStatus || "",
-          department: emp.department || "Unknown",
-          position: emp.position || "",
-          siteName: emp.siteName || "",
-          salary: emp.salary || 0,
-          status: emp.status || "active",
-          documents: emp.documents || [],
-          photo: emp.photo || null,
-          fatherName: emp.fatherName || "",
-          motherName: emp.motherName || "",
-          spouseName: emp.spouseName || "",
-          numberOfChildren: emp.numberOfChildren ? emp.numberOfChildren.toString() : "0",
-          nomineeName: emp.nomineeName || "",
-          nomineeRelation: emp.nomineeRelation || "",
-          accountNumber: emp.accountNumber || "",
-          ifscCode: emp.ifscCode || "",
-          bankName: emp.bankName || "",
-          permanentAddress: emp.permanentAddress || "",
-          localAddress: emp.localAddress || "",
-          emergencyContactName: emp.emergencyContactName || "",
-          emergencyContactPhone: emp.emergencyContactPhone || "",
-          emergencyContactRelation: emp.emergencyContactRelation || "",
-        }));
+        const transformedEmployees = apiData.map((emp: any, index: number) => {
+          console.log(`Processing employee ${index}:`, emp); // Debug log
+          
+          return {
+            id: emp._id || emp.id || `emp_${index}`,
+            employeeId: emp.employeeId || emp.employeeID || `EMP${String(index + 1).padStart(4, '0')}`,
+            name: emp.name || emp.employeeName || "Unknown",
+            email: emp.email || "",
+            phone: emp.phone || emp.mobile || "",
+            aadharNumber: emp.aadharNumber || emp.aadhar || "",
+            panNumber: emp.panNumber || emp.pan || "",
+            esicNumber: emp.esicNumber || emp.esic || "",
+            uan: emp.uanNumber || emp.uan || "",
+            dateOfBirth: emp.dateOfBirth ? new Date(emp.dateOfBirth).toISOString().split('T')[0] : "",
+            joinDate: emp.dateOfJoining ? new Date(emp.dateOfJoining).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+            exitDate: emp.dateOfExit ? new Date(emp.dateOfExit).toISOString().split('T')[0] : "",
+            bloodGroup: emp.bloodGroup || "",
+            gender: emp.gender || "",
+            maritalStatus: emp.maritalStatus || "",
+            department: emp.department || "Unknown",
+            position: emp.position || emp.designation || "",
+            siteName: emp.siteName || emp.site || "",
+            salary: emp.salary || emp.basicSalary || 0,
+            status: emp.status || "active",
+            documents: emp.documents || [],
+            photo: emp.photo || null,
+            fatherName: emp.fatherName || "",
+            motherName: emp.motherName || "",
+            spouseName: emp.spouseName || "",
+            numberOfChildren: emp.numberOfChildren ? emp.numberOfChildren.toString() : "0",
+            nomineeName: emp.nomineeName || "",
+            nomineeRelation: emp.nomineeRelation || "",
+            accountNumber: emp.accountNumber || emp.bankAccountNumber || "",
+            ifscCode: emp.ifscCode || "",
+            bankName: emp.bankName || "",
+            permanentAddress: emp.permanentAddress || "",
+            localAddress: emp.localAddress || "",
+            emergencyContactName: emp.emergencyContactName || "",
+            emergencyContactPhone: emp.emergencyContactPhone || "",
+            emergencyContactRelation: emp.emergencyContactRelation || "",
+          };
+        });
         
         setEmployees(transformedEmployees);
-        setTotalEmployees(response.data.pagination?.total || transformedEmployees.length);
+        setTotalEmployees(response.data.pagination?.total || response.data.total || transformedEmployees.length);
+        console.log("Transformed employees:", transformedEmployees); // Debug log
       } else {
-        setError(response.data.message || "Failed to fetch employees");
-        toast.error("Failed to load employees");
+        const errorMsg = response.data?.message || "Failed to fetch employees";
+        setError(errorMsg);
+        toast.error(errorMsg);
+        setEmployees([]);
       }
     } catch (err: any) {
       console.error("Error fetching employees:", err);
-      setError(err.message || "Network error occurred");
-      toast.error("Error loading employees");
+      const errorMsg = err.response?.data?.message || err.message || "Network error occurred";
+      setError(errorMsg);
+      toast.error("Error loading employees: " + errorMsg);
+      setEmployees([]);
     } finally {
       setLoading(false);
     }
@@ -237,9 +259,9 @@ const EmployeesTab = ({
   // Filter employees based on search term and selected filters (client-side as backup)
   const filteredEmployees = employees.filter(emp => {
     const matchesSearch = 
-      emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      emp.employeeId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      emp.department.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      emp.employeeId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      emp.department?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       emp.siteName?.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesDepartment = selectedDepartment === "all" || emp.department === selectedDepartment;
@@ -252,16 +274,16 @@ const EmployeesTab = ({
   // Sort employees based on selected criteria (client-side)
   const sortedEmployees = [...filteredEmployees].sort((a, b) => {
     if (sortBy === "name") {
-      return a.name.localeCompare(b.name);
+      return (a.name || "").localeCompare(b.name || "");
     }
     if (sortBy === "department") {
-      return a.department.localeCompare(b.department);
+      return (a.department || "").localeCompare(b.department || "");
     }
     if (sortBy === "site") {
       return (a.siteName || "").localeCompare(b.siteName || "");
     }
     if (sortBy === "joinDate") {
-      return new Date(a.joinDate).getTime() - new Date(b.joinDate).getTime();
+      return new Date(a.joinDate || "").getTime() - new Date(b.joinDate || "").getTime();
     }
     return 0;
   });
@@ -276,7 +298,7 @@ const EmployeesTab = ({
   const leftEmployeesCount = employees.filter(emp => emp.status === "left").length;
   const departmentsCount = new Set(employees.map(e => e.department)).size;
 
-  const handleDeleteEmployee = async (id: number) => {
+  const handleDeleteEmployee = async (id: string) => {
     try {
       setIsDeleting(id);
       const employee = employees.find(emp => emp.id === id);
@@ -285,7 +307,10 @@ const EmployeesTab = ({
         return;
       }
       
-      const response = await axios.delete(`${API_URL}/employees/${employee.employeeId}`);
+      // Use MongoDB _id for deletion
+      const employeeId = employee.id;
+      
+      const response = await axios.delete(`${API_URL}/employees/${employeeId}`);
       
       if (response.data.success) {
         setEmployees(prev => prev.filter(emp => emp.id !== id));
@@ -305,7 +330,7 @@ const EmployeesTab = ({
     try {
       setLoading(true);
       const response = await axios.patch(
-        `${API_URL}/employees/${employee.employeeId}/status`, 
+        `${API_URL}/employees/${employee.id}/status`, // Use MongoDB _id
         { status: "left" }
       );
       
@@ -360,7 +385,11 @@ const EmployeesTab = ({
       toast.success("Employees exported successfully!");
     } catch (err: any) {
       console.error("Error exporting employees:", err);
-      toast.error(err.response?.data?.message || "Export failed");
+      if (err.response?.status === 404) {
+        toast.error("Export feature is not available. Please check backend configuration.");
+      } else {
+        toast.error(err.response?.data?.message || "Export failed");
+      }
     } finally {
       setIsExporting(false);
     }
@@ -387,7 +416,11 @@ const EmployeesTab = ({
       }
     } catch (err: any) {
       console.error("Error importing employees:", err);
-      toast.error(err.response?.data?.message || "Import failed");
+      if (err.response?.status === 404) {
+        toast.error("Import endpoint not found. Please configure backend.");
+      } else {
+        toast.error(err.response?.data?.message || "Import failed");
+      }
     } finally {
       setIsImporting(false);
     }
@@ -481,7 +514,7 @@ const EmployeesTab = ({
 
     try {
       setIsSavingEPF(true);
-      const employeeId = selectedEmployeeForEPF.employeeId || selectedEmployeeForEPF._id;
+      const employeeId = selectedEmployeeForEPF.id;
       
       const response = await fetch(`${API_URL}/epf-forms`, {
         method: "POST",
