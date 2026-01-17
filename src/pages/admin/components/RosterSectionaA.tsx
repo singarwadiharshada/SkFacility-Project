@@ -17,8 +17,7 @@ import { siteService, Site } from "@/services/SiteService";
 import { supervisorService, Supervisor } from "@/services/supervisorService";
 import axios from "axios";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
-
+const API_URL = `http://${window.location.hostname}:5001/api`;
 // Define interfaces
 interface RosterEntry {
   id: string;
@@ -232,7 +231,7 @@ const AdminRosterSection = () => {
 
   const fetchEmployees = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/employees`);
+      const response = await axios.get(`${API_URL}/employees`);
       if (response.data.success) {
         const employeesData = response.data.employees || [];
         // Ensure unique employees by ID and filter active ones
@@ -261,7 +260,7 @@ const AdminRosterSection = () => {
         endDate: format(dateRange.end, "yyyy-MM-dd")
       });
 
-      const response = await axios.get(`${API_BASE_URL}/roster?${params}`);
+      const response = await axios.get(`${API_URL}/roster?${params}`);
       
       if (response.data.success) {
         console.log("Fetched roster entries:", response.data.roster);
@@ -391,7 +390,7 @@ const AdminRosterSection = () => {
         createdBy: "admin" // Mark as created by admin
       };
 
-      const response = await axios.post(`${API_BASE_URL}/roster`, rosterData);
+      const response = await axios.post(`${API_URL}/roster`, rosterData);
 
       if (response.data.success) {
         toast.success("Roster entry created successfully!");
@@ -452,7 +451,7 @@ const AdminRosterSection = () => {
     if (!confirm("Are you sure you want to delete this roster entry?")) return;
 
     try {
-      const response = await axios.delete(`${API_BASE_URL}/roster/${rosterId}`);
+      const response = await axios.delete(`${API_URL}/roster/${rosterId}`);
       
       if (response.data.success) {
         toast.success("Roster entry deleted successfully!");
@@ -475,7 +474,7 @@ const AdminRosterSection = () => {
     }
 
     try {
-      const response = await axios.put(`${API_BASE_URL}/roster/${rosterId}`, updates);
+      const response = await axios.put(`${API_URL}/roster/${rosterId}`, updates);
       
       if (response.data.success) {
         toast.success("Roster entry updated successfully!");

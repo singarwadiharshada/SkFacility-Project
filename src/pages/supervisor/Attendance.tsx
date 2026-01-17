@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 
 // API base URL
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 // Get current supervisor info from localStorage
 const getCurrentSupervisor = () => {
@@ -240,7 +240,7 @@ const Attendance = () => {
       
       // Load current status
       try {
-        const statusResponse = await fetch(`${API_BASE_URL}/api/attendance/status/${currentSupervisor.id}`);
+        const statusResponse = await fetch(`${API_URL}/api/attendance/status/${currentSupervisor.id}`);
         if (statusResponse.ok) {
           const statusData = await statusResponse.json();
           if (statusData.success) {
@@ -255,7 +255,7 @@ const Attendance = () => {
       // Load attendance history - ONLY FOR CURRENT SUPERVISOR
       try {
         console.log('📋 Fetching attendance history for supervisor:', currentSupervisor.id);
-        const historyResponse = await fetch(`${API_BASE_URL}/api/attendance/history?employeeId=${currentSupervisor.id}`);
+        const historyResponse = await fetch(`${API_URL}/api/attendance/history?employeeId=${currentSupervisor.id}`);
         
         if (historyResponse.ok) {
           const historyData = await historyResponse.json();
@@ -404,7 +404,7 @@ const Attendance = () => {
         supervisorId: currentSupervisor.supervisorId,
       };
       
-      const response = await fetch(`${API_BASE_URL}/api/attendance/checkin`, {
+      const response = await fetch(`${API_URL}/api/attendance/checkin`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -459,7 +459,7 @@ const Attendance = () => {
         employeeId: currentSupervisor.id,
       };
       
-      const response = await fetch(`${API_BASE_URL}/api/attendance/checkout`, {
+      const response = await fetch(`${API_URL}/api/attendance/checkout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -516,7 +516,7 @@ const Attendance = () => {
         employeeId: currentSupervisor.id,
       };
       
-      const response = await fetch(`${API_BASE_URL}/api/attendance/breakin`, {
+      const response = await fetch(`${API_URL}/api/attendance/breakin`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -567,7 +567,7 @@ const Attendance = () => {
         employeeId: currentSupervisor.id,
       };
       
-      const response = await fetch(`${API_BASE_URL}/api/attendance/breakout`, {
+      const response = await fetch(`${API_URL}/api/attendance/breakout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -619,9 +619,9 @@ const Attendance = () => {
   const loadEmployees = async () => {
     try {
       setLoadingEmployees(true);
-      console.log('Fetching employees from:', `${API_BASE_URL}/api/employees`);
+      console.log('Fetching employees from:', `${API_URL}/api/employees`);
       
-      const response = await fetch(`${API_BASE_URL}/api/employees`);
+      const response = await fetch(`${API_URL}/api/employees`);
       const data = await response.json();
       
       console.log('Employees API response:', data);
@@ -754,7 +754,7 @@ const Attendance = () => {
       setLoadingAttendance(true);
       console.log('📋 Fetching attendance for date:', date);
       
-      const response = await fetch(`${API_BASE_URL}/api/attendance?date=${date}`);
+      const response = await fetch(`${API_URL}/api/attendance?date=${date}`);
       const data = await response.json();
       
       console.log('Attendance API response:', data);
@@ -944,7 +944,7 @@ const Attendance = () => {
       // First, try to get weekly summary from the API endpoint
       try {
         const weeklyResponse = await fetch(
-          `${API_BASE_URL}/api/attendance/weekly-summary?startDate=${weekStart}&endDate=${weekEnd}`
+          `${API_URL}/api/attendance/weekly-summary?startDate=${weekStart}&endDate=${weekEnd}`
         );
         
         if (weeklyResponse.ok) {
@@ -1004,7 +1004,7 @@ const Attendance = () => {
       
       // Use the attendance range endpoint if available
       const response = await fetch(
-        `${API_BASE_URL}/api/attendance/range?startDate=${weekStart}&endDate=${weekEnd}`
+        `${API_URL}/api/attendance/range?startDate=${weekStart}&endDate=${weekEnd}`
       );
       
       if (response.ok) {
@@ -1044,7 +1044,7 @@ const Attendance = () => {
       const allAttendanceRecords: AttendanceRecord[] = [];
       const fetchPromises = dates.map(async (date) => {
         try {
-          const response = await fetch(`${API_BASE_URL}/api/attendance?date=${date}`);
+          const response = await fetch(`${API_URL}/api/attendance?date=${date}`);
           if (response.ok) {
             const data = await response.json();
             if (data.success && Array.isArray(data.data)) {
@@ -1412,7 +1412,7 @@ const Attendance = () => {
         );
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/attendance/manual`, {
+      const response = await fetch(`${API_URL}/api/attendance/manual`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1450,7 +1450,7 @@ const Attendance = () => {
 
   const handleEmployeeCheckIn = async (employee: Employee) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/attendance/checkin`, {
+      const response = await fetch(`${API_URL}/api/attendance/checkin`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1478,7 +1478,7 @@ const Attendance = () => {
 
   const handleEmployeeCheckOut = async (employee: Employee) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/attendance/checkout`, {
+      const response = await fetch(`${API_URL}/api/attendance/checkout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1504,7 +1504,7 @@ const Attendance = () => {
 
   const handleEmployeeBreakIn = async (employee: Employee) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/attendance/breakin`, {
+      const response = await fetch(`${API_URL}/api/attendance/breakin`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1530,7 +1530,7 @@ const Attendance = () => {
 
   const handleEmployeeBreakOut = async (employee: Employee) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/attendance/breakout`, {
+      const response = await fetch(`${API_URL}/api/attendance/breakout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

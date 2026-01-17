@@ -11,7 +11,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // Define the API Base URL
 const API_URL = `http://${window.location.hostname}:5001/api`;
-
 // Types
 interface Employee {
   _id: string;

@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // Define the API Base URL
-const API_BASE_URL = "http://localhost:5001/api";
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 // Types
 interface Employee {
@@ -683,7 +683,7 @@ const OnboardingTab = ({
 
       console.log('Sending employee data to backend...');
 
-      const response = await fetch(`${API_BASE_URL}/employees`, {
+      const response = await fetch(`${API_URL}/employees`, {
         method: "POST",
         body: formData
       });
@@ -836,7 +836,7 @@ const OnboardingTab = ({
         return;
       }
       
-      const response = await fetch(`${API_BASE_URL}/epf-forms`, {
+      const response = await fetch(`${API_URL}/epf-forms`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"

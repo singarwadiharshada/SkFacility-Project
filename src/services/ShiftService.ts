@@ -41,7 +41,7 @@ export interface ApiResponse<T = any> {
 }
 
 // Configuration
-const API_BASE_URL = "http://localhost:5001/api";
+const API_URL = "http://localhost:5001/api";
 
 // Error handling utility
 class ApiError extends Error {
@@ -62,7 +62,7 @@ class ShiftService {
     endpoint: string, 
     options: RequestInit = {}
   ): Promise<T> {
-    const url = `${API_BASE_URL}${endpoint}`;
+    const url = `${API_URL}${endpoint}`;
     
     try {
       const response = await fetch(url, {
@@ -248,7 +248,7 @@ class ShiftService {
   // Utility methods
   async checkBackendHealth(): Promise<boolean> {
     try {
-      const response = await fetch(`${API_BASE_URL}/health`, { 
+      const response = await fetch(`${API_URL}/health`, { 
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -280,7 +280,7 @@ class ShiftService {
   // Debug method to check what's happening
   async debugApiResponse(endpoint: string): Promise<any> {
     try {
-      const url = `${API_BASE_URL}${endpoint}`;
+      const url = `${API_URL}${endpoint}`;
       console.log(`Debug: Testing endpoint: ${url}`);
       
       const response = await fetch(url);

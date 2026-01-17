@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:5001/api';
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 // Define types
 interface StaffBriefing {
@@ -40,7 +40,7 @@ export const briefingApi = {
         if (value && value !== 'all' && value !== '') params.append(key, value.toString());
       });
       
-      const response = await axios.get(`${API_BASE_URL}/briefings?${params}`);
+      const response = await axios.get(`${API_URL}/briefings?${params}`);
       return response.data;
     } catch (error: any) {
       console.error('Error fetching briefings:', error);
@@ -51,7 +51,7 @@ export const briefingApi = {
   // Get briefing statistics
   getBriefingStats: async (): Promise<ApiResponse> => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/briefings/stats`);
+      const response = await axios.get(`${API_URL}/briefings/stats`);
       return response.data;
     } catch (error: any) {
       console.error('Error fetching briefing stats:', error);
@@ -83,7 +83,7 @@ export const briefingApi = {
         console.log(pair[0], pair[1]);
       }
 
-      const response = await axios.post(`${API_BASE_URL}/briefings`, formData, {
+      const response = await axios.post(`${API_URL}/briefings`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
@@ -104,7 +104,7 @@ export const briefingApi = {
   updateActionItemStatus: async (briefingId: string, actionItemId: string, status: string): Promise<ApiResponse> => {
     try {
       const response = await axios.patch(
-        `${API_BASE_URL}/briefings/${briefingId}/action-items/${actionItemId}`,
+        `${API_URL}/briefings/${briefingId}/action-items/${actionItemId}`,
         { status }
       );
       return response.data;
@@ -117,7 +117,7 @@ export const briefingApi = {
   // Delete briefing
   deleteBriefing: async (id: string): Promise<ApiResponse> => {
     try {
-      const response = await axios.delete(`${API_BASE_URL}/briefings/${id}`);
+      const response = await axios.delete(`${API_URL}/briefings/${id}`);
       return response.data;
     } catch (error: any) {
       console.error('Error deleting briefing:', error);

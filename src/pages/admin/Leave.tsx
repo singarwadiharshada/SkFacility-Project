@@ -504,7 +504,7 @@ const AdminLeavePage: React.FC = () => {
   });
 
   // API Base URL
-  const API_BASE_URL = 'http://localhost:5001/api';
+ const API_URL = `http://${window.location.hostname}:5001/api`;
   // Fetch current user from localStorage on component mount
   useEffect(() => {
     fetchCurrentUser();
@@ -593,7 +593,7 @@ const fetchAdminLeaves = async () => {
     const userId = storedUser ? JSON.parse(storedUser).name : currentUser.name;
     
     // CORRECTED ENDPOINT: /api/admin-leaves (not /api/admin/leaves)
-    const response = await fetch(`${API_BASE_URL}/admin-leaves?userId=${encodeURIComponent(userId)}`);
+    const response = await fetch(`${API_URL}/admin-leaves?userId=${encodeURIComponent(userId)}`);
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
@@ -667,7 +667,7 @@ const fetchAdminStats = async () => {
     const userId = storedUser ? JSON.parse(storedUser).name : currentUser.name;
     
     // CORRECTED ENDPOINT: /api/admin-leaves/stats
-    const response = await fetch(`${API_BASE_URL}/admin-leaves/stats?userId=${encodeURIComponent(userId)}`);
+    const response = await fetch(`${API_URL}/admin-leaves/stats?userId=${encodeURIComponent(userId)}`);
     
     if (response.ok) {
       const data = await response.json();
@@ -817,7 +817,7 @@ const handleSubmit = async (e: React.FormEvent) => {
     };
     
     // CORRECTED ENDPOINT: /api/admin-leaves/apply
-    const response = await fetch(`${API_BASE_URL}/admin-leaves/apply`, {
+    const response = await fetch(`${API_URL}/admin-leaves/apply`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -17,7 +17,7 @@ import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import notificationService from "@/lib/notificationService";
 
-const API_BASE_URL = "http://localhost:5001/api";
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 interface Communication {
   _id: string;
@@ -73,19 +73,19 @@ interface NotificationSettings {
 const api = {
   async getCommunications() {
     const timestamp = new Date().getTime();
-    const res = await fetch(`${API_BASE_URL}/crm/communications?t=${timestamp}`);
+    const res = await fetch(`${API_URL}/crm/communications?t=${timestamp}`);
     if (!res.ok) throw new Error('Failed to fetch communications');
     return res.json();
   },
 
   async getUnreadNotifications() {
-    const res = await fetch(`${API_BASE_URL}/notifications/unread`);
+    const res = await fetch(`${API_URL}/notifications/unread`);
     if (!res.ok) throw new Error('Failed to fetch unread notifications');
     return res.json();
   },
 
   async markNotificationAsRead(id: string) {
-    const res = await fetch(`${API_BASE_URL}/notifications/${id}/read`, {
+    const res = await fetch(`${API_URL}/notifications/${id}/read`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
     });
@@ -94,7 +94,7 @@ const api = {
   },
 
   async deleteNotification(id: string) {
-    const res = await fetch(`${API_BASE_URL}/notifications/${id}`, {
+    const res = await fetch(`${API_URL}/notifications/${id}`, {
       method: 'DELETE'
     });
     if (!res.ok) throw new Error('Failed to delete notification');
@@ -102,7 +102,7 @@ const api = {
   },
 
   async markAllNotificationsAsRead() {
-    const res = await fetch(`${API_BASE_URL}/notifications/read-all`, {
+    const res = await fetch(`${API_URL}/notifications/read-all`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
     });
@@ -111,7 +111,7 @@ const api = {
   },
 
   async createNotification(data: Partial<Notification>) {
-    const res = await fetch(`${API_BASE_URL}/notifications`, {
+    const res = await fetch(`${API_URL}/notifications`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)

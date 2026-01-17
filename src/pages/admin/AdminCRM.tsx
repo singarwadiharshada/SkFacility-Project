@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { motion } from "framer-motion";
 
 // Base URL for your backend
-const API_BASE_URL = "http://localhost:5001/api";
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 interface Client {
   _id: string;
@@ -71,15 +71,15 @@ const api = {
   // Clients
   async getClients(search?: string) {
     const url = search 
-      ? `${API_BASE_URL}/crm/clients?search=${encodeURIComponent(search)}` 
-      : `${API_BASE_URL}/crm/clients`;
+      ? `${API_URL}/crm/clients?search=${encodeURIComponent(search)}` 
+      : `${API_URL}/crm/clients`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('Failed to fetch clients');
     return res.json();
   },
 
   async createClient(data: Omit<Client, '_id' | 'createdAt' | 'updatedAt'>) {
-    const res = await fetch(`${API_BASE_URL}/crm/clients`, {
+    const res = await fetch(`${API_URL}/crm/clients`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -94,15 +94,15 @@ const api = {
   // Leads
   async getLeads(search?: string) {
     const url = search 
-      ? `${API_BASE_URL}/crm/leads?search=${encodeURIComponent(search)}` 
-      : `${API_BASE_URL}/crm/leads`;
+      ? `${API_URL}/crm/leads?search=${encodeURIComponent(search)}` 
+      : `${API_URL}/crm/leads`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('Failed to fetch leads');
     return res.json();
   },
 
   async createLead(data: Omit<Lead, '_id' | 'createdAt' | 'updatedAt'>) {
-    const res = await fetch(`${API_BASE_URL}/crm/leads`, {
+    const res = await fetch(`${API_URL}/crm/leads`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -115,7 +115,7 @@ const api = {
   },
 
   async updateLeadStatus(id: string, status: Lead['status']) {
-    const res = await fetch(`${API_BASE_URL}/crm/leads/${id}/status`, {
+    const res = await fetch(`${API_URL}/crm/leads/${id}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status })
@@ -130,15 +130,15 @@ const api = {
   // Communications
   async getCommunications(search?: string) {
     const url = search 
-      ? `${API_BASE_URL}/crm/communications?search=${encodeURIComponent(search)}` 
-      : `${API_BASE_URL}/crm/communications`;
+      ? `${API_URL}/crm/communications?search=${encodeURIComponent(search)}` 
+      : `${API_URL}/crm/communications`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('Failed to fetch communications');
     return res.json();
   },
 
   async createCommunication(data: Omit<Communication, '_id' | 'createdAt'>) {
-    const res = await fetch(`${API_BASE_URL}/crm/communications`, {
+    const res = await fetch(`${API_URL}/crm/communications`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)

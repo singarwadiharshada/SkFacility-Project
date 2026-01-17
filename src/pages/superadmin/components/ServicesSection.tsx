@@ -38,14 +38,14 @@ const ServicesSection = () => {
   const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
   const [viewServiceDialog, setViewServiceDialog] = useState<string | null>(null);
 
-  const API_BASE_URL = "http://localhost:5001/api";
+  const API_URL = "http://localhost:5001/api";
 
   // Fetch all services
   const fetchServices = async () => {
     try {
       setLoading(true);
       // Fetch all services (superadmin sees everything)
-      const response = await fetch(`${API_BASE_URL}/services`);
+      const response = await fetch(`${API_URL}/services`);
       
       if (!response.ok) throw new Error('Failed to fetch services');
       
@@ -76,7 +76,7 @@ const ServicesSection = () => {
         setAdminServices(adminServices);
         
         // Get shared services
-        const sharedResponse = await fetch(`${API_BASE_URL}/services/shared`);
+        const sharedResponse = await fetch(`${API_URL}/services/shared`);
         if (sharedResponse.ok) {
           const sharedData = await sharedResponse.json();
           if (sharedData.success) {
@@ -123,7 +123,7 @@ const ServicesSection = () => {
         visibility: 'all'
       };
       
-      const response = await fetch(`${API_BASE_URL}/services`, {
+      const response = await fetch(`${API_URL}/services`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -150,7 +150,7 @@ const ServicesSection = () => {
 
   const handleUpdateStatus = async (serviceId: string, status: Service["status"]) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/services/${serviceId}/status`, {
+      const response = await fetch(`${API_URL}/services/${serviceId}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

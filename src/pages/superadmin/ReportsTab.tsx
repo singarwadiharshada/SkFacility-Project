@@ -131,8 +131,7 @@ interface APIAttendance {
   remarks?: string;
 }
 
-const API_URL = "http://localhost:5001/api";
-
+const API_URL = `http://${window.location.hostname}:5001/api`;
 const ReportsTab = ({ employees, attendance, selectedMonth = new Date().toISOString().slice(0, 7) }: ReportsTabProps) => {
   // State for payroll data
   const [payroll, setPayroll] = useState<Payroll[]>([]);

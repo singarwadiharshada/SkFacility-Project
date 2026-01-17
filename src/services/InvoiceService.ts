@@ -2,9 +2,9 @@
 // Use a relative URL for API calls - this works for both development and production
 // For development: http://localhost:5001/api
 // For production: /api (if using proxy) or full URL if deployed separately
-const API_BASE_URL = 'http://localhost:5001/api'; // Change this to your actual backend URL
+const API_URL = 'http://localhost:5001/api'; // Change this to your actual backend URL
 // OR use relative URL if backend is served from same origin:
-// const API_BASE_URL = '/api';
+// const API_URL = '/api';
 
 export interface InvoiceItem {
   description: string;
@@ -123,7 +123,7 @@ class InvoiceService {
   // Helper function for API calls
   private async fetchApi(endpoint: string, options?: RequestInit) {
     try {
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      const response = await fetch(`${API_URL}${endpoint}`, {
         headers: {
           'Content-Type': 'application/json',
         },

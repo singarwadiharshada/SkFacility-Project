@@ -21,13 +21,12 @@ const ServicesSection = () => {
   const [loading, setLoading] = useState(true);
 
   // API Base URL
-  const API_BASE_URL = "http://localhost:5001/api";
-
+  const API_URL = `http://${window.location.hostname}:5001/api`;
   // Fetch services from backend
   const fetchServices = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/services`);
+      const response = await fetch(`${API_URL}/services`);
       
       if (!response.ok) throw new Error('Failed to fetch services');
       
@@ -62,7 +61,7 @@ const ServicesSection = () => {
 
   const handleUpdateStatus = async (serviceId: string, status: Service["status"]) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/services/${serviceId}/status`, {
+      const response = await fetch(`${API_URL}/services/${serviceId}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

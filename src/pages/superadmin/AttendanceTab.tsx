@@ -32,9 +32,7 @@ import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
 
 // Configure axios to use your backend
-axios.defaults.baseURL = process.env.NODE_ENV === 'development' 
-  ? 'http://localhost:5001/api' 
-  : '/api';
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 // Helper function to normalize site IDs
 const normalizeSiteId = (siteName: string): string => {

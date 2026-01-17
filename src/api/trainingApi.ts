@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:5001/api';
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 // Define types matching your backend
 interface TrainingSession {
@@ -45,7 +45,7 @@ export const trainingApi = {
         if (value && value !== 'all' && value !== '') params.append(key, value.toString());
       });
       
-      const response = await axios.get(`${API_BASE_URL}/trainings?${params}`);
+      const response = await axios.get(`${API_URL}/trainings?${params}`);
       return response.data;
     } catch (error: any) {
       console.error('Error fetching trainings:', error);
@@ -56,7 +56,7 @@ export const trainingApi = {
   // Get training statistics
   getTrainingStats: async (): Promise<ApiResponse> => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/trainings/stats`);
+      const response = await axios.get(`${API_URL}/trainings/stats`);
       return response.data;
     } catch (error: any) {
       console.error('Error fetching training stats:', error);
@@ -87,7 +87,7 @@ createTraining: async (trainingData: any, files: File[] = []): Promise<ApiRespon
       console.log(pair[0], pair[1]);
     }
 
-    const response = await axios.post(`${API_BASE_URL}/trainings`, formData, {
+    const response = await axios.post(`${API_URL}/trainings`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -107,7 +107,7 @@ createTraining: async (trainingData: any, files: File[] = []): Promise<ApiRespon
   // Update training status
   updateTrainingStatus: async (id: string, status: string): Promise<ApiResponse> => {
     try {
-      const response = await axios.patch(`${API_BASE_URL}/trainings/${id}/status`, { status });
+      const response = await axios.patch(`${API_URL}/trainings/${id}/status`, { status });
       return response.data;
     } catch (error: any) {
       console.error('Error updating training status:', error);
@@ -118,7 +118,7 @@ createTraining: async (trainingData: any, files: File[] = []): Promise<ApiRespon
   // Delete training
   deleteTraining: async (id: string): Promise<ApiResponse> => {
     try {
-      const response = await axios.delete(`${API_BASE_URL}/trainings/${id}`);
+      const response = await axios.delete(`${API_URL}/trainings/${id}`);
       return response.data;
     } catch (error: any) {
       console.error('Error deleting training:', error);
@@ -129,7 +129,7 @@ createTraining: async (trainingData: any, files: File[] = []): Promise<ApiRespon
   // Add feedback
   addFeedback: async (trainingId: string, feedback: any): Promise<ApiResponse> => {
     try {
-      const response = await axios.post(`${API_BASE_URL}/trainings/${trainingId}/feedback`, feedback);
+      const response = await axios.post(`${API_URL}/trainings/${trainingId}/feedback`, feedback);
       return response.data;
     } catch (error: any) {
       console.error('Error adding feedbacks:', error);

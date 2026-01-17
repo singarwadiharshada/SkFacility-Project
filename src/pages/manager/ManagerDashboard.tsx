@@ -96,7 +96,7 @@ const ManagerDashboard = () => {
   const { onMenuClick } = useOutletContext<{ onMenuClick: () => void }>();
   
   // API Base URL
-  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+  const API_URL = `http://${window.location.hostname}:5001/api`;
   
   // Manager ID and Name - Get from localStorage
   const [managerId, setManagerId] = useState<string>('');
@@ -180,7 +180,7 @@ const ManagerDashboard = () => {
   const checkBackendConnection = async () => {
     try {
       setIsCheckingConnection(true);
-      const response = await fetch(`${API_BASE_URL}/health`, {
+      const response = await fetch(`${API_URL}/health`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -343,7 +343,7 @@ const ManagerDashboard = () => {
   const addActivityToAPI = async (type: string, title: string, details?: string) => {
     try {
       if (isBackendConnected && managerId) {
-        const response = await fetch(`${API_BASE_URL}/api/manager-attendance/activity`, {
+        const response = await fetch(`${API_URL}/api/manager-attendance/activity`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -406,7 +406,7 @@ const ManagerDashboard = () => {
         return loadFromLocalStorage();
       }
       
-      const response = await fetch(`${API_BASE_URL}/api/manager-attendance/today/${managerId}`, {
+      const response = await fetch(`${API_URL}/api/manager-attendance/today/${managerId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -541,7 +541,7 @@ const ManagerDashboard = () => {
         return saveCheckInToLocalStorage();
       }
       
-      const response = await fetch(`${API_BASE_URL}/api/manager-attendance/checkin`, {
+      const response = await fetch(`${API_URL}/api/manager-attendance/checkin`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -662,7 +662,7 @@ const ManagerDashboard = () => {
         return saveCheckOutToLocalStorage();
       }
       
-      const response = await fetch(`${API_BASE_URL}/api/manager-attendance/checkout`, {
+      const response = await fetch(`${API_URL}/api/manager-attendance/checkout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -764,7 +764,7 @@ const ManagerDashboard = () => {
         return saveBreakInToLocalStorage();
       }
       
-      const response = await fetch(`${API_BASE_URL}/api/manager-attendance/breakin`, {
+      const response = await fetch(`${API_URL}/api/manager-attendance/breakin`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -850,7 +850,7 @@ const ManagerDashboard = () => {
         return saveBreakOutToLocalStorage();
       }
       
-      const response = await fetch(`${API_BASE_URL}/api/manager-attendance/breakout`, {
+      const response = await fetch(`${API_URL}/api/manager-attendance/breakout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -940,7 +940,7 @@ const ManagerDashboard = () => {
         return resetAttendanceForNewDayLocal();
       }
       
-      const response = await fetch(`${API_BASE_URL}/api/manager-attendance/reset/${managerId}`, {
+      const response = await fetch(`${API_URL}/api/manager-attendance/reset/${managerId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1422,7 +1422,7 @@ const ManagerDashboard = () => {
                     cd backend && npm run dev
                   </code>
                   <p className="text-yellow-600 dark:text-yellow-400">
-                    Server should be running at: {API_BASE_URL}
+                    Server should be running at: {API_URL}
                   </p>
                 </div>
               </div>

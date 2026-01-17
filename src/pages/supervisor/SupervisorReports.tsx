@@ -24,7 +24,7 @@ import { autoTable } from "jspdf-autotable";
 import { utils, writeFile } from "xlsx";
 
 // API base URL
-const API_BASE_URL = 'http://localhost:5001/api';
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 // Interfaces
 interface ReportAttendanceRecord {
@@ -292,7 +292,7 @@ const SupervisorReport = () => {
   // Fetch employees from API
   const fetchEmployees = async (): Promise<Employee[]> => {
     try {
-      const response = await fetch(`${API_BASE_URL}/employees`);
+      const response = await fetch(`${API_URL}/employees`);
       const data = await response.json();
       
       if (data.success) {
@@ -341,7 +341,7 @@ const SupervisorReport = () => {
       setEmployees(employeesData);
       
       // Fetch attendance for selected date
-      const response = await fetch(`${API_BASE_URL}/attendance?date=${selectedDate}`);
+      const response = await fetch(`${API_URL}/attendance?date=${selectedDate}`);
       const data = await response.json();
       
       if (data.success) {

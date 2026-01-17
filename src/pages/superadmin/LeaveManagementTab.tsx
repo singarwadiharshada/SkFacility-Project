@@ -99,7 +99,7 @@ interface ApiAdminLeaveRequest {
   isManagerLeave?: boolean;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+const API_URL = `http://${window.location.hostname}:5001/api`;
 
 const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagementTabProps) => {
   const [activeTab, setActiveTab] = useState<string>("supervisor-employee");

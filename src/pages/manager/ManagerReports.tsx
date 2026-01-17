@@ -232,8 +232,7 @@ const ManagerReports = () => {
   const { user: authUser, isAuthenticated } = useRole();
   
   // API Base URL
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
-  const API_BASE_URL = `${API_URL}/api`;
+  const API_URL = `http://${window.location.hostname}:5001/api`;
   
   // Manager ID and Name
   const [managerId, setManagerId] = useState<string>('');
@@ -411,7 +410,7 @@ const ManagerReports = () => {
   const checkLeaveApiConnection = async () => {
     try {
       setLeaveApiStatus('checking');
-      const response = await fetch(`${API_BASE_URL}/test`);
+      const response = await fetch(`${API_URL}/test`);
       
       if (response.ok) {
         setLeaveApiStatus('connected');
@@ -805,7 +804,7 @@ const ManagerReports = () => {
   // Fetch departments for leaves
   const fetchDepartments = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/leaves/departments`);
+      const response = await fetch(`${API_URL}/leaves/departments`);
       if (response.ok) {
         const departments = await response.json();
         console.log("📋 Available departments:", departments);
@@ -849,7 +848,7 @@ const ManagerReports = () => {
     try {
       setIsLoadingLeaves(true);
       const response = await fetch(
-        `${API_BASE_URL}/leaves/supervisor?department=${encodeURIComponent(managerDepartment)}`
+        `${API_URL}/leaves/supervisor?department=${encodeURIComponent(managerDepartment)}`
       );
       
       if (!response.ok) {
@@ -901,7 +900,7 @@ const ManagerReports = () => {
       setIsLoadingMyLeaves(true);
       
       const response = await fetch(
-        `${API_BASE_URL}/manager-leaves?managerId=${encodeURIComponent(managerInfo._id)}`
+        `${API_URL}/manager-leaves?managerId=${encodeURIComponent(managerInfo._id)}`
       );
       
       if (!response.ok) {
@@ -1168,7 +1167,7 @@ const ManagerReports = () => {
       // Test attendance API
       const attendanceResponse = await fetch(`${API_URL}/health`);
       // Test leaves API
-      const leavesResponse = await fetch(`${API_BASE_URL}/test`);
+      const leavesResponse = await fetch(`${API_URL}/test`);
       
       if (attendanceResponse.ok && leavesResponse.ok) {
         toast.success("Both database connections successful!");
@@ -1220,7 +1219,7 @@ const ManagerReports = () => {
                 </p>
                 <div className="mt-2 space-y-1 text-xs">
                   <p className="text-yellow-600">
-                    Server URLs: Attendance: {API_URL} | Leaves: {API_BASE_URL}
+                    Server URLs: Attendance: {API_URL} | Leaves: {API_URL}
                   </p>
                 </div>
               </div>

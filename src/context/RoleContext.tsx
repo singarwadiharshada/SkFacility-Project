@@ -27,7 +27,7 @@ interface RoleContextType {
   loading: boolean;
 }
 
-const API_BASE_URL = "http://localhost:5001/api/auth";
+const API_URL = `http://${window.location.hostname}:5001/api/auth`;
 
 const RoleContext = createContext<RoleContextType | undefined>(undefined);
 
@@ -52,7 +52,7 @@ export const RoleProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signup = async (name: string, email: string, password: string, selectedRole: UserRole) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/signup`, {
+      const response = await fetch(`${API_URL}/signup`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -86,7 +86,7 @@ export const RoleProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, password: string, selectedRole: UserRole) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/login`, {
+      const response = await fetch(`${API_URL}/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

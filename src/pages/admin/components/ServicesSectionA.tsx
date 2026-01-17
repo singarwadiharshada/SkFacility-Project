@@ -35,14 +35,14 @@ const AdminServicesSection = () => {
   const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
   const [viewServiceDialog, setViewServiceDialog] = useState<string | null>(null);
 
-  const API_BASE_URL = "http://localhost:5001/api";
+  const API_URL = `http://${window.location.hostname}:5001/api`;
 
   // Fetch services for admin role
   const fetchServices = async () => {
     try {
       setLoading(true);
       // Fetch services visible to admin
-      const response = await fetch(`${API_BASE_URL}/services?role=admin`);
+      const response = await fetch(`${API_URL}/services?role=admin`);
       
       if (!response.ok) throw new Error('Failed to fetch services');
       
@@ -100,7 +100,7 @@ const AdminServicesSection = () => {
         visibility: 'all'
       };
       
-      const response = await fetch(`${API_BASE_URL}/services`, {
+      const response = await fetch(`${API_URL}/services`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -127,7 +127,7 @@ const AdminServicesSection = () => {
 
   const handleUpdateStatus = async (serviceId: string, status: Service["status"]) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/services/${serviceId}/status`, {
+      const response = await fetch(`${API_URL}/services/${serviceId}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -178,7 +178,7 @@ const AdminServicesSection = () => {
     if (!confirm("Are you sure you want to delete this service? This action cannot be undone.")) return;
     
     try {
-      const response = await fetch(`${API_BASE_URL}/services/${serviceId}`, {
+      const response = await fetch(`${API_URL}/services/${serviceId}`, {
         method: 'DELETE',
       });
       

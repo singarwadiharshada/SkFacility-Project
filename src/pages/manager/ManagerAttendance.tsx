@@ -66,7 +66,7 @@ const ManagerAttendance = () => {
   const { onMenuClick } = useOutletContext<{ onMenuClick: () => void }>();
   
   // API Base URL
-  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+  const API_URL = `http://${window.location.hostname}:5001/api`;
   
   // Manager ID and Name - Get from localStorage
   const [managerId, setManagerId] = useState<string>('');
@@ -130,9 +130,9 @@ const ManagerAttendance = () => {
   const checkBackendConnection = async () => {
     try {
       setIsCheckingConnection(true);
-      console.log('Checking backend connection at:', `${API_BASE_URL}/health`);
+      console.log('Checking backend connection at:', `${API_URL}/health`);
       
-      const response = await fetch(`${API_BASE_URL}/health`, {
+      const response = await fetch(`${API_URL}/health`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -200,7 +200,7 @@ const ManagerAttendance = () => {
       console.log('Fetching attendance from API for manager:', managerId);
       
       const response = await fetch(
-        `${API_BASE_URL}/api/manager-attendance/history/${managerId}?startDate=${startDateStr}&endDate=${endDateStr}`,
+        `${API_URL}/api/manager-attendance/history/${managerId}?startDate=${startDateStr}&endDate=${endDateStr}`,
         {
           method: 'GET',
           headers: {
@@ -764,7 +764,7 @@ const ManagerAttendance = () => {
                     cd backend && npm run dev
                   </code>
                   <p className="text-yellow-600 dark:text-yellow-400">
-                    Server should be running at: {API_BASE_URL}
+                    Server should be running at: {API_URL}
                   </p>
                 </div>
               </div>

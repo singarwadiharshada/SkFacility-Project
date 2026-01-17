@@ -124,8 +124,7 @@ interface OutletContext {
 }
 
 // API base URL
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
-
+const API_URL = `http://${window.location.hostname}:5001/api`;
 // Current supervisor info - Dynamic from localStorage
 const getCurrentSupervisor = () => {
   const storedUser = localStorage.getItem("sk_user");
@@ -311,9 +310,9 @@ const SupervisorDashboard = () => {
   const checkBackendConnection = async () => {
     try {
       setIsCheckingConnection(true);
-      console.log('🔄 Checking backend connection at:', `${API_BASE_URL}/health`);
+      console.log('🔄 Checking backend connection at:', `${API_URL}/health`);
       
-      const response = await fetch(`${API_BASE_URL}/health`, {
+      const response = await fetch(`${API_URL}/health`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -402,7 +401,7 @@ const SupervisorDashboard = () => {
       console.log('📋 Fetching manager attendance for ID:', managerId);
       
       // Fetch today's attendance for the manager
-      const response = await fetch(`${API_BASE_URL}/api/manager-attendance/today/${managerId}`, {
+      const response = await fetch(`${API_URL}/api/manager-attendance/today/${managerId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -444,7 +443,7 @@ const SupervisorDashboard = () => {
       setIsCheckingStatus(true);
       console.log('🔄 Loading attendance status from API...');
       
-      const response = await fetch(`${API_BASE_URL}/api/attendance/status/${currentSupervisor.id}`);
+      const response = await fetch(`${API_URL}/api/attendance/status/${currentSupervisor.id}`);
       
       if (response.ok) {
         const data = await response.json();
@@ -541,7 +540,7 @@ const SupervisorDashboard = () => {
       console.log('🔄 Loading supervisor attendance history...');
       
       // Use the history endpoint to get all records
-      const response = await fetch(`${API_BASE_URL}/api/attendance/history?employeeId=${currentSupervisor.id}`);
+      const response = await fetch(`${API_URL}/api/attendance/history?employeeId=${currentSupervisor.id}`);
       
       if (response.ok) {
         const data = await response.json();
@@ -730,7 +729,7 @@ const SupervisorDashboard = () => {
         supervisorId: currentSupervisor.supervisorId,
       };
       
-      const response = await fetch(`${API_BASE_URL}/api/attendance/checkin`, {
+      const response = await fetch(`${API_URL}/api/attendance/checkin`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -862,7 +861,7 @@ const SupervisorDashboard = () => {
         employeeId: currentSupervisor.id,
       };
       
-      const response = await fetch(`${API_BASE_URL}/api/attendance/checkout`, {
+      const response = await fetch(`${API_URL}/api/attendance/checkout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -997,7 +996,7 @@ const SupervisorDashboard = () => {
       
       // Call reset endpoint if available
       try {
-        const response = await fetch(`${API_BASE_URL}/api/attendance/reset/${currentSupervisor.id}`, {
+        const response = await fetch(`${API_URL}/api/attendance/reset/${currentSupervisor.id}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1074,7 +1073,7 @@ const SupervisorDashboard = () => {
         employeeId: currentSupervisor.id,
       };
       
-      const response = await fetch(`${API_BASE_URL}/api/attendance/breakin`, {
+      const response = await fetch(`${API_URL}/api/attendance/breakin`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1138,7 +1137,7 @@ const SupervisorDashboard = () => {
         employeeId: currentSupervisor.id,
       };
       
-      const response = await fetch(`${API_BASE_URL}/api/attendance/breakout`, {
+      const response = await fetch(`${API_URL}/api/attendance/breakout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1395,7 +1394,7 @@ const SupervisorDashboard = () => {
                     cd backend && npm run dev
                   </code>
                   <p className="text-yellow-600 dark:text-yellow-400">
-                    Server should be running at: {API_BASE_URL}
+                    Server should be running at: {API_URL}
                   </p>
                 </div>
               </div>
