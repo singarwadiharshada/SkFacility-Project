@@ -36,7 +36,9 @@ import invoiceRoutes from './routes/invoiceRoutes';
 import managerLeaveRoutes from './routes/managerLeaveRoutes';
 import attendanceRoutes from './routes/attendanceRoutes';
 import supervisorRoutes from './routes/supervisorRoutes';
-
+// Add these imports
+import trainingRoutes from './routes/trainingRoutes';
+import briefingRoutes from './routes/briefingRoutes';
 
 const app: Application = express();
 
@@ -190,7 +192,8 @@ app.use('/api/invoices', invoiceRoutes);
 app.use('/api/manager-leaves', managerLeaveRoutes); // Add this line
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/supervisors', supervisorRoutes);
-
+app.use('/api/trainings', trainingRoutes);
+app.use('/api/briefings', briefingRoutes);
 // ==================== BASIC TEST ENDPOINTS ====================
 app.get('/', (req: Request, res: Response) => {
   res.json({ 

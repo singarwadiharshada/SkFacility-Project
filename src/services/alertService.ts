@@ -163,7 +163,7 @@ export const alertService = {
       const response = await api.get('/alerts/stats/overview');
       return response.data.data;
     } catch (error: any) {
-      console.error('❌ Error fetching alert stats:', error.message);
+      console.error('❌ Error fetching alert stats :', error.message);
       throw error;
     }
   },

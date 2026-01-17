@@ -87,12 +87,10 @@ const getSidebarItems = (role: UserRole) => {
         { name: "Profile", icon: UserCog, path: "profile" },
         {name: "HRMS", icon: Users, path: "hrms"},
         { name: "Team", icon: Users, path: "team" },
-        { name: "Tasks", icon: ClipboardList, path: "tasks" },
         { name: "CRM", icon: Building2, path: "crm" },
         { name: "ERP", icon: ClipboardList, path: "erp" },
         { name: "Billing & Finance", icon: DollarSign, path: "billing" },
         { name: "Operations", icon: ClipboardList, path: "operations" },
-        { name: "Attendance", icon: ClipboardList, path: "attendance" },
         { name: "Reports", icon: BarChart3, path: "reports" },
         { name: "Leave", icon: Calendar, path: "leave" },
         { name: "Documents", icon: FileText, path: "documents" },
@@ -331,7 +329,7 @@ export const DashboardSidebar = ({
             onClick={logout}
           >
             <LogOut className="h-5 w-5 flex-shrink-0" />
-            {(!collapsed || mobileOpen) && <span className="ml-3">Logout</span>}
+            {(!collapsed || mobileOpen) && <span className="ml-3">Logout </span>}
           </Button>
         </div>
       </motion.aside>

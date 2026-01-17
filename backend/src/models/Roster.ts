@@ -1,3 +1,4 @@
+// models/Roster.ts - Update the interface and schema
 import mongoose, { Schema, Document } from "mongoose";
 
 export interface IRoster extends Document {
@@ -14,6 +15,7 @@ export interface IRoster extends Document {
   type: "daily" | "weekly" | "fortnightly" | "monthly";
   siteClient: string;
   supervisor: string;
+  createdBy: "superadmin" | "admin"; // Add this field
   createdAt: Date;
   updatedAt: Date;
 }
@@ -75,6 +77,12 @@ const RosterSchema: Schema = new Schema(
       type: String,
       required: true,
     },
+    createdBy: {
+      type: String,
+      enum: ["superadmin", "admin"],
+      required: true,
+      default: "superadmin",
+    },
   },
   {
     timestamps: true,
@@ -84,5 +92,6 @@ const RosterSchema: Schema = new Schema(
 // Create index for efficient querying
 RosterSchema.index({ date: 1, employeeId: 1 });
 RosterSchema.index({ type: 1, date: 1 });
+RosterSchema.index({ createdBy: 1 }); // Add index for createdBy
 
 export default mongoose.model<IRoster>("Roster", RosterSchema);

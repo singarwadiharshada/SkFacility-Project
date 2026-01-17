@@ -1,3 +1,4 @@
+// models/Service.ts
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IService extends Document {
@@ -8,8 +9,12 @@ export interface IService extends Document {
   description?: string;
   createdBy: string;
   createdByRole: string;
+  createdByUserId?: mongoose.Types.ObjectId;
   updatedBy?: string;
   updatedByRole?: string;
+  isVisibleToAll: boolean;
+  sharedWithRoles: string[];
+  visibility: 'all' | 'specific_roles';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -46,12 +51,29 @@ const ServiceSchema = new Schema<IService>({
     required: true,
     default: 'superadmin'
   },
+  createdByUserId: {
+    type: Schema.Types.ObjectId,
+    ref: 'User'
+  },
   updatedBy: {
     type: String
   },
   updatedByRole: {
     type: String,
     enum: ['superadmin', 'admin', 'manager', 'employee']
+  },
+  isVisibleToAll: {
+    type: Boolean,
+    default: true
+  },
+  sharedWithRoles: [{
+    type: String,
+    enum: ['superadmin', 'admin', 'manager', 'employee']
+  }],
+  visibility: {
+    type: String,
+    enum: ['all', 'specific_roles'],
+    default: 'all'
   },
   createdAt: {
     type: Date,

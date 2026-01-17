@@ -27,6 +27,9 @@ interface PerformInvoiceFormProps {
   onClose: () => void;
   onInvoiceCreate: (invoice: Invoice) => Promise<boolean>;
   performInvoicesCount: number;
+   userId?: string;  // Add this
+  userRole?: string; // Add this
+
 }
 
 export const PerformInvoiceForm: React.FC<PerformInvoiceFormProps> = ({
@@ -698,7 +701,7 @@ export const PerformInvoiceForm: React.FC<PerformInvoiceFormProps> = ({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create Perform Invoice / Sales Order</DialogTitle>
+          <DialogTitle>Create Perform Invoice / Sales Orders</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Company Details */}

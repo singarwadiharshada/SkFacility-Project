@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,23 +6,45 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Eye, Download, Search, ChevronLeft, ChevronRight, List, Grid, FileText, Receipt } from "lucide-react";
-import { Invoice, getServiceIcon, getStatusColor, formatCurrency } from "../AdminBilling";
+import { 
+  Plus, 
+  Eye, 
+  Download, 
+  Search, 
+  ChevronLeft, 
+  ChevronRight, 
+  List, 
+  Grid, 
+  FileText, 
+  Receipt,
+  Trash2,
+  Loader2,
+  AlertCircle,
+  RefreshCw
+} from "lucide-react";
+import { Invoice } from "../AdminBilling";
 import { PerformInvoiceForm } from "./PerformInvoiceForm1";
 import { TaxInvoiceForm } from "./TaxInvoiceForm1";
 import jsPDF from "jspdf";
+import InvoiceService from "../../../services/InvoiceService";
+import { formatCurrency, formatDate, convertToIndianWords } from "../../../utils/formatters";
 
 interface InvoicesTabProps {
-  invoices: Invoice[];
-  onInvoiceCreate: (invoice: Invoice) => void;
-  onMarkAsPaid: (invoiceId: string) => void;
+  onInvoiceCreate?: (invoice: Invoice) => void;
+  onMarkAsPaid?: (invoiceId: string) => void;
+  userId?: string;
+  userRole?: string;
 }
 
 const InvoicesTab: React.FC<InvoicesTabProps> = ({
-  invoices,
   onInvoiceCreate,
-  onMarkAsPaid
+  onMarkAsPaid,
+  userId,
+  userRole = 'admin'
 }) => {
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [performInvoiceDialogOpen, setPerformInvoiceDialogOpen] = useState(false);
   const [taxInvoiceDialogOpen, setTaxInvoiceDialogOpen] = useState(false);
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
@@ -31,14 +53,109 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
+  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
+  const [markingAsPaidId, setMarkingAsPaidId] = useState<string | null>(null);
 
-  // Format date to DD-MMM-YY
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const day = date.getDate();
-    const month = date.toLocaleString('en-US', { month: 'short' });
-    const year = date.getFullYear().toString().slice(-2);
-    return `${day}-${month}-${year}`;
+  // Initialize InvoiceService with user info
+  const invoiceService = new InvoiceService(userId, userRole);
+
+  // Fetch invoices on component mount
+  useEffect(() => {
+    fetchInvoices();
+  }, [userId, userRole]);
+
+  const fetchInvoices = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await invoiceService.getAllInvoices();
+      setInvoices(data);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch invoices');
+      console.error('Error fetching invoices:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle creating a new invoice
+  const handleCreateInvoice = async (invoice: Invoice) => {
+    try {
+      const newInvoice = await invoiceService.createInvoice(invoice);
+      setInvoices(prev => [newInvoice, ...prev]);
+      
+      // Call the parent callback if provided
+      if (onInvoiceCreate) {
+        onInvoiceCreate(newInvoice);
+      }
+      
+      // Show success message
+      alert('Invoice created successfully!');
+      return true;
+    } catch (err: any) {
+      alert(`Failed to create invoice: ${err.message}`);
+      console.error('Error creating invoice:', err);
+      return false;
+    }
+  };
+
+  // Handle marking invoice as paid
+  const handleMarkAsPaid = async (invoiceId: string) => {
+    try {
+      setMarkingAsPaidId(invoiceId);
+      const updatedInvoice = await invoiceService.markAsPaid(invoiceId);
+      
+      // Update local state
+      setInvoices(prev => 
+        prev.map(invoice => 
+          invoice.id === invoiceId ? updatedInvoice : invoice
+        )
+      );
+      
+      // Call the parent callback if provided
+      if (onMarkAsPaid) {
+        onMarkAsPaid(invoiceId);
+      }
+      
+      // Close preview if open
+      if (previewDialogOpen) {
+        setPreviewDialogOpen(false);
+      }
+      
+      // Show success message
+      alert('Invoice marked as paid!');
+    } catch (err: any) {
+      alert(`Failed to mark invoice as paid: ${err.message}`);
+      console.error('Error marking invoice as paid:', err);
+    } finally {
+      setMarkingAsPaidId(null);
+    }
+  };
+
+  // Handle deleting an invoice
+  const handleDeleteInvoice = async (invoiceId: string) => {
+    if (!window.confirm('Are you sure you want to delete this invoice? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setDeletingInvoiceId(invoiceId);
+      await invoiceService.deleteInvoice(invoiceId);
+      setInvoices(prev => prev.filter(invoice => invoice.id !== invoiceId));
+      
+      // Close preview if open and showing the deleted invoice
+      if (previewDialogOpen && selectedInvoice?.id === invoiceId) {
+        setPreviewDialogOpen(false);
+        setSelectedInvoice(null);
+      }
+      
+      alert('Invoice deleted successfully!');
+    } catch (err: any) {
+      alert(`Failed to delete invoice: ${err.message}`);
+      console.error('Error deleting invoice:', err);
+    } finally {
+      setDeletingInvoiceId(null);
+    }
   };
 
   // Generate Sales Order PDF for existing invoices
@@ -73,7 +190,6 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       };
 
       // ==================== HEADER SECTION ====================
-      // Sales Order Title
       addText("SALES ORDER", pageWidth / 2, yPos, { 
         size: 16, 
         style: 'bold', 
@@ -81,7 +197,6 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       });
       yPos += 8;
       
-      // Company Name
       addText(invoice.companyName || "S K Enterprises", pageWidth / 2, yPos, { 
         size: 12, 
         style: 'bold', 
@@ -89,7 +204,6 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       });
       yPos += 6;
       
-      // Company Address
       const companyAddress = invoice.companyAddress || "Office No 505, 5th Floor, Global Square\nDeccan College Road, Yerwada, Pune";
       const companyAddressLines = companyAddress.split('\n');
       companyAddressLines.forEach((line: string) => {
@@ -102,14 +216,12 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       
       yPos += 2;
       
-      // GSTIN
       addText(`GSTIN/UIN: ${invoice.companyGSTIN || "27ALKPK7734N1ZE"}`, pageWidth / 2, yPos, { 
         size: 9, 
         align: 'center' 
       });
       yPos += 4;
       
-      // State and Code
       addText(`State Name : ${invoice.companyState || "Maharashtra"}, Code : ${invoice.companyStateCode || "27"}`, 
         pageWidth / 2, yPos, { 
           size: 9, 
@@ -117,8 +229,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
         });
       yPos += 4;
       
-      // Email
-      addText(`E-Mail : ${invoice.email || "s.k.enterprises7583@gmail.com"}`, 
+      addText(`E-Mail : ${invoice.companyEmail || "s.k.enterprises7583@gmail.com"}`, 
         pageWidth / 2, yPos, { 
           size: 9, 
           align: 'center' 
@@ -126,14 +237,12 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       yPos += 10;
 
       // ==================== CONSIGNEE SECTION ====================
-      // Section Title
       addText("Consignee (Ship to)", leftMargin, yPos, { 
         size: 10, 
         style: 'bold' 
       });
       yPos += 5;
       
-      // Consignee Name
       const consigneeName = invoice.consignee || invoice.client || "";
       addText(consigneeName, leftMargin, yPos, { 
         size: 10, 
@@ -141,7 +250,6 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       });
       yPos += 4;
       
-      // Consignee Address
       if (invoice.consigneeAddress) {
         const consigneeAddressLines = invoice.consigneeAddress.split('\n');
         consigneeAddressLines.forEach((line: string) => {
@@ -150,7 +258,6 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
         });
       }
       
-      // Consignee GSTIN
       if (invoice.consigneeGSTIN) {
         addText(`GSTIN/UIN : ${invoice.consigneeGSTIN}`, leftMargin, yPos, { size: 9 });
         yPos += 4;
@@ -165,14 +272,12 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       yPos += 8;
 
       // ==================== BUYER SECTION ====================
-      // Section Title
       addText("Buyer (Bill to)", leftMargin, yPos, { 
         size: 10, 
         style: 'bold' 
       });
       yPos += 5;
       
-      // Buyer Name
       const buyerName = invoice.buyer || invoice.client || "";
       addText(buyerName, leftMargin, yPos, { 
         size: 10, 
@@ -180,7 +285,6 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       });
       yPos += 4;
       
-      // Buyer Address
       if (invoice.buyerAddress) {
         const buyerAddressLines = invoice.buyerAddress.split('\n');
         buyerAddressLines.forEach((line: string) => {
@@ -189,7 +293,6 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
         });
       }
       
-      // Buyer GSTIN
       if (invoice.buyerGSTIN) {
         addText(`GSTIN/UIN : ${invoice.buyerGSTIN}`, leftMargin, yPos, { size: 9 });
         yPos += 4;
@@ -204,12 +307,10 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       yPos += 8;
 
       // ==================== ORDER DETAILS TABLE ====================
-      // Create a 2-column layout for order details
       const orderDetailsY = yPos;
       const col1X = leftMargin;
       const col2X = leftMargin + contentWidth * 0.6;
       
-      // Column 1 - Left side
       addText("Voucher No.", col1X, orderDetailsY, { size: 9 });
       addText(invoice.voucherNo || invoice.id || "", col1X + 40, orderDetailsY, { 
         size: 9, 
@@ -225,7 +326,6 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       addText("Dated", col1X, orderDetailsY + 18, { size: 9 });
       addText(invoice.date || "", col1X + 40, orderDetailsY + 18, { size: 9 });
       
-      // Column 2 - Right side
       addText("Mode/Terms of Payment", col2X, orderDetailsY, { size: 9 });
       addText(invoice.paymentTerms || "", col2X + 50, orderDetailsY, { size: 9 });
       
@@ -241,7 +341,6 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       yPos = orderDetailsY + 24;
 
       // ==================== ITEMS TABLE HEADER ====================
-      // Table Headers - Fixed aligned positions
       const columnPositions = {
         slNo: leftMargin + 5,
         description: leftMargin + 20,
@@ -250,11 +349,9 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
         amount: leftMargin + 180
       };
 
-      // Draw header line
       drawLine(yPos);
       yPos += 8;
 
-      // Table headers - All aligned properly
       addText("Sl No.", columnPositions.slNo, yPos, { size: 9, style: 'bold', align: 'center' });
       addText("Description of Goods", columnPositions.description, yPos, { size: 9, style: 'bold', align: 'left' });
       addText("Quantity", columnPositions.quantity, yPos, { size: 9, style: 'bold', align: 'right' });
@@ -266,17 +363,13 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       yPos += 6;
 
       // ==================== ITEMS TABLE ROWS ====================
-      // CHECKPOINT: This is where we need to handle the unit display
-      // The invoice items should have a 'unit' property
       invoice.items.forEach((item, index) => {
-        // Check for page break
         if (yPos > pageHeight - 50) {
           doc.addPage();
           yPos = 20;
           addText("Continued...", pageWidth / 2, yPos, { size: 10, align: 'center' });
           yPos += 15;
           
-          // Redraw table header on new page
           drawLine(yPos - 8);
           addText("Sl No.", columnPositions.slNo, yPos, { size: 9, style: 'bold', align: 'center' });
           addText("Description of Goods", columnPositions.description, yPos, { size: 9, style: 'bold', align: 'left' });
@@ -288,19 +381,14 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
           yPos += 6;
         }
 
-        // Serial Number - Centered
         addText(`${index + 1}`, columnPositions.slNo, yPos, { size: 9, align: 'center' });
         
-        // Description - Left aligned
         let description = item.description || "";
         let unit = "No";
         
-        // Extract unit from description or use item.unit if available
-        // First check if item has a unit property (for newly created invoices)
         if ((item as any).unit) {
           unit = (item as any).unit;
         } else {
-          // Fallback: Try to extract unit from description for backward compatibility
           const unitMatch = description.match(/\s(\w+)$/);
           if (unitMatch) {
             unit = unitMatch[1];
@@ -308,37 +396,24 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
           }
         }
         
-        // Display description without unit in description column
         addText(description, columnPositions.description, yPos, { size: 9, align: 'left' });
-        
-        // Quantity with unit in the same cell but on different lines
-        // First line: Quantity value
         addText(`${item.quantity}`, columnPositions.quantity, yPos, { size: 9, align: 'right' });
-        
-        // Rate per - Right aligned
         addText(formatCurrency(item.rate), columnPositions.rate, yPos, { size: 9, align: 'right' });
-        
-        // Amount - Right aligned
         addText(formatCurrency(item.amount), columnPositions.amount, yPos, { size: 9, align: 'right' });
         
-        // Add unit on the next line under quantity column
         yPos += 4;
         addText(unit, columnPositions.quantity, yPos, { size: 8, align: 'right', style: 'italic' });
         
         yPos += 6;
       });
 
-      // Draw line after items
       drawLine(yPos);
       yPos += 8;
 
       // ==================== TOTAL SECTION ====================
       const subtotal = invoice.items.reduce((sum, item) => sum + item.amount, 0);
       
-      // Total label
       addText("Total", columnPositions.description, yPos, { size: 10, style: 'bold', align: 'left' });
-      
-      // Total amount
       addText(formatCurrency(invoice.amount), columnPositions.amount, yPos, { 
         size: 10, 
         style: 'bold',
@@ -370,14 +445,12 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       yPos += 8;
 
       // ==================== BANK DETAILS ====================
-      // Section title
       addText("Company's Bank Details", leftMargin, yPos, { 
         size: 10, 
         style: 'bold' 
       });
       yPos += 6;
       
-      // Bank details
       addText(`A/c Holder's Name : ${invoice.accountHolder || "S K ENTEPRISES"}`, leftMargin, yPos, { size: 9 });
       yPos += 4;
       
@@ -391,11 +464,9 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       yPos += 12;
 
       // ==================== SIGNATURE SECTION ====================
-      // Draw line for signature
       const signatureY = pageHeight - 40;
       drawLine(signatureY - 10);
       
-      // Company signature
       addText("for S K Enterprises", leftMargin + contentWidth * 0.25, signatureY, { 
         size: 9, 
         align: 'center' 
@@ -424,79 +495,6 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       alert("Error generating PDF. Please check the console for details.");
       return false;
     }
-  };
-
-  // Number to words converter
-  const convertToIndianWords = (num: number) => {
-    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
-    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-    const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-    
-    function convert_hundreds(num: number) {
-      let result = '';
-      if (num >= 100) {
-        result += ones[Math.floor(num / 100)] + ' Hundred ';
-        num %= 100;
-      }
-      if (num >= 20) {
-        result += tens[Math.floor(num / 10)] + ' ';
-        num %= 10;
-      }
-      if (num >= 10) {
-        result += teens[num - 10] + ' ';
-        return result;
-      }
-      if (num > 0) {
-        result += ones[num] + ' ';
-      }
-      return result;
-    }
-    
-    function convert_number(num: number) {
-      if (num === 0) return 'Zero';
-      
-      let result = '';
-      const crore = Math.floor(num / 10000000);
-      if (crore > 0) {
-        result += convert_hundreds(crore) + 'Crore ';
-        num %= 10000000;
-      }
-      
-      const lakh = Math.floor(num / 100000);
-      if (lakh > 0) {
-        result += convert_hundreds(lakh) + 'Lakh ';
-        num %= 100000;
-      }
-      
-      const thousand = Math.floor(num / 1000);
-      if (thousand > 0) {
-        result += convert_hundreds(thousand) + 'Thousand ';
-        num %= 1000;
-      }
-      
-      const hundred = Math.floor(num / 100);
-      if (hundred > 0) {
-        result += convert_hundreds(hundred) + 'Hundred ';
-        num %= 100;
-      }
-      
-      if (num > 0) {
-        result += convert_hundreds(num);
-      }
-      
-      return result.trim();
-    }
-    
-    const rupees = Math.floor(num);
-    const paise = Math.round((num - rupees) * 100);
-    
-    let result = convert_number(rupees) + ' Rupees';
-    if (paise > 0) {
-      result += ' and ' + convert_number(paise) + ' Paise';
-    }
-    result += ' Only';
-    
-    return `INR ${result.toUpperCase()}`;
   };
 
   // Download Invoice Function
@@ -658,6 +656,17 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
   const paginatedPerformInvoices = getPaginatedData(filteredPerformInvoices);
   const paginatedTaxInvoices = getPaginatedData(filteredTaxInvoices);
 
+  // Get status color
+  // In InvoicesTab components (both superadmin and admin)
+const getStatusColor = (status: string) => {
+  switch (status.toLowerCase()) {
+    case 'paid': return 'default';     // Changed from 'success'
+    case 'pending': return 'secondary'; // Changed from 'warning'
+    case 'overdue': return 'destructive';
+    default: return 'secondary';
+  }
+};
+
   // Render tables based on view mode
   const renderTable = (invoicesToShow: Invoice[]) => {
     if (viewMode === "table") {
@@ -674,7 +683,8 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                   <TableHead className="min-w-[100px]">Status</TableHead>
                   <TableHead className="min-w-[100px]">Date</TableHead>
                   <TableHead className="min-w-[100px]">Type</TableHead>
-                  <TableHead className="min-w-[120px]">Actions</TableHead>
+                  <TableHead className="min-w-[100px]">Created By</TableHead>
+                  <TableHead className="min-w-[200px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -697,10 +707,15 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                         {invoice.status}
                       </Badge>
                     </TableCell>
-                    <TableCell>{invoice.date}</TableCell>
+                    <TableCell>{formatDate(invoice.date)}</TableCell>
                     <TableCell>
                       <Badge variant={invoice.invoiceType === "tax" ? "secondary" : "outline"}>
                         {invoice.invoiceType === "tax" ? "Tax" : "Sales"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={invoice.createdBy === 'superadmin' ? 'default' : 'outline'}>
+                        {invoice.createdBy || 'superadmin'}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -713,6 +728,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                             setPreviewDialogOpen(true);
                           }}
                           className="h-8 px-2"
+                          disabled={deletingInvoiceId === invoice.id}
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
@@ -721,6 +737,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                           size="sm"
                           onClick={() => handleDownloadInvoice(invoice)}
                           className="h-8 px-2"
+                          disabled={deletingInvoiceId === invoice.id}
                         >
                           <Download className="h-4 w-4" />
                         </Button>
@@ -728,10 +745,30 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                           <Button 
                             variant="outline" 
                             size="sm"
-                            onClick={() => onMarkAsPaid(invoice.id)}
+                            onClick={() => handleMarkAsPaid(invoice.id)}
                             className="h-8 px-2"
+                            disabled={markingAsPaidId === invoice.id || deletingInvoiceId === invoice.id}
                           >
-                            Mark Paid
+                            {markingAsPaidId === invoice.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              "Mark Paid"
+                            )}
+                          </Button>
+                        )}
+                        {invoice.userId === userId && (
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => handleDeleteInvoice(invoice.id)}
+                            className="h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            disabled={deletingInvoiceId === invoice.id}
+                          >
+                            {deletingInvoiceId === invoice.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
                           </Button>
                         )}
                       </div>
@@ -796,13 +833,16 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                       <Badge variant={invoice.invoiceType === "tax" ? "secondary" : "outline"} className="text-xs">
                         {invoice.invoiceType === "tax" ? "Tax" : "Sales"}
                       </Badge>
+                      <Badge variant="outline" className="text-xs">
+                        {invoice.createdBy || 'superadmin'}
+                      </Badge>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="text-sm">
                     <div className="font-medium">Voucher: {invoice.voucherNo || invoice.id}</div>
-                    <div>Date: {invoice.date}</div>
+                    <div>Date: {formatDate(invoice.date)}</div>
                   </div>
                   <div className="flex justify-between items-center">
                     <div className="text-sm">
@@ -824,6 +864,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                         setSelectedInvoice(invoice);
                         setPreviewDialogOpen(true);
                       }}
+                      disabled={deletingInvoiceId === invoice.id}
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
@@ -832,6 +873,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                       size="sm"
                       className="flex-1 h-8"
                       onClick={() => handleDownloadInvoice(invoice)}
+                      disabled={deletingInvoiceId === invoice.id}
                     >
                       <Download className="h-4 w-4" />
                     </Button>
@@ -840,9 +882,29 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                         variant="outline" 
                         size="sm"
                         className="flex-1 h-8"
-                        onClick={() => onMarkAsPaid(invoice.id)}
+                        onClick={() => handleMarkAsPaid(invoice.id)}
+                        disabled={markingAsPaidId === invoice.id || deletingInvoiceId === invoice.id}
                       >
-                        Mark Paid
+                        {markingAsPaidId === invoice.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          "Mark Paid"
+                        )}
+                      </Button>
+                    )}
+                    {invoice.userId === userId && (
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        className="flex-1 h-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => handleDeleteInvoice(invoice.id)}
+                        disabled={deletingInvoiceId === invoice.id}
+                      >
+                        {deletingInvoiceId === invoice.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
                       </Button>
                     )}
                   </div>
@@ -909,6 +971,39 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
     );
   };
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
+          <p className="mt-4 text-muted-foreground">Loading invoices...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto" />
+          <h3 className="mt-4 text-lg font-semibold">Failed to load invoices</h3>
+          <p className="text-red-600 mt-2">{error}</p>
+          <Button 
+            variant="outline" 
+            onClick={fetchInvoices}
+            className="mt-4"
+          >
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <Card>
@@ -933,6 +1028,14 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                 <Grid className="h-4 w-4" />
               </Button>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchInvoices}
+              className="h-8"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <div className="relative w-full sm:w-64">
@@ -941,7 +1044,10 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                 placeholder="Search invoices..."
                 className="pl-8 w-full"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
               />
             </div>
             
@@ -1029,15 +1135,19 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       <PerformInvoiceForm
         isOpen={performInvoiceDialogOpen}
         onClose={() => setPerformInvoiceDialogOpen(false)}
-        onInvoiceCreate={onInvoiceCreate}
+        onInvoiceCreate={handleCreateInvoice}
         performInvoicesCount={performInvoices.length}
+        userId={userId}
+        userRole={userRole}
       />
 
       <TaxInvoiceForm
         isOpen={taxInvoiceDialogOpen}
         onClose={() => setTaxInvoiceDialogOpen(false)}
-        onInvoiceCreate={onInvoiceCreate}
+        onInvoiceCreate={handleCreateInvoice}
         taxInvoicesCount={taxInvoices.length}
+        userId={userId}
+        userRole={userRole}
       />
 
       {/* Invoice Preview Dialog */}
@@ -1057,6 +1167,10 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                   {selectedInvoice.voucherNo && selectedInvoice.voucherNo !== selectedInvoice.id && (
                     <p className="text-muted-foreground">Voucher: {selectedInvoice.voucherNo}</p>
                   )}
+                  <p className="text-sm text-muted-foreground">
+                    Created by: {selectedInvoice.createdBy || 'superadmin'}
+                    {selectedInvoice.userId && ` (${selectedInvoice.userId})`}
+                  </p>
                 </div>
                 <Badge variant={getStatusColor(selectedInvoice.status)}>
                   {selectedInvoice.status.toUpperCase()}
@@ -1074,15 +1188,15 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Invoice Date:</span>
-                    <span className="font-medium">{selectedInvoice.date}</span>
+                    <span className="font-medium">{formatDate(selectedInvoice.date)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Due Date:</span>
-                    <span className="font-medium">{selectedInvoice.dueDate}</span>
+                    <span className="font-medium">{selectedInvoice.dueDate ? formatDate(selectedInvoice.dueDate) : 'N/A'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Service Type:</span>
-                    <span className="font-medium">{selectedInvoice.serviceType}</span>
+                    <span className="font-medium">{selectedInvoice.serviceType || 'N/A'}</span>
                   </div>
                   {selectedInvoice.buyerRef && (
                     <div className="flex justify-between">
@@ -1133,11 +1247,19 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                     <Button 
                       variant="outline" 
                       onClick={() => {
-                        onMarkAsPaid(selectedInvoice.id);
+                        handleMarkAsPaid(selectedInvoice.id);
                         setPreviewDialogOpen(false);
                       }}
+                      disabled={markingAsPaidId === selectedInvoice.id}
                     >
-                      Mark as Paid
+                      {markingAsPaidId === selectedInvoice.id ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Marking as Paid...
+                        </>
+                      ) : (
+                        "Mark as Paid"
+                      )}
                     </Button>
                   )}
                 </div>
@@ -1150,7 +1272,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                   {selectedInvoice.invoiceType === "tax" ? (
                     <>
                       <div className="flex justify-between gap-8">
-                        <span>Management Fees ({selectedInvoice.managementFeesPercent}%):</span>
+                        <span>Management Fees ({selectedInvoice.managementFeesPercent || 5}%):</span>
                         <span>{formatCurrency(selectedInvoice.managementFeesAmount || 0)}</span>
                       </div>
                       <div className="flex justify-between gap-8">
@@ -1198,6 +1320,31 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                 >
                   Close Preview
                 </Button>
+                {selectedInvoice.userId === userId && (
+                  <Button 
+                    variant="destructive"
+                    className="flex-1"
+                    onClick={() => {
+                      if (window.confirm('Are you sure you want to delete this invoice?')) {
+                        handleDeleteInvoice(selectedInvoice.id);
+                        setPreviewDialogOpen(false);
+                      }
+                    }}
+                    disabled={deletingInvoiceId === selectedInvoice.id}
+                  >
+                    {deletingInvoiceId === selectedInvoice.id ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Deleting...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete Invoice
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
           )}

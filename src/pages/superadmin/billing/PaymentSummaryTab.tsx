@@ -5,8 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { 
   DollarSign, 
   Receipt, 
-  Download, 
-  FileText,
   RefreshCw,
   Loader2,
   FileType,
@@ -14,11 +12,20 @@ import {
   CheckCircle,
   BarChart3,
   CreditCard,
-  BanknoteIcon,
+  Banknote,
   Smartphone,
-  Wallet
+  Wallet,
+  TrendingUp,
+  TrendingDown,
+  Calendar,
+  Package,
+  Home,
+  Shield,
+  Car,
+  Trash2,
+  Droplets,
+  Users
 } from "lucide-react";
-import { formatCurrency } from "../Billing";
 import InvoiceService from "@/services/InvoiceService";
 import { expenseService } from "@/services/expenseService";
 import { toast } from "sonner";
@@ -31,11 +38,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-interface PaymentSummaryTabProps {
-  onExportData: (type: string) => void;
-}
+interface PaymentSummaryTabProps {}
 
 // Define interfaces for data from APIs
+interface InvoiceItem {
+  description: string;
+  quantity: number;
+  rate: number;
+  amount: number;
+}
+
 interface TaxInvoice {
   _id: string;
   id: string;
@@ -46,8 +58,8 @@ interface TaxInvoice {
   status: "pending" | "paid" | "overdue";
   date: string;
   dueDate?: string;
-  invoiceType: "tax";
-  items: any[];
+  invoiceType: "tax" | "perform";
+  items: InvoiceItem[];
   tax: number;
   clientEmail?: string;
   site?: string;
@@ -63,6 +75,8 @@ interface TaxInvoice {
   roundUp?: number;
   baseAmount?: number;
   paymentMethod?: string;
+  subtotal?: number;
+  discount?: number;
 }
 
 interface Expense {
@@ -80,30 +94,107 @@ interface Expense {
   site: string;
   expenseType: "operational" | "office" | "other";
   notes?: string;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Helper function to get icon for payment method - MOVED TO TOP LEVEL
-const getPaymentMethodIcon = (method: string) => {
+interface PaymentMethodDistribution {
+  method: string;
+  count: number;
+  amount: number;
+  percentage: number;
+  Icon: React.ComponentType<{ className?: string }>;
+}
+
+// Format currency
+const formatCurrency = (amount: number) => {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(amount);
+};
+
+// Format date
+const formatDate = (dateString: string) => {
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
+    return date.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+  } catch {
+    return dateString;
+  }
+};
+
+// Helper function to get icon component for payment method
+const getPaymentMethodIcon = (method: string): React.ComponentType<{ className?: string }> => {
   const methodLower = method.toLowerCase();
-  if (methodLower.includes('bank') || methodLower.includes('transfer')) return BanknoteIcon;
+  if (methodLower.includes('bank') || methodLower.includes('transfer')) return Banknote;
   if (methodLower.includes('upi') || methodLower.includes('phonepe') || methodLower.includes('google')) return Smartphone;
   if (methodLower.includes('credit') || methodLower.includes('debit') || methodLower.includes('card')) return CreditCard;
   if (methodLower.includes('cash')) return Wallet;
-  return CreditCard; // default icon
+  return CreditCard;
 };
 
-const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
-  onExportData
-}) => {
+// Get service icon component
+const getServiceIcon = (serviceType: string = ""): React.ReactNode => {
+  switch (serviceType.toLowerCase()) {
+    case "housekeeping management": return <Home className="h-4 w-4 text-blue-600" />;
+    case "security management": return <Shield className="h-4 w-4 text-green-600" />;
+    case "parking management": return <Car className="h-4 w-4 text-purple-600" />;
+    case "waste management": return <Trash2 className="h-4 w-4 text-red-600" />;
+    case "stp tank cleaning": return <Droplets className="h-4 w-4 text-cyan-600" />;
+    case "consumables supply": return <Package className="h-4 w-4 text-orange-600" />;
+    default: return <Users className="h-4 w-4 text-gray-600" />;
+  }
+};
+
+// Get expense category icon component
+const getExpenseCategoryIcon = (category: string = ""): React.ReactNode => {
+  switch (category.toLowerCase()) {
+    case "cleaning supplies": return <Package className="h-4 w-4 text-blue-600" />;
+    case "security equipment": return <Shield className="h-4 w-4 text-green-600" />;
+    case "office supplies": return <Package className="h-4 w-4 text-purple-600" />;
+    case "utilities": return <Droplets className="h-4 w-4 text-cyan-600" />;
+    case "maintenance": return <Trash2 className="h-4 w-4 text-red-600" />;
+    case "transportation": return <Car className="h-4 w-4 text-orange-600" />;
+    default: return <Receipt className="h-4 w-4 text-gray-600" />;
+  }
+};
+
+// Get badge variant for status
+const getStatusBadgeVariant = (status: string) => {
+  switch (status.toLowerCase()) {
+    case "paid":
+    case "approved":
+      return "default";
+    case "pending":
+      return "secondary";
+    case "overdue":
+    case "rejected":
+      return "destructive";
+    default:
+      return "outline";
+  }
+};
+
+const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = () => {
   const [invoices, setInvoices] = useState<TaxInvoice[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState({
     invoices: true,
-    expenses: true
+    expenses: true,
+    all: true
   });
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedView, setSelectedView] = useState<'summary' | 'invoices' | 'expenses'>('summary');
+  const [paymentMethodDistribution, setPaymentMethodDistribution] = useState<PaymentMethodDistribution[]>([]);
 
   // Fetch all data on component mount
   useEffect(() => {
@@ -114,30 +205,83 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
     try {
       setError(null);
       setRefreshing(true);
+      setLoading(prev => ({ ...prev, all: true }));
       
       await Promise.all([
         fetchTaxInvoices(),
         fetchExpenses()
       ]);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch data');
-      toast.error("Failed to load financial data");
+      const errorMessage = err.message || 'Failed to fetch data';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setRefreshing(false);
+      setLoading(prev => ({ ...prev, all: false }));
     }
   };
 
   const fetchTaxInvoices = async () => {
     try {
       setLoading(prev => ({ ...prev, invoices: true }));
-      const data = await InvoiceService.getAllInvoices();
-      // Filter only tax invoices
-      const taxInvoices = data.filter(invoice => invoice.invoiceType === "tax") as TaxInvoice[];
+      let data;
+      try {
+        // Try to use InvoiceService
+        const invoiceService = new InvoiceService();
+        data = await invoiceService.getAllInvoices();
+      } catch (serviceError) {
+        console.log('InvoiceService failed, trying direct API call...', serviceError);
+        // Fallback to direct API call
+        const response = await fetch('http://localhost:5001/api/invoices');
+        if (!response.ok) throw new Error('Failed to fetch invoices');
+        const result = await response.json();
+        data = result.data || result;
+      }
+      
+      // Ensure we have an array
+      const invoicesArray = Array.isArray(data) ? data : [];
+      
+      // Filter only tax invoices and ensure proper typing
+      const taxInvoices = invoicesArray
+        .filter((invoice: any) => invoice.invoiceType === "tax")
+        .map((invoice: any): TaxInvoice => ({
+          _id: invoice._id || invoice.id,
+          id: invoice.id || invoice._id || `INV-${Date.now()}`,
+          invoiceNumber: invoice.invoiceNumber || invoice.id || `INV-${Date.now()}`,
+          voucherNo: invoice.voucherNo,
+          client: invoice.client || "Unknown Client",
+          amount: Number(invoice.amount) || 0,
+          status: (invoice.status as "pending" | "paid" | "overdue") || "pending",
+          date: invoice.date || new Date().toISOString().split('T')[0],
+          dueDate: invoice.dueDate,
+          invoiceType: "tax",
+          items: Array.isArray(invoice.items) ? invoice.items : [],
+          tax: Number(invoice.tax) || 0,
+          clientEmail: invoice.clientEmail,
+          site: invoice.site,
+          serviceType: invoice.serviceType,
+          gstNumber: invoice.gstNumber,
+          panNumber: invoice.panNumber,
+          managementFeesPercent: Number(invoice.managementFeesPercent) || 5,
+          managementFeesAmount: Number(invoice.managementFeesAmount) || 0,
+          sacCode: invoice.sacCode,
+          serviceLocation: invoice.serviceLocation,
+          servicePeriodFrom: invoice.servicePeriodFrom,
+          servicePeriodTo: invoice.servicePeriodTo,
+          roundUp: Number(invoice.roundUp) || 0,
+          baseAmount: Number(invoice.baseAmount) || Number(invoice.amount) || 0,
+          paymentMethod: invoice.paymentMethod,
+          subtotal: Number(invoice.subtotal) || Number(invoice.amount) || 0,
+          discount: Number(invoice.discount) || 0
+        }));
+      
       setInvoices(taxInvoices);
+      return taxInvoices;
     } catch (err: any) {
       console.error('Error fetching tax invoices:', err);
       setInvoices([]);
       toast.error("Failed to fetch tax invoices");
+      return [];
     } finally {
       setLoading(prev => ({ ...prev, invoices: false }));
     }
@@ -146,35 +290,63 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
   const fetchExpenses = async () => {
     try {
       setLoading(prev => ({ ...prev, expenses: true }));
-      const data = await expenseService.getExpenses();
-      setExpenses(data.data || []);
+      let data;
+      try {
+        // Try to use expenseService
+        const result = await expenseService.getExpenses({});
+        data = result.data || result;
+      } catch (serviceError) {
+        console.log('ExpenseService failed, trying direct API call...', serviceError);
+        // Fallback to direct API call
+        const response = await fetch('http://localhost:5001/api/expenses');
+        if (!response.ok) throw new Error('Failed to fetch expenses');
+        const result = await response.json();
+        data = result.data || result;
+      }
+      
+      // Ensure we have an array
+      const expensesArray = Array.isArray(data) ? data : [];
+      
+      // Map to Expense interface
+      const mappedExpenses = expensesArray.map((expense: any): Expense => ({
+        _id: expense._id || expense.id,
+        expenseId: expense.expenseId || expense._id || `EXP-${Date.now()}`,
+        category: expense.category || "Uncategorized",
+        description: expense.description || "No description",
+        amount: Number(expense.amount) || 0,
+        baseAmount: Number(expense.baseAmount) || Number(expense.amount) || 0,
+        gst: Number(expense.gst) || 0,
+        date: expense.date || new Date().toISOString().split('T')[0],
+        status: (expense.status as "pending" | "approved" | "rejected") || "pending",
+        vendor: expense.vendor || "Unknown Vendor",
+        paymentMethod: expense.paymentMethod || "Unknown",
+        site: expense.site || "Unknown Site",
+        expenseType: (expense.expenseType as "operational" | "office" | "other") || "other",
+        notes: expense.notes,
+        createdBy: expense.createdBy,
+        createdAt: expense.createdAt,
+        updatedAt: expense.updatedAt
+      }));
+      
+      setExpenses(mappedExpenses);
+      return mappedExpenses;
     } catch (err: any) {
       console.error('Error fetching expenses:', err);
       setExpenses([]);
       toast.error("Failed to fetch expenses");
+      return [];
     } finally {
       setLoading(prev => ({ ...prev, expenses: false }));
     }
   };
 
-  // Filter data - ONLY PAID invoices and ONLY APPROVED expenses
-  const paidTaxInvoices = invoices.filter(i => i.status === "paid");
-  const approvedExpenses = expenses.filter(e => e.status === "approved");
-
-  // Calculate totals
-  const totalTaxRevenue = paidTaxInvoices.reduce((sum, inv) => sum + inv.amount, 0);
-  const totalTaxableValue = paidTaxInvoices.reduce((sum, inv) => sum + (inv.baseAmount || inv.amount - inv.tax - (inv.managementFeesAmount || 0)), 0);
-  const totalGST = paidTaxInvoices.reduce((sum, inv) => sum + inv.tax, 0);
-  const totalExpensesAmount = approvedExpenses.reduce((sum, exp) => sum + exp.amount, 0);
-  const totalExpensesGST = approvedExpenses.reduce((sum, exp) => sum + exp.gst, 0);
-
-  // Calculate payment methods distribution from expenses and invoices
-  const calculatePaymentMethods = () => {
+  // Calculate payment methods distribution
+  const calculatePaymentMethods = (): PaymentMethodDistribution[] => {
     const methodTotals: Record<string, { count: number; amount: number }> = {};
-    let totalCount = 0;
     let totalAmount = 0;
 
-    // Count payment methods from expenses
+    // Count payment methods from approved expenses
+    const approvedExpenses = expenses.filter(e => e.status === "approved");
     approvedExpenses.forEach(expense => {
       const method = expense.paymentMethod || "Unknown";
       if (!methodTotals[method]) {
@@ -182,22 +354,19 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
       }
       methodTotals[method].count++;
       methodTotals[method].amount += expense.amount;
-      totalCount++;
       totalAmount += expense.amount;
     });
 
-    // Count payment methods from invoices (if they have paymentMethod field)
+    // Count payment methods from paid invoices
+    const paidTaxInvoices = invoices.filter(i => i.status === "paid");
     paidTaxInvoices.forEach(invoice => {
-      if (invoice.paymentMethod) {
-        const method = invoice.paymentMethod;
-        if (!methodTotals[method]) {
-          methodTotals[method] = { count: 0, amount: 0 };
-        }
-        methodTotals[method].count++;
-        methodTotals[method].amount += invoice.amount;
-        totalCount++;
-        totalAmount += invoice.amount;
+      const method = invoice.paymentMethod || "Unknown";
+      if (!methodTotals[method]) {
+        methodTotals[method] = { count: 0, amount: 0 };
       }
+      methodTotals[method].count++;
+      methodTotals[method].amount += invoice.amount;
+      totalAmount += invoice.amount;
     });
 
     // Convert to array and calculate percentages
@@ -216,42 +385,49 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
     return distribution.sort((a, b) => b.amount - a.amount);
   };
 
-  const paymentMethods = calculatePaymentMethods();
+  // Update payment methods distribution when data changes
+  useEffect(() => {
+    const distribution = calculatePaymentMethods();
+    setPaymentMethodDistribution(distribution);
+  }, [invoices, expenses]);
 
-  // Calculate top payment method
-  const topPaymentMethod = paymentMethods.length > 0 ? paymentMethods[0] : null;
+  // Filter data
+  const paidTaxInvoices = invoices.filter(i => i.status === "paid");
+  const approvedExpenses = expenses.filter(e => e.status === "approved");
+  const pendingInvoices = invoices.filter(i => i.status === "pending");
+  const overdueInvoices = invoices.filter(i => i.status === "overdue");
+  const pendingExpenses = expenses.filter(e => e.status === "pending");
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "paid":
-      case "approved":
-        return "default";
-      case "pending":
-        return "secondary";
-      case "rejected":
-        return "destructive";
-      default:
-        return "outline";
-    }
-  };
+  // Calculate totals
+  const totalTaxRevenue = paidTaxInvoices.reduce((sum, inv) => sum + inv.amount, 0);
+  const totalTaxableValue = paidTaxInvoices.reduce((sum, inv) => 
+    sum + (inv.baseAmount || inv.amount - inv.tax - (inv.managementFeesAmount || 0)), 0);
+  const totalGST = paidTaxInvoices.reduce((sum, inv) => sum + inv.tax, 0);
+  const totalExpensesAmount = approvedExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+  const totalExpensesGST = approvedExpenses.reduce((sum, exp) => sum + exp.gst, 0);
+  const totalExpensesBase = totalExpensesAmount - totalExpensesGST;
+  const pendingAmount = pendingInvoices.reduce((sum, inv) => sum + inv.amount, 0);
+  const overdueAmount = overdueInvoices.reduce((sum, inv) => sum + inv.amount, 0);
+  const pendingExpensesAmount = pendingExpenses.reduce((sum, exp) => sum + exp.amount, 0);
 
-  // Format date
-  const formatDate = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) return dateString;
-      return date.toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-      });
-    } catch {
-      return dateString;
-    }
-  };
+  // Calculate net profit
+  const netProfit = totalTaxRevenue - totalExpensesAmount;
+  const profitMargin = totalTaxRevenue > 0 ? (netProfit / totalTaxRevenue) * 100 : 0;
 
-  // Check if data is still loading
-  const isLoading = loading.invoices || loading.expenses;
+  const topPaymentMethod = paymentMethodDistribution.length > 0 ? paymentMethodDistribution[0] : null;
+
+  // Loading state
+  if (loading.all && !refreshing) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Loading Financial Data</h3>
+          <p className="text-muted-foreground">Please wait while we fetch your financial information...</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (error) {
     return (
@@ -260,21 +436,15 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
           <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
           <h3 className="text-lg font-semibold mb-2">Error Loading Data</h3>
           <p className="text-muted-foreground text-center mb-4">{error}</p>
-          <Button onClick={fetchAllData}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Retry
-          </Button>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (isLoading && !refreshing) {
-    return (
-      <Card>
-        <CardContent className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-primary mr-3" />
-          <span>Loading financial data...</span>
+          <div className="flex gap-2">
+            <Button onClick={fetchAllData}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Retry
+            </Button>
+            <Button variant="outline" onClick={() => window.location.reload()}>
+              Reload Page
+            </Button>
+          </div>
         </CardContent>
       </Card>
     );
@@ -282,9 +452,9 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
         <CardTitle className="flex items-center gap-2">
-          <BarChart3 className="h-6 w-6" />
+          <BarChart3 className="h-6 w-6 text-primary" />
           Financial Summary
         </CardTitle>
         <div className="flex gap-2">
@@ -292,21 +462,14 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
             variant="outline" 
             onClick={fetchAllData}
             disabled={refreshing}
+            className="flex items-center gap-2"
           >
             {refreshing ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <RefreshCw className="mr-2 h-4 w-4" />
+              <RefreshCw className="h-4 w-4" />
             )}
             Refresh
-          </Button>
-          <Button variant="outline" onClick={() => onExportData("tax-invoices")}>
-            <FileText className="mr-2 h-4 w-4" />
-            Export Invoices
-          </Button>
-          <Button variant="outline" onClick={() => onExportData("expenses")}>
-            <Download className="mr-2 h-4 w-4" />
-            Export Expenses
           </Button>
         </div>
       </CardHeader>
@@ -320,6 +483,7 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
             onClick={() => setSelectedView('summary')}
             className="flex-1"
           >
+            <BarChart3 className="mr-2 h-4 w-4" />
             Summary
           </Button>
           <Button
@@ -328,6 +492,7 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
             onClick={() => setSelectedView('invoices')}
             className="flex-1"
           >
+            <FileType className="mr-2 h-4 w-4" />
             Tax Invoices ({paidTaxInvoices.length})
           </Button>
           <Button
@@ -336,38 +501,44 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
             onClick={() => setSelectedView('expenses')}
             className="flex-1"
           >
+            <Receipt className="mr-2 h-4 w-4" />
             Expenses ({approvedExpenses.length})
           </Button>
         </div>
       </div>
 
       <CardContent className="space-y-6">
-        {/* UPDATED SUMMARY CARDS - 3 cards as requested */}
-        <div className="grid gap-4 md:grid-cols-3">
-          {/* Total Tax Invoices Card */}
+        {/* UPDATED SUMMARY CARDS */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {/* Total Revenue Card */}
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Total Tax Invoices</p>
-                  <p className="text-2xl font-bold">
-                    {paidTaxInvoices.length}
-                  </p>
-                  <p className="text-sm text-primary font-semibold mt-1">
+                  <p className="text-sm text-muted-foreground">Total Revenue</p>
+                  <p className="text-2xl font-bold text-green-600">
                     {formatCurrency(totalTaxRevenue)}
                   </p>
-                  <div className="text-xs text-muted-foreground mt-2">
-                    <div className="flex justify-between">
-                      <span>Taxable Value:</span>
-                      <span>{formatCurrency(totalTaxableValue)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>GST Collected:</span>
-                      <span className="text-green-600">{formatCurrency(totalGST)}</span>
-                    </div>
+                  <div className="flex items-center gap-1 mt-1">
+                    <TrendingUp className="h-4 w-4 text-green-600" />
+                    <span className="text-xs text-muted-foreground">
+                      {paidTaxInvoices.length} paid invoices
+                    </span>
                   </div>
                 </div>
-                <FileType className="h-8 w-8 text-primary" />
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <DollarSign className="h-6 w-6 text-green-600" />
+                </div>
+              </div>
+              <div className="mt-4 space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span>Pending:</span>
+                  <span className="text-yellow-600">{formatCurrency(pendingAmount)}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span>Overdue:</span>
+                  <span className="text-red-600">{formatCurrency(overdueAmount)}</span>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -378,53 +549,103 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Total Expenses</p>
-                  <p className="text-2xl font-bold">
-                    {approvedExpenses.length}
-                  </p>
-                  <p className="text-sm text-destructive font-semibold mt-1">
+                  <p className="text-2xl font-bold text-red-600">
                     {formatCurrency(totalExpensesAmount)}
                   </p>
-                  <div className="text-xs text-muted-foreground mt-2">
-                    <div className="flex justify-between">
-                      <span>Base Amount:</span>
-                      <span>{formatCurrency(totalExpensesAmount - totalExpensesGST)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>GST Paid:</span>
-                      <span className="text-blue-600">{formatCurrency(totalExpensesGST)}</span>
-                    </div>
+                  <div className="flex items-center gap-1 mt-1">
+                    <TrendingDown className="h-4 w-4 text-red-600" />
+                    <span className="text-xs text-muted-foreground">
+                      {approvedExpenses.length} approved expenses
+                    </span>
                   </div>
                 </div>
-                <Receipt className="h-8 w-8 text-destructive" />
+                <div className="p-2 bg-red-100 rounded-lg">
+                  <Receipt className="h-6 w-6 text-red-600" />
+                </div>
+              </div>
+              <div className="mt-4 space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span>Base Amount:</span>
+                  <span>{formatCurrency(totalExpensesBase)}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span>GST Paid:</span>
+                  <span className="text-blue-600">{formatCurrency(totalExpensesGST)}</span>
+                </div>
               </div>
             </CardContent>
           </Card>
           
-          {/* NEW: Payment Methods Card */}
+          {/* Net Profit Card */}
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Net Profit</p>
+                  <p className={`text-2xl font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {formatCurrency(netProfit)}
+                  </p>
+                  <div className="flex items-center gap-1 mt-1">
+                    {netProfit >= 0 ? (
+                      <TrendingUp className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <TrendingDown className="h-4 w-4 text-red-600" />
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      {profitMargin.toFixed(1)}% margin
+                    </span>
+                  </div>
+                </div>
+                <div className={`p-2 rounded-lg ${netProfit >= 0 ? 'bg-green-100' : 'bg-red-100'}`}>
+                  <DollarSign className={`h-6 w-6 ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`} />
+                </div>
+              </div>
+              <div className="mt-4 space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span>Revenue:</span>
+                  <span>{formatCurrency(totalTaxRevenue)}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span>Expenses:</span>
+                  <span>{formatCurrency(totalExpensesAmount)}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          {/* Payment Methods Card */}
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Payment Methods</p>
-                  <p className="text-2xl font-bold">
-                    {paymentMethods.length}
+                  <p className="text-2xl font-bold text-purple-600">
+                    {paymentMethodDistribution.length}
                   </p>
-                  <p className="text-sm text-purple-600 font-semibold mt-1">
-                    {topPaymentMethod ? `${topPaymentMethod.method} (${topPaymentMethod.percentage}%)` : "No Data"}
+                  <p className="text-sm font-semibold mt-1">
+                    {topPaymentMethod ? (
+                      <span className="text-purple-600">{topPaymentMethod.method}</span>
+                    ) : (
+                      "No Data"
+                    )}
                   </p>
                 </div>
-                <CreditCard className="h-8 w-8 text-purple-600" />
+                <div className="p-2 bg-purple-100 rounded-lg">
+                  <CreditCard className="h-6 w-6 text-purple-600" />
+                </div>
               </div>
               
               <div className="space-y-2">
-                {paymentMethods.length > 0 ? (
-                  paymentMethods.slice(0, 3).map((method) => {
-                    const Icon = method.Icon;
+                {paymentMethodDistribution.length > 0 ? (
+                  paymentMethodDistribution.slice(0, 2).map((method) => {
+                    const IconComponent = method.Icon;
                     return (
                       <div key={method.method} className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <Icon className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm font-medium">{method.method}</span>
+                          <IconComponent className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium truncate max-w-[100px]">
+                            {method.method}
+                          </span>
                         </div>
                         <div className="text-right">
                           <div className="text-sm font-semibold">{method.percentage}%</div>
@@ -441,10 +662,10 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
                   </div>
                 )}
                 
-                {paymentMethods.length > 3 && (
+                {paymentMethodDistribution.length > 2 && (
                   <div className="text-center pt-2">
                     <p className="text-xs text-muted-foreground">
-                      +{paymentMethods.length - 3} more methods
+                      +{paymentMethodDistribution.length - 2} more methods
                     </p>
                   </div>
                 )}
@@ -453,58 +674,59 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
           </Card>
         </div>
 
-        {/* Payment Methods Distribution Details */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <CreditCard className="h-5 w-5 text-purple-600" />
-              Payment Methods Distribution
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {paymentMethods.length > 0 ? (
-                paymentMethods.map((method) => {
-                  const Icon = method.Icon;
-                  return (
-                    <div key={method.method} className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-purple-100 rounded-lg">
-                            <Icon className="h-4 w-4 text-purple-600" />
-                          </div>
-                          <div>
-                            <p className="font-medium">{method.method}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {method.count} transactions • {formatCurrency(method.amount)}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-lg font-bold text-purple-600">{method.percentage}%</p>
-                        </div>
-                      </div>
-                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-purple-500 rounded-full"
-                          style={{ width: `${method.percentage}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <CreditCard className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p>No payment methods data available</p>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
         {selectedView === 'summary' ? (
           <>
+            {/* Payment Methods Distribution */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <CreditCard className="h-5 w-5 text-purple-600" />
+                  Payment Methods Distribution
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {paymentMethodDistribution.length > 0 ? (
+                  <div className="space-y-4">
+                    {paymentMethodDistribution.map((method) => {
+                      const IconComponent = method.Icon;
+                      return (
+                        <div key={method.method} className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="p-2 bg-purple-100 rounded-lg">
+                                <IconComponent className="h-4 w-4 text-purple-600" />
+                              </div>
+                              <div>
+                                <p className="font-medium">{method.method}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {method.count} transactions • {formatCurrency(method.amount)}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-lg font-bold text-purple-600">{method.percentage}%</p>
+                            </div>
+                          </div>
+                          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-purple-500 rounded-full transition-all duration-500"
+                              style={{ width: `${method.percentage}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <CreditCard className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <p>No payment methods data available</p>
+                    <p className="text-sm mt-1">Add some paid invoices or approved expenses to see payment methods</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {/* Recent Paid Tax Invoices */}
             <Card>
               <CardHeader>
@@ -525,12 +747,12 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
                         <TableHead>Taxable Value</TableHead>
                         <TableHead>GST</TableHead>
                         <TableHead>Total Amount</TableHead>
-                        <TableHead>Payment Method</TableHead>
+                        <TableHead>Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {paidTaxInvoices.length > 0 ? (
-                        paidTaxInvoices.slice(0, 10).map((invoice) => (
+                        paidTaxInvoices.slice(0, 5).map((invoice) => (
                           <TableRow key={invoice._id} className="hover:bg-muted/50">
                             <TableCell className="font-medium">
                               {invoice.voucherNo || invoice.invoiceNumber || invoice.id}
@@ -538,24 +760,36 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
                             <TableCell>
                               <div>
                                 <p className="font-medium text-sm">{invoice.client}</p>
-                                {invoice.gstNumber && (
-                                  <p className="text-xs text-muted-foreground font-mono">{invoice.gstNumber}</p>
+                                {invoice.clientEmail && (
+                                  <p className="text-xs text-muted-foreground">{invoice.clientEmail}</p>
                                 )}
                               </div>
                             </TableCell>
-                            <TableCell>{invoice.serviceType || "-"}</TableCell>
-                            <TableCell>{formatDate(invoice.date)}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                {getServiceIcon(invoice.serviceType)}
+                                <span>{invoice.serviceType || "-"}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3 text-muted-foreground" />
+                                {formatDate(invoice.date)}
+                              </div>
+                            </TableCell>
                             <TableCell>
                               {formatCurrency(invoice.baseAmount || invoice.amount - invoice.tax - (invoice.managementFeesAmount || 0))}
                             </TableCell>
-                            <TableCell>{formatCurrency(invoice.tax)}</TableCell>
-                            <TableCell className="font-semibold">{formatCurrency(invoice.amount)}</TableCell>
+                            <TableCell className="text-blue-600 font-medium">
+                              {formatCurrency(invoice.tax)}
+                            </TableCell>
+                            <TableCell className="font-semibold text-green-600">
+                              {formatCurrency(invoice.amount)}
+                            </TableCell>
                             <TableCell>
-                              {invoice.paymentMethod ? (
-                                <Badge variant="outline">{invoice.paymentMethod}</Badge>
-                              ) : (
-                                <span className="text-muted-foreground text-sm">Not specified</span>
-                              )}
+                              <Badge variant={getStatusBadgeVariant(invoice.status)}>
+                                {invoice.status}
+                              </Badge>
                             </TableCell>
                           </TableRow>
                         ))
@@ -564,6 +798,9 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
                           <TableCell colSpan={8} className="text-center py-8">
                             <FileType className="h-12 w-12 mx-auto mb-2 opacity-50" />
                             <p>No paid tax invoices found</p>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Mark tax invoices as paid to see them here
+                            </p>
                           </TableCell>
                         </TableRow>
                       )}
@@ -591,36 +828,59 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
                         <TableHead>Description</TableHead>
                         <TableHead>Vendor</TableHead>
                         <TableHead>Date</TableHead>
-                        <TableHead>Base Amount</TableHead>
-                        <TableHead>GST</TableHead>
-                        <TableHead>Total Amount</TableHead>
+                        <TableHead>Amount</TableHead>
                         <TableHead>Payment Method</TableHead>
+                        <TableHead>Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {approvedExpenses.length > 0 ? (
-                        approvedExpenses.slice(0, 10).map((expense) => (
+                        approvedExpenses.slice(0, 5).map((expense) => (
                           <TableRow key={expense._id} className="hover:bg-muted/50">
                             <TableCell className="font-medium">{expense.expenseId}</TableCell>
                             <TableCell>
-                              <Badge variant="outline">{expense.category}</Badge>
+                              <div className="flex items-center gap-2">
+                                {getExpenseCategoryIcon(expense.category)}
+                                <span>{expense.category}</span>
+                              </div>
                             </TableCell>
                             <TableCell className="max-w-xs truncate">{expense.description}</TableCell>
                             <TableCell>{expense.vendor}</TableCell>
-                            <TableCell>{formatDate(expense.date)}</TableCell>
-                            <TableCell>{formatCurrency(expense.baseAmount)}</TableCell>
-                            <TableCell>{formatCurrency(expense.gst)}</TableCell>
-                            <TableCell className="font-semibold">{formatCurrency(expense.amount)}</TableCell>
                             <TableCell>
-                              <Badge variant="outline">{expense.paymentMethod}</Badge>
+                              <div className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3 text-muted-foreground" />
+                                {formatDate(expense.date)}
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-semibold text-red-600">
+                              {formatCurrency(expense.amount)}
+                            </TableCell>
+                            <TableCell>
+                              {(() => {
+                                const IconComponent = getPaymentMethodIcon(expense.paymentMethod);
+                                return (
+                                  <Badge variant="outline" className="flex items-center gap-1">
+                                    <IconComponent className="h-3 w-3" />
+                                    {expense.paymentMethod}
+                                  </Badge>
+                                );
+                              })()}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={getStatusBadgeVariant(expense.status)}>
+                                {expense.status}
+                              </Badge>
                             </TableCell>
                           </TableRow>
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={9} className="text-center py-8">
+                          <TableCell colSpan={8} className="text-center py-8">
                             <Receipt className="h-12 w-12 mx-auto mb-2 opacity-50" />
                             <p>No approved expenses found</p>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Approve expenses in the Expenses tab to see them here
+                            </p>
                           </TableCell>
                         </TableRow>
                       )}
@@ -630,20 +890,21 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
               </CardContent>
             </Card>
 
-            {/* Quick Financial Summary */}
+            {/* Financial Statistics */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Revenue Statistics */}
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <DollarSign className="h-5 w-5 text-green-600" />
-                    Revenue Summary
+                    Revenue Statistics
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
                       <span className="text-sm">Total Revenue:</span>
-                      <span className="font-semibold">{formatCurrency(totalTaxRevenue)}</span>
+                      <span className="font-semibold text-green-600">{formatCurrency(totalTaxRevenue)}</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-sm">Total Invoices:</span>
@@ -652,31 +913,40 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
                     <div className="flex justify-between items-center">
                       <span className="text-sm">Average Invoice:</span>
                       <span className="font-medium">
-                        {paidTaxInvoices.length > 0 ? formatCurrency(totalTaxRevenue / paidTaxInvoices.length) : formatCurrency(0)}
+                        {paidTaxInvoices.length > 0 ? 
+                          formatCurrency(totalTaxRevenue / paidTaxInvoices.length) : 
+                          formatCurrency(0)}
                       </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm">Total GST:</span>
+                      <span className="font-medium text-blue-600">{formatCurrency(totalGST)}</span>
                     </div>
                     <div className="flex justify-between items-center pt-2 border-t">
                       <span className="font-medium">GST Rate:</span>
                       <span className="font-semibold text-blue-600">
-                        {totalTaxableValue > 0 ? ((totalGST / totalTaxableValue) * 100).toFixed(2) : "0.00"}%
+                        {totalTaxableValue > 0 ? 
+                          ((totalGST / totalTaxableValue) * 100).toFixed(2) : 
+                          "0.00"}%
                       </span>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
+              {/* Expenses Statistics */}
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <Receipt className="h-5 w-5 text-red-600" />
-                    Expenses Summary
+                    Expenses Statistics
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
                       <span className="text-sm">Total Expenses:</span>
-                      <span className="font-semibold">{formatCurrency(totalExpensesAmount)}</span>
+                      <span className="font-semibold text-red-600">{formatCurrency(totalExpensesAmount)}</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-sm">Total Items:</span>
@@ -685,13 +955,21 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
                     <div className="flex justify-between items-center">
                       <span className="text-sm">Average Expense:</span>
                       <span className="font-medium">
-                        {approvedExpenses.length > 0 ? formatCurrency(totalExpensesAmount / approvedExpenses.length) : formatCurrency(0)}
+                        {approvedExpenses.length > 0 ? 
+                          formatCurrency(totalExpensesAmount / approvedExpenses.length) : 
+                          formatCurrency(0)}
                       </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm">Pending Expenses:</span>
+                      <span className="font-medium text-yellow-600">{formatCurrency(pendingExpensesAmount)}</span>
                     </div>
                     <div className="flex justify-between items-center pt-2 border-t">
                       <span className="font-medium">GST Rate:</span>
                       <span className="font-semibold text-blue-600">
-                        {(totalExpensesAmount - totalExpensesGST) > 0 ? ((totalExpensesGST / (totalExpensesAmount - totalExpensesGST)) * 100).toFixed(2) : "0.00"}%
+                        {totalExpensesBase > 0 ? 
+                          ((totalExpensesGST / totalExpensesBase) * 100).toFixed(2) : 
+                          "0.00"}%
                       </span>
                     </div>
                   </div>
@@ -709,64 +987,79 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="border rounded-lg overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Invoice No</TableHead>
-                      <TableHead>Client</TableHead>
-                      <TableHead>Service Type</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>GSTIN</TableHead>
-                      <TableHead>Taxable Value</TableHead>
-                      <TableHead>GST</TableHead>
-                      <TableHead>Total Amount</TableHead>
-                      <TableHead>Payment Method</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {paidTaxInvoices.map((invoice) => (
-                      <TableRow key={invoice._id} className="hover:bg-muted/50">
-                        <TableCell className="font-medium">
-                          {invoice.voucherNo || invoice.invoiceNumber || invoice.id}
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium text-sm">{invoice.client}</p>
-                            <p className="text-xs text-muted-foreground">{invoice.clientEmail || ""}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>{invoice.serviceType || "-"}</TableCell>
-                        <TableCell>{formatDate(invoice.date)}</TableCell>
-                        <TableCell className="font-mono text-xs">{invoice.gstNumber || "-"}</TableCell>
-                        <TableCell>
-                          {formatCurrency(invoice.baseAmount || invoice.amount - invoice.tax - (invoice.managementFeesAmount || 0))}
-                        </TableCell>
-                        <TableCell>{formatCurrency(invoice.tax)}</TableCell>
-                        <TableCell className="font-semibold">{formatCurrency(invoice.amount)}</TableCell>
-                        <TableCell>
-                          {invoice.paymentMethod ? (
-                            <Badge variant="outline">{invoice.paymentMethod}</Badge>
-                          ) : (
-                            <span className="text-muted-foreground text-sm">-</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {paidTaxInvoices.length === 0 && (
+              {loading.invoices ? (
+                <div className="text-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+                  <p className="mt-2 text-muted-foreground">Loading invoices...</p>
+                </div>
+              ) : (
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8">
-                          <FileType className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                          <p>No paid tax invoices found</p>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            Mark tax invoices as paid to see them here
-                          </p>
-                        </TableCell>
+                        <TableHead>Invoice No</TableHead>
+                        <TableHead>Client</TableHead>
+                        <TableHead>Service Type</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>GSTIN</TableHead>
+                        <TableHead>Taxable Value</TableHead>
+                        <TableHead>GST</TableHead>
+                        <TableHead>Total Amount</TableHead>
+                        <TableHead>Payment Method</TableHead>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {paidTaxInvoices.map((invoice) => (
+                        <TableRow key={invoice._id} className="hover:bg-muted/50">
+                          <TableCell className="font-medium">
+                            {invoice.voucherNo || invoice.invoiceNumber || invoice.id}
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium text-sm">{invoice.client}</p>
+                              <p className="text-xs text-muted-foreground">{invoice.clientEmail || ""}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>{invoice.serviceType || "-"}</TableCell>
+                          <TableCell>{formatDate(invoice.date)}</TableCell>
+                          <TableCell className="font-mono text-xs">{invoice.gstNumber || "-"}</TableCell>
+                          <TableCell>
+                            {formatCurrency(invoice.baseAmount || invoice.amount - invoice.tax - (invoice.managementFeesAmount || 0))}
+                          </TableCell>
+                          <TableCell className="text-blue-600 font-medium">{formatCurrency(invoice.tax)}</TableCell>
+                          <TableCell className="font-semibold text-green-600">{formatCurrency(invoice.amount)}</TableCell>
+                          <TableCell>
+                            {invoice.paymentMethod ? (
+                              (() => {
+                                const IconComponent = getPaymentMethodIcon(invoice.paymentMethod);
+                                return (
+                                  <Badge variant="outline" className="flex items-center gap-1">
+                                    <IconComponent className="h-3 w-3" />
+                                    {invoice.paymentMethod}
+                                  </Badge>
+                                );
+                              })()
+                            ) : (
+                              <span className="text-muted-foreground text-sm">-</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {paidTaxInvoices.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={9} className="text-center py-8">
+                            <FileType className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                            <p>No paid tax invoices found</p>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Mark tax invoices as paid to see them here
+                            </p>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
         ) : (
@@ -779,53 +1072,71 @@ const PaymentSummaryTab: React.FC<PaymentSummaryTabProps> = ({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="border rounded-lg overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Expense ID</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Vendor</TableHead>
-                      <TableHead>Payment Method</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Base Amount</TableHead>
-                      <TableHead>GST</TableHead>
-                      <TableHead>Total Amount</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {approvedExpenses.map((expense) => (
-                      <TableRow key={expense._id} className="hover:bg-muted/50">
-                        <TableCell className="font-medium">{expense.expenseId}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{expense.category}</Badge>
-                        </TableCell>
-                        <TableCell>{expense.description}</TableCell>
-                        <TableCell>{expense.vendor}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{expense.paymentMethod}</Badge>
-                        </TableCell>
-                        <TableCell>{formatDate(expense.date)}</TableCell>
-                        <TableCell>{formatCurrency(expense.baseAmount)}</TableCell>
-                        <TableCell>{formatCurrency(expense.gst)}</TableCell>
-                        <TableCell className="font-semibold">{formatCurrency(expense.amount)}</TableCell>
-                      </TableRow>
-                    ))}
-                    {approvedExpenses.length === 0 && (
+              {loading.expenses ? (
+                <div className="text-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+                  <p className="mt-2 text-muted-foreground">Loading expenses...</p>
+                </div>
+              ) : (
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8">
-                          <Receipt className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                          <p>No approved expenses found</p>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            Approve expenses in the Expenses tab to see them here
-                          </p>
-                        </TableCell>
+                        <TableHead>Expense ID</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Vendor</TableHead>
+                        <TableHead>Payment Method</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Base Amount</TableHead>
+                        <TableHead>GST</TableHead>
+                        <TableHead>Total Amount</TableHead>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {approvedExpenses.map((expense) => (
+                        <TableRow key={expense._id} className="hover:bg-muted/50">
+                          <TableCell className="font-medium">{expense.expenseId}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              {getExpenseCategoryIcon(expense.category)}
+                              <span>{expense.category}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="max-w-xs truncate">{expense.description}</TableCell>
+                          <TableCell>{expense.vendor}</TableCell>
+                          <TableCell>
+                            {(() => {
+                              const IconComponent = getPaymentMethodIcon(expense.paymentMethod);
+                              return (
+                                <Badge variant="outline" className="flex items-center gap-1">
+                                  <IconComponent className="h-3 w-3" />
+                                  {expense.paymentMethod}
+                                </Badge>
+                              );
+                            })()}
+                          </TableCell>
+                          <TableCell>{formatDate(expense.date)}</TableCell>
+                          <TableCell>{formatCurrency(expense.baseAmount)}</TableCell>
+                          <TableCell className="text-blue-600">{formatCurrency(expense.gst)}</TableCell>
+                          <TableCell className="font-semibold text-red-600">{formatCurrency(expense.amount)}</TableCell>
+                        </TableRow>
+                      ))}
+                      {approvedExpenses.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={9} className="text-center py-8">
+                            <Receipt className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                            <p>No approved expenses found</p>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Approve expenses in the Expenses tab to see them here
+                            </p>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

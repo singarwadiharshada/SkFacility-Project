@@ -1,5 +1,10 @@
-
-const API_URL = `http://${window.location.hostname}:5001/api`;
+// services/InvoiceService.ts
+// Use a relative URL for API calls - this works for both development and production
+// For development: http://localhost:5001/api
+// For production: /api (if using proxy) or full URL if deployed separately
+const API_BASE_URL = 'http://localhost:5001/api'; // Change this to your actual backend URL
+// OR use relative URL if backend is served from same origin:
+// const API_BASE_URL = '/api';
 
 export interface InvoiceItem {
   description: string;
@@ -21,6 +26,11 @@ export interface Invoice {
   status: 'pending' | 'paid' | 'overdue';
   date: string;
   dueDate?: string;
+  
+  // User/Role tracking
+  createdBy?: string;
+  userId?: string;
+  sharedWith?: string[];
   
   // Client info
   client: string;
@@ -102,10 +112,18 @@ export interface Invoice {
 }
 
 class InvoiceService {
+  private userId: string | null = null;
+  private userRole: string | null = null;
+
+  constructor(userId?: string, userRole?: string) {
+    if (userId) this.userId = userId;
+    if (userRole) this.userRole = userRole;
+  }
+
   // Helper function for API calls
-  private static async fetchApi(endpoint: string, options?: RequestInit) {
+  private async fetchApi(endpoint: string, options?: RequestInit) {
     try {
-      const response = await fetch(`${API_URL}${endpoint}`, {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         headers: {
           'Content-Type': 'application/json',
         },
@@ -123,10 +141,11 @@ class InvoiceService {
     }
   }
 
-  // Get all invoices
-  static async getAllInvoices(): Promise<Invoice[]> {
+  // Get all invoices for current user
+  async getAllInvoices(): Promise<Invoice[]> {
     try {
-      const data = await this.fetchApi('/invoices');
+      const url = this.userId ? `/invoices?userId=${this.userId}` : '/invoices';
+      const data = await this.fetchApi(url);
       
       if (!data.success) {
         throw new Error(data.message || 'Failed to fetch invoices');
@@ -139,10 +158,14 @@ class InvoiceService {
     }
   }
 
-  // Get invoices by type
-  static async getInvoicesByType(type: 'perform' | 'tax'): Promise<Invoice[]> {
+  // Get invoices by type for current user
+  async getInvoicesByType(type: 'perform' | 'tax'): Promise<Invoice[]> {
     try {
-      const data = await this.fetchApi(`/invoices/type/${type}`);
+      const url = this.userId 
+        ? `/invoices/type/${type}?userId=${this.userId}`
+        : `/invoices/type/${type}`;
+      
+      const data = await this.fetchApi(url);
       
       if (!data.success) {
         throw new Error(data.message || 'Failed to fetch invoices by type');
@@ -155,10 +178,14 @@ class InvoiceService {
     }
   }
 
-  // Get invoice by ID
-  static async getInvoiceById(id: string): Promise<Invoice> {
+  // Get invoice by ID with access control
+  async getInvoiceById(id: string): Promise<Invoice> {
     try {
-      const data = await this.fetchApi(`/invoices/${id}`);
+      const url = this.userId 
+        ? `/invoices/${id}?userId=${this.userId}`
+        : `/invoices/${id}`;
+      
+      const data = await this.fetchApi(url);
       
       if (!data.success) {
         throw new Error(data.message || 'Failed to fetch invoice');
@@ -172,11 +199,18 @@ class InvoiceService {
   }
 
   // Create new invoice
-  static async createInvoice(invoice: Invoice): Promise<Invoice> {
+  async createInvoice(invoice: Invoice): Promise<Invoice> {
     try {
+      // Add user info to invoice if available
+      const invoiceWithUser = {
+        ...invoice,
+        createdBy: this.userRole || 'superadmin',
+        userId: this.userId || undefined
+      };
+      
       const data = await this.fetchApi('/invoices', {
         method: 'POST',
-        body: JSON.stringify(invoice)
+        body: JSON.stringify(invoiceWithUser)
       });
       
       if (!data.success) {
@@ -190,10 +224,14 @@ class InvoiceService {
     }
   }
 
-  // Update invoice
-  static async updateInvoice(id: string, updates: Partial<Invoice>): Promise<Invoice> {
+  
+  async updateInvoice(id: string, updates: Partial<Invoice>): Promise<Invoice> {
     try {
-      const data = await this.fetchApi(`/invoices/${id}`, {
+      const url = this.userId 
+        ? `/invoices/${id}?userId=${this.userId}`
+        : `/invoices/${id}`;
+      
+      const data = await this.fetchApi(url, {
         method: 'PUT',
         body: JSON.stringify(updates)
       });
@@ -210,7 +248,7 @@ class InvoiceService {
   }
 
   // Mark invoice as paid
-  static async markAsPaid(id: string): Promise<Invoice> {
+  async markAsPaid(id: string): Promise<Invoice> {
     try {
       const data = await this.fetchApi(`/invoices/${id}/mark-paid`, {
         method: 'PATCH'
@@ -228,9 +266,13 @@ class InvoiceService {
   }
 
   // Delete invoice
-  static async deleteInvoice(id: string): Promise<void> {
+  async deleteInvoice(id: string): Promise<void> {
     try {
-      const data = await this.fetchApi(`/invoices/${id}`, {
+      const url = this.userId 
+        ? `/invoices/${id}?userId=${this.userId}`
+        : `/invoices/${id}`;
+      
+      const data = await this.fetchApi(url, {
         method: 'DELETE'
       });
       
@@ -244,9 +286,13 @@ class InvoiceService {
   }
 
   // Search invoices
-  static async searchInvoices(query: string): Promise<Invoice[]> {
+  async searchInvoices(query: string): Promise<Invoice[]> {
     try {
-      const data = await this.fetchApi(`/invoices/search/${encodeURIComponent(query)}`);
+      const url = this.userId 
+        ? `/invoices/search/${encodeURIComponent(query)}?userId=${this.userId}`
+        : `/invoices/search/${encodeURIComponent(query)}`;
+      
+      const data = await this.fetchApi(url);
       
       if (!data.success) {
         throw new Error(data.message || 'Failed to search invoices');
@@ -260,9 +306,13 @@ class InvoiceService {
   }
 
   // Get invoice statistics
-  static async getInvoiceStats(): Promise<any> {
+  async getInvoiceStats(): Promise<any> {
     try {
-      const data = await this.fetchApi('/invoices/stats/summary');
+      const url = this.userId 
+        ? `/invoices/stats/summary?userId=${this.userId}`
+        : '/invoices/stats/summary';
+      
+      const data = await this.fetchApi(url);
       
       if (!data.success) {
         throw new Error(data.message || 'Failed to get invoice stats');
@@ -271,6 +321,25 @@ class InvoiceService {
       return data.data;
     } catch (error) {
       console.error('Error getting invoice stats:', error);
+      throw error;
+    }
+  }
+
+  // Share invoice with other users
+  async shareInvoice(invoiceId: string, userIds: string[]): Promise<Invoice> {
+    try {
+      const data = await this.fetchApi(`/invoices/${invoiceId}/share`, {
+        method: 'POST',
+        body: JSON.stringify({ userIds })
+      });
+      
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to share invoice');
+      }
+      
+      return data.data;
+    } catch (error) {
+      console.error('Error sharing invoice:', error);
       throw error;
     }
   }

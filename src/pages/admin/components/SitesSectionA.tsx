@@ -1,4 +1,4 @@
-// app/admin/sites/page.tsx
+// app/admin/sites/page.tsx - SitesSectionA.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -7,19 +7,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { 
   Plus, Eye, Trash2, Edit, MapPin, Building, DollarSign, Square, 
   Search, Users, Filter, BarChart, Calendar, RefreshCw, User, Briefcase,
-  Loader2, AlertCircle
+  Loader2, AlertCircle, ChevronDown, Phone, Mail
 } from "lucide-react";
 import { toast } from "sonner";
 import { FormField } from "./sharedA";
 import { Label } from "@/components/ui/label";
 import { siteService, Site, Client, SiteStats, CreateSiteRequest } from "@/services/SiteService";
-import notificationService from "@/lib/notificationService";
+import { crmService } from "@/services/crmService";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+// Define Services and Roles
 const ServicesList = [
   "Housekeeping",
   "Security",
@@ -36,8 +38,75 @@ const StaffRoles = [
   "Waste Collector"
 ];
 
-const SitesSection = () => {
+// Indian cities for location suggestions
+const indianCities = [
+  "Mumbai", "Delhi", "Bangalore", "Hyderabad", "Chennai", 
+  "Kolkata", "Pune", "Ahmedabad", "Jaipur", "Surat"
+];
+
+// Helper function to get current user role
+const getCurrentUserRole = (): 'superadmin' | 'admin' | 'manager' => {
+  if (typeof window !== 'undefined') {
+    return (localStorage.getItem('userRole') as any) || 'admin';
+  }
+  return 'admin';
+};
+
+// Helper function to get current user ID
+const getCurrentUserId = (): string => {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('userId') || 'admin-user';
+  }
+  return 'admin-user';
+};
+
+// Unified Client Service to fetch from CRM
+class ClientService {
+  async getAllClients(searchTerm?: string): Promise<Client[]> {
+    try {
+      console.log('👥 Fetching clients from CRM...');
+      // Fetch from CRM
+      const crmClients = await crmService.clients.getAll(searchTerm);
+      console.log('👥 CRM clients fetched:', crmClients);
+      
+      // Transform CRM clients to match SiteService Client interface
+      const transformedClients = crmClients.map(client => ({
+        _id: client._id,
+        name: client.name,
+        company: client.company,
+        email: client.email,
+        phone: client.phone,
+        city: client.city || "",
+        state: client.state || "",
+        address: client.address || ""
+      }));
+      
+      return transformedClients;
+    } catch (error) {
+      console.error('❌ Failed to fetch from CRM, falling back to site service:', error);
+      
+      // Fallback to siteService
+      try {
+        if (searchTerm) {
+          return await siteService.searchClients(searchTerm);
+        } else {
+          return await siteService.getAllClients();
+        }
+      } catch (fallbackError) {
+        console.error('❌ Fallback also failed:', fallbackError);
+        return [];
+      }
+    }
+  }
+
+  async searchClients(query: string): Promise<Client[]> {
+    return this.getAllClients(query);
+  }
+}
+
+const SitesSectionA = () => {
   const [sites, setSites] = useState<Site[]>([]);
+  const [filteredSites, setFilteredSites] = useState<Site[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
@@ -60,40 +129,124 @@ const SitesSection = () => {
   const [selectedClient, setSelectedClient] = useState<string>("");
   const [clientSearch, setClientSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<'superadmin' | 'admin' | 'manager'>('admin');
+  const [userId, setUserId] = useState<string>('');
+  const [addedByFilter, setAddedByFilter] = useState<string>("all");
+  
+  // Site form state
+  const [siteForm, setSiteForm] = useState({
+    name: "",
+    clientName: "",
+    clientId: "",
+    location: "",
+    areaSqft: 1000,
+    managerCount: 0,
+    supervisorCount: 0,
+    contractValue: 100000,
+    contractEndDate: "",
+    manager: "",
+    services: [] as string[],
+    staffDeployment: [] as Array<{ role: string; count: number }>
+  });
 
+  // Initialize client service
+  const clientService = new ClientService();
+
+  // Initialize on component mount
   useEffect(() => {
+    const role = getCurrentUserRole();
+    const id = getCurrentUserId();
+    setUserRole(role);
+    setUserId(id);
+    
     fetchSites();
     fetchStats();
     fetchClients();
     
-    // Request notification permission on component mount
-    notificationService.requestNotificationPermission();
+    // Set default contract end date (1 year from now)
+    const nextYear = new Date();
+    nextYear.setFullYear(nextYear.getFullYear() + 1);
+    setSiteForm(prev => ({
+      ...prev,
+      contractEndDate: nextYear.toISOString().split('T')[0]
+    }));
   }, []);
 
+  // Filter sites based on user role and addedByFilter
+  useEffect(() => {
+    if (!sites.length) {
+      setFilteredSites([]);
+      return;
+    }
+
+    let filtered = [...sites];
+    
+    // Apply addedBy filter
+    if (addedByFilter === "me") {
+      filtered = filtered.filter(site => site.addedBy === userId);
+    } else if (addedByFilter === "others") {
+      filtered = filtered.filter(site => site.addedBy !== userId);
+    }
+    
+    // Apply search filter
+    if (searchQuery) {
+      filtered = filtered.filter(site =>
+        site.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        site.clientName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        site.location?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    
+    // Apply status filter
+    if (statusFilter !== "all") {
+      filtered = filtered.filter(site => site.status === statusFilter);
+    }
+    
+    setFilteredSites(filtered);
+  }, [sites, searchQuery, statusFilter, addedByFilter, userId]);
+
+  // Fetch sites with addedBy information
   const fetchSites = async () => {
     try {
       setIsLoading(true);
       setError(null);
       const sitesData = await siteService.getAllSites();
-      setSites(sitesData || []);
+      
+      // Transform sites to include addedBy information
+      const transformedSites = sitesData.map(site => ({
+        ...site,
+        addedBy: site.addedBy || "unknown",
+        addedByRole: site.addedByRole || "admin"
+      }));
+      
+      setSites(transformedSites || []);
+      setFilteredSites(transformedSites || []);
     } catch (error: any) {
       console.error("Error fetching sites:", error);
       setError(error.message || "Failed to load sites");
       toast.error(error.message || "Failed to load sites");
       setSites([]);
+      setFilteredSites([]);
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Fetch all clients from CRM using unified service
   const fetchClients = async () => {
     try {
       setIsLoadingClients(true);
-      const clientsData = await siteService.getAllClients();
+      const clientsData = await clientService.getAllClients();
       setClients(clientsData || []);
       
+      // Auto-select first client if available
       if (clientsData && clientsData.length > 0) {
         setSelectedClient(clientsData[0]._id);
+        setSiteForm(prev => ({
+          ...prev,
+          clientName: clientsData[0].name,
+          clientId: clientsData[0]._id
+        }));
       }
     } catch (error: any) {
       console.error("Error fetching clients:", error);
@@ -103,65 +256,46 @@ const SitesSection = () => {
     }
   };
 
+  // Search clients using unified service
   const searchClients = async (searchTerm: string) => {
     try {
-      const clientsData = await siteService.searchClients(searchTerm);
+      setIsLoadingClients(true);
+      const clientsData = await clientService.searchClients(searchTerm);
       setClients(clientsData || []);
     } catch (error) {
       console.error("Error searching clients:", error);
+      setClients([]);
+    } finally {
+      setIsLoadingClients(false);
     }
   };
 
+  // Fetch site statistics
   const fetchStats = async () => {
     try {
       const statsData = await siteService.getSiteStats();
       setStats(statsData || {
-        totalSites: 0,
-        totalStaff: 0,
-        activeSites: 0,
-        inactiveSites: 0,
-        totalContractValue: 0
+        totalSites: sites.length,
+        totalStaff: sites.reduce((sum, site) => sum + siteService.getTotalStaff(site), 0),
+        activeSites: sites.filter(s => s.status === 'active').length,
+        inactiveSites: sites.filter(s => s.status === 'inactive').length,
+        totalContractValue: sites.reduce((sum, site) => sum + (site.contractValue || 0), 0)
       });
     } catch (error) {
       console.error("Error fetching stats:", error);
+      // Fallback to calculated stats
       const safeSites = sites || [];
-      const statusCounts = {
-        active: safeSites.filter(s => s.status === 'active').length,
-        inactive: safeSites.filter(s => s.status === 'inactive').length
-      };
       setStats({
         totalSites: safeSites.length,
-        totalStaff: safeSites.reduce((sum, site) => {
-          const staff = Array.isArray(site.staffDeployment) 
-            ? site.staffDeployment.reduce((s, d) => s + (d.count || 0), 0)
-            : 0;
-          return sum + staff;
-        }, 0),
-        activeSites: statusCounts.active,
-        inactiveSites: statusCounts.inactive,
+        totalStaff: safeSites.reduce((sum, site) => sum + siteService.getTotalStaff(site), 0),
+        activeSites: safeSites.filter(s => s.status === 'active').length,
+        inactiveSites: safeSites.filter(s => s.status === 'inactive').length,
         totalContractValue: safeSites.reduce((sum, site) => sum + (site.contractValue || 0), 0)
       });
     }
   };
 
-  const searchSites = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const searchResults = await siteService.searchSites({
-        query: searchQuery,
-        status: statusFilter
-      });
-      setSites(searchResults || []);
-    } catch (error: any) {
-      console.error("Error searching sites:", error);
-      setError(error.message || "Failed to search sites");
-      toast.error(error.message || "Failed to search sites");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  // Toggle service selection
   const toggleService = (service: string) => {
     setSelectedServices(prev =>
       prev.includes(service)
@@ -170,6 +304,7 @@ const SitesSection = () => {
     );
   };
 
+  // Update staff deployment count
   const updateStaffCount = (role: string, count: number) => {
     setStaffDeployment(prev => {
       const existing = prev.find(item => item.role === role);
@@ -182,6 +317,7 @@ const SitesSection = () => {
     });
   };
 
+  // Reset form to initial state
   const resetForm = () => {
     setSelectedServices([]);
     setStaffDeployment([]);
@@ -189,19 +325,52 @@ const SitesSection = () => {
     setEditingSiteId(null);
     setSelectedClient("");
     setClientSearch("");
+    setSiteForm({
+      name: "",
+      clientName: "",
+      clientId: "",
+      location: "",
+      areaSqft: 1000,
+      managerCount: 0,
+      supervisorCount: 0,
+      contractValue: 100000,
+      contractEndDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      manager: "",
+      services: [],
+      staffDeployment: []
+    });
   };
 
+  // View site details
   const handleViewSite = (site: Site) => {
     setSelectedSite(site);
     setViewDialogOpen(true);
   };
 
+  // Edit site - populate form with site data
   const handleEditSite = (site: Site) => {
     setEditMode(true);
     setEditingSiteId(site._id);
     setSelectedServices(site.services || []);
     setStaffDeployment(site.staffDeployment || []);
     
+    // Set form values
+    setSiteForm({
+      name: site.name || "",
+      clientName: site.clientName || "",
+      clientId: site.clientId || "",
+      location: site.location || "",
+      areaSqft: site.areaSqft || 1000,
+      managerCount: site.managerCount || 0,
+      supervisorCount: site.supervisorCount || 0,
+      contractValue: site.contractValue || 100000,
+      contractEndDate: site.contractEndDate ? new Date(site.contractEndDate).toISOString().split('T')[0] : "",
+      manager: site.manager || "",
+      services: site.services || [],
+      staffDeployment: site.staffDeployment || []
+    });
+    
+    // Set client if exists in clients list
     if (site.clientId) {
       const client = clients.find(c => c._id === site.clientId);
       if (client) {
@@ -209,74 +378,72 @@ const SitesSection = () => {
       }
     }
     
-    setTimeout(() => {
-      const form = document.getElementById('site-form') as HTMLFormElement;
-      if (form) {
-        const safeAreaSqft = site.areaSqft || 0;
-        const safeContractValue = site.contractValue || 0;
-        const safeContractDate = site.contractEndDate 
-          ? new Date(site.contractEndDate).toISOString().split('T')[0]
-          : new Date().toISOString().split('T')[0];
-        
-        (form.elements.namedItem('site-name') as HTMLInputElement).value = site.name || '';
-        (form.elements.namedItem('location') as HTMLInputElement).value = site.location || '';
-        (form.elements.namedItem('area-sqft') as HTMLInputElement).value = safeAreaSqft.toString();
-        (form.elements.namedItem('contract-value') as HTMLInputElement).value = safeContractValue.toString();
-        (form.elements.namedItem('contract-end-date') as HTMLInputElement).value = safeContractDate;
-        
-        if (!selectedClient) {
-          (form.elements.namedItem('client-name-manual') as HTMLInputElement).value = site.clientName || '';
-        }
-      }
-    }, 0);
-    
     setDialogOpen(true);
   };
 
+  // Handle form input changes
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setSiteForm(prev => ({
+      ...prev,
+      [name]: name.includes('areaSqft') || name.includes('contractValue') || name.includes('managerCount') || name.includes('supervisorCount') 
+        ? Number(value) 
+        : value
+    }));
+  };
+
+  // Add or update site - COMPLETELY REMOVED NOTIFICATION CODE
   const handleAddOrUpdateSite = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
     
-    const formData = new FormData(e.currentTarget);
-
     let clientName = "";
     let clientId = "";
 
     if (selectedClient) {
+      // Use selected client from dropdown
       const client = clients.find(c => c._id === selectedClient);
       if (client) {
         clientName = client.name;
         clientId = client._id;
       }
     } else {
-      clientName = formData.get("client-name-manual") as string;
-    }
-
-    if (!clientName?.trim()) {
-      toast.error("Please select or enter a client name");
+      toast.error("Please select a client from the list");
       return;
     }
 
-    const siteData: CreateSiteRequest = {
-      name: formData.get("site-name") as string,
+    if (!clientName?.trim()) {
+      toast.error("Please select a valid client");
+      return;
+    }
+
+    // Prepare site data with addedBy information
+    const siteData: CreateSiteRequest & { addedBy: string; addedByRole: string } = {
+      name: siteForm.name.trim(),
       clientName: clientName.trim(),
       clientId: clientId || undefined,
-      location: formData.get("location") as string,
-      areaSqft: Number(formData.get("area-sqft")) || 0,
-      contractValue: Number(formData.get("contract-value")) || 0,
-      contractEndDate: formData.get("contract-end-date") as string,
+      location: siteForm.location.trim(),
+      areaSqft: siteForm.areaSqft || 1000,
+      managerCount: siteForm.managerCount || 0,
+      supervisorCount: siteForm.supervisorCount || 0,
+      contractValue: siteForm.contractValue || 100000,
+      contractEndDate: siteForm.contractEndDate || new Date().toISOString().split('T')[0],
+      manager: siteForm.manager || "",
       services: selectedServices,
       staffDeployment: staffDeployment.filter(item => item.count > 0),
-      status: 'active'
+      status: 'active',
+      addedBy: userId,
+      addedByRole: userRole
     };
 
-    // Validate site data
+    // Validate data
     const validationErrors: string[] = [];
     if (!siteData.name?.trim()) validationErrors.push("Site name is required");
     if (!siteData.clientName?.trim()) validationErrors.push("Client name is required");
     if (!siteData.location?.trim()) validationErrors.push("Location is required");
     if (siteData.areaSqft <= 0) validationErrors.push("Area must be greater than 0");
     if (siteData.contractValue <= 0) validationErrors.push("Contract value must be greater than 0");
+    if (!siteData.contractEndDate) validationErrors.push("Contract end date is required");
     
     if (validationErrors.length > 0) {
       validationErrors.forEach(error => toast.error(error));
@@ -285,63 +452,31 @@ const SitesSection = () => {
 
     try {
       if (editMode && editingSiteId) {
-        const existingSite = sites.find(s => s._id === editingSiteId);
+        // Update existing site
         const updatedSite = await siteService.updateSite(editingSiteId, siteData);
         if (updatedSite) {
           toast.success("Site updated successfully!");
-          
-          // Send notification for site update
-          notificationService.notifySiteUpdate(
-            siteData.name,
-            siteData.clientName,
-            'Admin',
-            { 
-              location: siteData.location,
-              areaSqft: siteData.areaSqft,
-              contractValue: siteData.contractValue 
-            }
-          );
-          
-          // Send notification for status change if status changed
-          if (existingSite?.status !== siteData.status) {
-            notificationService.notifySiteStatusChange(
-              siteData.name,
-              siteData.clientName,
-              existingSite?.status || 'unknown',
-              siteData.status,
-              'Admin'
-            );
-          }
         }
       } else {
+        // Create new site
         const newSite = await siteService.createSite(siteData);
         if (newSite) {
           toast.success("Site added successfully!");
-          
-          // Send notification for new site
-          notificationService.notifySiteAddition(
-            siteData.name,
-            siteData.clientName,
-            'Admin',
-            { 
-              location: siteData.location,
-              areaSqft: siteData.areaSqft,
-              contractValue: siteData.contractValue 
-            }
-          );
+          toast.info(`Site added by ${userRole === 'superadmin' ? 'SuperAdmin' : 'Admin'}`);
         }
       }
 
       setDialogOpen(false);
       resetForm();
-      (e.target as HTMLFormElement).reset();
       
+      // Refresh sites list and stats
       await fetchSites();
       await fetchStats();
       
     } catch (error: any) {
       console.error("Error saving site:", error);
       
+      // Check for specific error types
       if (error.message?.includes('Duplicate entry') || error.message?.includes('duplicate')) {
         toast.error("Site name might already exist. Please try a different name.");
       } else if (error.message?.includes('id')) {
@@ -352,29 +487,29 @@ const SitesSection = () => {
     }
   };
 
+  // Delete site - REMOVED NOTIFICATION CODE
   const handleDeleteSite = async (siteId: string) => {
+    const siteToDelete = sites.find(s => s._id === siteId);
+    
+    // Check permissions
+    if (userRole !== 'superadmin' && siteToDelete?.addedBy !== userId) {
+      toast.error("You can only delete sites that you added.");
+      return;
+    }
+    
     if (!confirm("Are you sure you want to delete this site?")) {
       return;
     }
 
     try {
-      const siteToDelete = sites.find(s => s._id === siteId);
       const result = await siteService.deleteSite(siteId);
       if (result?.success) {
         toast.success("Site deleted successfully!");
-        
-        if (siteToDelete) {
-          // Send notification for site deletion
-          notificationService.notifySiteDeletion(
-            siteToDelete.name,
-            siteToDelete.clientName,
-            'Admin'
-          );
-        }
       } else {
         toast.error("Failed to delete site");
       }
       
+      // Refresh sites list and stats
       await fetchSites();
       await fetchStats();
     } catch (error: any) {
@@ -383,26 +518,20 @@ const SitesSection = () => {
     }
   };
 
+  // Toggle site status - REMOVED NOTIFICATION CODE
   const handleToggleStatus = async (siteId: string) => {
+    const site = sites.find(s => s._id === siteId);
+    
+    // Check permissions
+    if (userRole !== 'superadmin' && site?.addedBy !== userId) {
+      toast.error("You can only modify sites that you added.");
+      return;
+    }
+    
     try {
-      const site = sites.find(s => s._id === siteId);
-      if (!site) return;
-      
-      const oldStatus = site.status;
-      const newStatus = site.status === 'active' ? 'inactive' : 'active';
-      
       const updatedSite = await siteService.toggleSiteStatus(siteId);
       if (updatedSite) {
         toast.success("Site status updated!");
-        
-        // Send notification for status change
-        notificationService.notifySiteStatusChange(
-          site.name,
-          site.clientName,
-          oldStatus,
-          newStatus,
-          'Admin'
-        );
       }
       
       await fetchSites();
@@ -413,17 +542,27 @@ const SitesSection = () => {
     }
   };
 
+  // Formatting helpers
   const formatCurrency = (amount: number | undefined): string => {
-    return amount ? `₹${amount.toLocaleString('en-IN')}` : '₹0';
+    if (!amount) return '₹0';
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0
+    }).format(amount);
   };
 
   const formatDate = (dateString: string | undefined): string => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric'
-    });
+    try {
+      return new Date(dateString).toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
+    } catch {
+      return dateString;
+    }
   };
 
   const formatNumber = (num: number | undefined): string => {
@@ -436,6 +575,7 @@ const SitesSection = () => {
     return site.staffDeployment.reduce((sum, deploy) => sum + (deploy.count || 0), 0);
   };
 
+  // Handle dialog close
   const handleDialogClose = (open: boolean) => {
     if (!open) {
       resetForm();
@@ -443,17 +583,15 @@ const SitesSection = () => {
     setDialogOpen(open);
   };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    searchSites();
-  };
-
+  // Reset all filters
   const handleResetFilters = () => {
     setSearchQuery("");
     setStatusFilter("all");
+    setAddedByFilter("all");
     fetchSites();
   };
 
+  // Calculate average area
   const calculateAverageArea = (): string => {
     if (sites.length === 0) return '0';
     const totalArea = sites.reduce((sum, site) => sum + (site.areaSqft || 0), 0);
@@ -461,12 +599,27 @@ const SitesSection = () => {
     return Math.round(average / 1000).toString();
   };
 
+  // Get added by display text
+  const getAddedByDisplay = (site: Site) => {
+    if (!site.addedBy) return "Unknown";
+    
+    if (site.addedBy === userId) {
+      return "Me";
+    } else if (site.addedByRole === 'superadmin') {
+      return "SuperAdmin";
+    } else if (site.addedByRole === 'admin') {
+      return "Admin";
+    }
+    return site.addedBy;
+  };
+
+  // Render clients dropdown with CRM data
   const renderClientsDropdown = () => {
     if (isLoadingClients) {
       return (
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 p-2">
           <Loader2 className="h-4 w-4 animate-spin" />
-          <span className="text-sm">Loading clients...</span>
+          <span className="text-sm">Loading clients from CRM...</span>
         </div>
       );
     }
@@ -475,30 +628,329 @@ const SitesSection = () => {
     
     return (
       <>
-        <select
-          value={selectedClient}
-          onChange={(e) => setSelectedClient(e.target.value)}
-          className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-        >
-          <option value="">Select a client...</option>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search clients in CRM..."
+            value={clientSearch}
+            onChange={(e) => {
+              setClientSearch(e.target.value);
+              if (e.target.value.length >= 2) {
+                searchClients(e.target.value);
+              } else if (e.target.value.length === 0) {
+                fetchClients(); // Reset to all clients
+              }
+            }}
+            className="pl-10 mb-2"
+          />
+        </div>
+        
+        <div className="border rounded-md max-h-60 overflow-y-auto">
           {safeClients.length === 0 ? (
-            <option value="" disabled>
-              No clients found. Add clients in the Clients section.
-            </option>
+            <div className="p-4 text-center text-sm text-muted-foreground">
+              No clients found in CRM. 
+              <br />
+              <Button 
+                variant="link" 
+                size="sm" 
+                className="mt-1"
+                onClick={() => {
+                  toast.info("Please add clients in the CRM section first");
+                }}
+              >
+                Add clients in CRM
+              </Button>
+            </div>
           ) : (
-            safeClients.map((client) => (
-              <option key={client._id} value={client._id}>
-                {client.name} - {client.company} ({client.city})
-              </option>
-            ))
+            <div className="space-y-1 p-1">
+              {safeClients.map((client) => (
+                <div 
+                  key={client._id}
+                  className={`p-2 rounded cursor-pointer hover:bg-gray-100 ${selectedClient === client._id ? 'bg-blue-50 border border-blue-200' : ''}`}
+                  onClick={() => {
+                    setSelectedClient(client._id);
+                    setSiteForm(prev => ({
+                      ...prev,
+                      clientName: client.name,
+                      clientId: client._id
+                    }));
+                  }}
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="font-medium">{client.name}</div>
+                      <div className="text-xs text-muted-foreground">{client.company}</div>
+                    </div>
+                    {selectedClient === client._id && (
+                      <Badge variant="outline" className="text-xs">Selected</Badge>
+                    )}
+                  </div>
+                  <div className="mt-1 flex items-center space-x-2 text-xs text-muted-foreground">
+                    {client.email && <div className="flex items-center"><Mail className="h-3 w-3 mr-1" /> {client.email}</div>}
+                    {client.phone && <div className="flex items-center"><Phone className="h-3 w-3 mr-1" /> {client.phone}</div>}
+                    {client.city && <div className="flex items-center"><MapPin className="h-3 w-3 mr-1" /> {client.city}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
-        </select>
+        </div>
+        
+        {/* Selected client info */}
+        {selectedClient && safeClients.length > 0 && (
+          <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="font-medium">Selected Client:</div>
+                <div className="text-sm">
+                  {(() => {
+                    const client = safeClients.find(c => c._id === selectedClient);
+                    if (!client) return null;
+                    
+                    return (
+                      <>
+                        <div className="font-semibold">{client.name} - {client.company}</div>
+                        <div className="mt-1 space-y-1">
+                          {client.email && <div className="flex items-center"><Mail className="h-3 w-3 mr-1" /> {client.email}</div>}
+                          {client.phone && <div className="flex items-center"><Phone className="h-3 w-3 mr-1" /> {client.phone}</div>}
+                          {client.city && <div className="flex items-center"><MapPin className="h-3 w-3 mr-1" /> {client.city}</div>}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => {
+                  setSelectedClient("");
+                  setSiteForm(prev => ({
+                    ...prev,
+                    clientName: "",
+                    clientId: ""
+                  }));
+                }}
+                className="h-6 text-xs"
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
+        )}
       </>
     );
   };
 
+  // Render site form
+  const renderSiteForm = () => (
+    <form id="site-form" onSubmit={handleAddOrUpdateSite} className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <FormField label="Site Name" id="site-name" required>
+          <Input 
+            id="site-name" 
+            name="name"
+            value={siteForm.name}
+            onChange={handleInputChange}
+            placeholder="Enter site name" 
+            required 
+          />
+        </FormField>
+
+        <FormField label="Location" id="location" required>
+          <div className="space-y-2">
+            <Select 
+              value={siteForm.location} 
+              onValueChange={(value) => setSiteForm(prev => ({ ...prev, location: value }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select location" />
+              </SelectTrigger>
+              <SelectContent>
+                {indianCities.map(city => (
+                  <SelectItem key={city} value={city}>{city}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input 
+              placeholder="Or enter custom location"
+              value={siteForm.location}
+              onChange={(e) => setSiteForm(prev => ({ ...prev, location: e.target.value }))}
+            />
+          </div>
+        </FormField>
+      </div>
+
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">
+          Select Client from CRM <span className="text-muted-foreground">(Required)</span>
+        </Label>
+        <div className="text-xs text-muted-foreground mb-2">
+          Search and select a client from your CRM database
+        </div>
+        {renderClientsDropdown()}
+        
+        {!selectedClient && !isLoadingClients && clients.length > 0 && (
+          <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
+            <p className="text-xs text-yellow-700">
+              Please select a client from the list above
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <FormField label="Area (sqft)" id="area-sqft" required>
+          <Input 
+            id="area-sqft" 
+            name="areaSqft"
+            type="number" 
+            value={siteForm.areaSqft}
+            onChange={handleInputChange}
+            placeholder="Enter area in sqft" 
+            required 
+            min="1"
+          />
+        </FormField>
+        <FormField label="Contract Value (₹)" id="contract-value" required>
+          <Input 
+            id="contract-value" 
+            name="contractValue"
+            type="number" 
+            value={siteForm.contractValue}
+            onChange={handleInputChange}
+            placeholder="Enter contract value" 
+            required 
+            min="0"
+          />
+        </FormField>
+        <FormField label="Manager Count" id="manager-count">
+          <Input 
+            id="manager-count" 
+            name="managerCount"
+            type="number" 
+            value={siteForm.managerCount}
+            onChange={handleInputChange}
+            placeholder="Enter manager count" 
+            min="0"
+          />
+        </FormField>
+        <FormField label="Supervisor Count" id="supervisor-count">
+          <Input 
+            id="supervisor-count" 
+            name="supervisorCount"
+            type="number" 
+            value={siteForm.supervisorCount}
+            onChange={handleInputChange}
+            placeholder="Enter supervisor count" 
+            min="0"
+          />
+        </FormField>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <FormField label="Contract End Date" id="contract-end-date" required>
+          <Input 
+            id="contract-end-date" 
+            name="contractEndDate"
+            type="date" 
+            value={siteForm.contractEndDate}
+            onChange={handleInputChange}
+            required 
+            min={new Date().toISOString().split('T')[0]}
+          />
+        </FormField>
+        <FormField label="Site Manager" id="manager">
+          <Input 
+            id="manager" 
+            name="manager"
+            value={siteForm.manager}
+            onChange={handleInputChange}
+            placeholder="Enter manager name" 
+          />
+        </FormField>
+      </div>
+
+      <div className="border p-4 rounded-md">
+        <p className="font-medium mb-3">Services for this Site</p>
+        <div className="grid grid-cols-2 gap-2">
+          {ServicesList.map((service) => (
+            <div key={service} className="flex items-center space-x-2">
+              <Checkbox
+                id={`service-${service}`}
+                checked={selectedServices.includes(service)}
+                onCheckedChange={() => toggleService(service)}
+              />
+              <label htmlFor={`service-${service}`} className="cursor-pointer text-sm">
+                {service}
+              </label>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="border p-4 rounded-md">
+        <p className="font-medium mb-3">Staff Deployment</p>
+        <div className="space-y-3">
+          {StaffRoles.map((role) => {
+            const deployment = staffDeployment.find(item => item.role === role);
+            const count = deployment?.count || 0;
+            return (
+              <div key={role} className="flex items-center justify-between">
+                <span className="text-sm">{role}</span>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => updateStaffCount(role, count - 1)}
+                    disabled={count <= 0}
+                    className="h-8 w-8"
+                  >
+                    -
+                  </Button>
+                  <Input
+                    type="number"
+                    value={count}
+                    onChange={(e) => updateStaffCount(role, parseInt(e.target.value) || 0)}
+                    className="w-16 text-center h-8"
+                    min="0"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => updateStaffCount(role, count + 1)}
+                    className="h-8 w-8"
+                  >
+                    +
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <Button type="submit" className="flex-1" disabled={!selectedClient}>
+          {editMode ? "Update Site" : "Add Site"}
+        </Button>
+        <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+          Cancel
+        </Button>
+      </div>
+      
+      <div className="text-xs text-muted-foreground pt-2 border-t">
+        <p>Note: This site will be visible to all {userRole === 'superadmin' ? 'admins' : 'superadmins and other admins'}</p>
+        <p>Added by: {userRole === 'superadmin' ? 'SuperAdmin' : 'Admin'}</p>
+      </div>
+    </form>
+  );
+
   return (
     <div className="space-y-6">
+      {/* Error Display */}
       {error && (
         <Card className="border-red-200 bg-red-50">
           <CardContent className="p-4">
@@ -518,6 +970,30 @@ const SitesSection = () => {
         </Card>
       )}
 
+      {/* User Role Indicator */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <Badge variant={userRole === 'superadmin' ? 'default' : 'secondary'}>
+                {userRole === 'superadmin' ? 'SuperAdmin' : 'Admin'}
+              </Badge>
+              <p className="text-sm text-muted-foreground mt-1">
+                {userRole === 'superadmin' 
+                  ? 'You can view all sites and modify any site' 
+                  : 'You can view all sites but only modify sites you added'
+                }
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-medium">Sites Added: {sites.filter(s => s.addedBy === userId).length}</p>
+              <p className="text-sm text-muted-foreground">Total Sites: {sites.length}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-6">
@@ -573,9 +1049,10 @@ const SitesSection = () => {
         </Card>
       </div>
 
+      {/* Search and Filter Bar */}
       <Card>
         <CardContent className="p-6">
-          <form onSubmit={handleSearch} className="space-y-4">
+          <div className="space-y-4">
             <div className="flex flex-col md:flex-row gap-4">
               <div className="flex-1">
                 <div className="relative">
@@ -604,11 +1081,22 @@ const SitesSection = () => {
                 </div>
               </div>
               
+              <div className="w-full md:w-48">
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <select
+                    value={addedByFilter}
+                    onChange={(e) => setAddedByFilter(e.target.value)}
+                    className="w-full h-10 pl-10 pr-4 rounded-md border border-input bg-background text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  >
+                    <option value="all">Added By: All</option>
+                    <option value="me">Added By: Me</option>
+                    <option value="others">Added By: Others</option>
+                  </select>
+                </div>
+              </div>
+              
               <div className="flex gap-2">
-                <Button type="submit">
-                  <Search className="h-4 w-4 mr-2" />
-                  Search
-                </Button>
                 <Button type="button" variant="outline" onClick={handleResetFilters}>
                   Reset
                 </Button>
@@ -618,7 +1106,14 @@ const SitesSection = () => {
                 </Button>
               </div>
             </div>
-          </form>
+            
+            {/* Filter summary */}
+            <div className="text-sm text-muted-foreground">
+              Showing {filteredSites.length} of {sites.length} sites
+              {addedByFilter !== "all" && ` • Filtered by: ${addedByFilter === "me" ? "My Sites" : "Others' Sites"}`}
+              {statusFilter !== "all" && ` • Status: ${statusFilter}`}
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -635,150 +1130,11 @@ const SitesSection = () => {
             <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{editMode ? "Edit Site" : "Add New Site"}</DialogTitle>
+                <DialogDescription>
+                  Select a client from your CRM database
+                </DialogDescription>
               </DialogHeader>
-
-              <form id="site-form" onSubmit={handleAddOrUpdateSite} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField label="Site Name" id="site-name" required>
-                    <Input 
-                      id="site-name" 
-                      name="site-name" 
-                      placeholder="Enter site name" 
-                      required 
-                      defaultValue=""
-                    />
-                  </FormField>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="client-select" className="text-sm font-medium">
-                      Select Client <span className="text-muted-foreground text-xs">(or enter manually below)</span>
-                    </Label>
-                    {renderClientsDropdown()}
-                  </div>
-
-                  <FormField label="Location" id="location" required>
-                    <Input 
-                      id="location" 
-                      name="location" 
-                      placeholder="Enter location" 
-                      required 
-                      defaultValue=""
-                    />
-                  </FormField>
-                  <FormField label="Area (sqft)" id="area-sqft" required>
-                    <Input 
-                      id="area-sqft" 
-                      name="area-sqft" 
-                      type="number" 
-                      placeholder="Enter area in sqft" 
-                      required 
-                      min="1"
-                      defaultValue="1000"
-                    />
-                  </FormField>
-                  <FormField label="Contract Value (₹)" id="contract-value" required>
-                    <Input 
-                      id="contract-value" 
-                      name="contract-value" 
-                      type="number" 
-                      placeholder="Enter contract value" 
-                      required 
-                      min="0"
-                      defaultValue="100000"
-                    />
-                  </FormField>
-                  <FormField label="Contract End Date" id="contract-end-date" required>
-                    <Input 
-                      id="contract-end-date" 
-                      name="contract-end-date" 
-                      type="date" 
-                      required 
-                      min={new Date().toISOString().split('T')[0]}
-                      defaultValue={new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
-                    />
-                  </FormField>
-                </div>
-
-                {!selectedClient && (
-                  <div className="border border-yellow-200 bg-yellow-50 p-4 rounded-md">
-                    <FormField label="Client Name (Manual Entry)" id="client-name-manual" required>
-                      <Input 
-                        id="client-name-manual" 
-                        name="client-name-manual" 
-                        placeholder="Enter client name if not in list above" 
-                        required 
-                        defaultValue=""
-                      />
-                    </FormField>
-                    <p className="text-xs text-yellow-700 mt-1">
-                      Client will be saved as a text field. For better tracking, add the client to the Clients section first.
-                    </p>
-                  </div>
-                )}
-
-                <div className="border p-4 rounded-md">
-                  <p className="font-medium mb-3">Services for this Site</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {ServicesList.map((service) => (
-                      <div key={service} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`service-${service}`}
-                          checked={selectedServices.includes(service)}
-                          onCheckedChange={() => toggleService(service)}
-                        />
-                        <label htmlFor={`service-${service}`} className="cursor-pointer">
-                          {service}
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="border p-4 rounded-md">
-                  <p className="font-medium mb-3">Staff Deployment</p>
-                  <div className="space-y-3">
-                    {StaffRoles.map((role) => {
-                      const deployment = staffDeployment.find(item => item.role === role);
-                      const count = deployment?.count || 0;
-                      return (
-                        <div key={role} className="flex items-center justify-between">
-                          <span>{role}</span>
-                          <div className="flex items-center space-x-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => updateStaffCount(role, count - 1)}
-                              disabled={count <= 0}
-                            >
-                              -
-                            </Button>
-                            <Input
-                              type="number"
-                              value={count}
-                              onChange={(e) => updateStaffCount(role, parseInt(e.target.value) || 0)}
-                              className="w-20 text-center"
-                              min="0"
-                            />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => updateStaffCount(role, count + 1)}
-                            >
-                              +
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <Button type="submit" className="w-full">
-                  {editMode ? "Update Site" : "Add Site"}
-                </Button>
-              </form>
+              {renderSiteForm()}
             </DialogContent>
           </Dialog>
         </CardHeader>
@@ -789,12 +1145,12 @@ const SitesSection = () => {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               <span className="ml-3">Loading sites...</span>
             </div>
-          ) : !sites || sites.length === 0 ? (
+          ) : !filteredSites || filteredSites.length === 0 ? (
             <div className="text-center py-12">
               <Building className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-semibold mb-2">No Sites Found</h3>
               <p className="text-muted-foreground mb-4">
-                {searchQuery || statusFilter !== 'all' 
+                {searchQuery || statusFilter !== 'all' || addedByFilter !== 'all'
                   ? 'Try adjusting your search filters'
                   : 'Get started by adding your first site'
                 }
@@ -816,16 +1172,19 @@ const SitesSection = () => {
                     <TableHead>Staff</TableHead>
                     <TableHead>Area (sqft)</TableHead>
                     <TableHead>Contract Value</TableHead>
+                    <TableHead>Added By</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sites.map((site) => {
+                  {filteredSites.map((site) => {
+                    // Safely get values
                     const safeAreaSqft = site.areaSqft || 0;
                     const safeContractValue = site.contractValue || 0;
                     const safeStaffDeployment = Array.isArray(site.staffDeployment) ? site.staffDeployment : [];
                     const safeServices = Array.isArray(site.services) ? site.services : [];
+                    const canModify = userRole === 'superadmin' || site.addedBy === userId;
                     
                     return (
                       <TableRow key={site._id}>
@@ -883,6 +1242,11 @@ const SitesSection = () => {
                         <TableCell>{formatNumber(safeAreaSqft)}</TableCell>
                         <TableCell>{formatCurrency(safeContractValue)}</TableCell>
                         <TableCell>
+                          <Badge variant={site.addedBy === userId ? "default" : "outline"}>
+                            {getAddedByDisplay(site)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
                           <Badge variant={site.status === "active" ? "default" : "secondary"}>
                             {site.status || 'active'}
                           </Badge>
@@ -896,27 +1260,38 @@ const SitesSection = () => {
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleEditSite(site)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleToggleStatus(site._id)}
-                            >
-                              {site.status === "active" ? "Deactivate" : "Activate"}
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => handleDeleteSite(site._id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            
+                            {canModify && (
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleEditSite(site)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleToggleStatus(site._id)}
+                                >
+                                  {site.status === "active" ? "Deactivate" : "Activate"}
+                                </Button>
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => handleDeleteSite(site._id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </>
+                            )}
+                            
+                            {!canModify && (
+                              <Badge variant="outline" className="text-xs">
+                                Read Only
+                              </Badge>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -929,6 +1304,7 @@ const SitesSection = () => {
         </CardContent>
       </Card>
       
+      {/* View Site Dialog */}
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -937,6 +1313,7 @@ const SitesSection = () => {
           
           {selectedSite && (
             <div className="space-y-6">
+              {/* Site Info Section */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <div>
@@ -992,6 +1369,13 @@ const SitesSection = () => {
                   </div>
                   
                   <div>
+                    <h3 className="text-sm font-medium text-muted-foreground">Added By</h3>
+                    <Badge variant={selectedSite.addedBy === userId ? "default" : "outline"}>
+                      {getAddedByDisplay(selectedSite)}
+                    </Badge>
+                  </div>
+                  
+                  <div>
                     <h3 className="text-sm font-medium text-muted-foreground">Status</h3>
                     <Badge variant={selectedSite.status === "active" ? "default" : "secondary"}>
                       {selectedSite.status?.toUpperCase() || 'ACTIVE'}
@@ -1005,6 +1389,34 @@ const SitesSection = () => {
                 </div>
               </div>
               
+              {/* Manager and Supervisor Info */}
+              {(selectedSite.managerCount > 0 || selectedSite.supervisorCount > 0 || selectedSite.manager) && (
+                <div className="border rounded-lg p-4">
+                  <h3 className="text-sm font-medium text-muted-foreground mb-3">Management</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {selectedSite.manager && (
+                      <div>
+                        <h4 className="text-xs text-muted-foreground">Site Manager</h4>
+                        <p className="font-medium">{selectedSite.manager}</p>
+                      </div>
+                    )}
+                    {selectedSite.managerCount > 0 && (
+                      <div>
+                        <h4 className="text-xs text-muted-foreground">Manager Limit</h4>
+                        <p className="font-medium">{selectedSite.managerCount}</p>
+                      </div>
+                    )}
+                    {selectedSite.supervisorCount > 0 && (
+                      <div>
+                        <h4 className="text-xs text-muted-foreground">Supervisor Limit</h4>
+                        <p className="font-medium">{selectedSite.supervisorCount}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Services Section */}
               <div className="border rounded-lg p-4">
                 <h3 className="text-sm font-medium text-muted-foreground mb-3">Services</h3>
                 <div className="flex flex-wrap gap-2">
@@ -1020,6 +1432,7 @@ const SitesSection = () => {
                 </div>
               </div>
               
+              {/* Staff Deployment Section */}
               <div className="border rounded-lg p-4">
                 <h3 className="text-sm font-medium text-muted-foreground mb-3">Staff Deployment</h3>
                 <div className="space-y-3">
@@ -1047,33 +1460,42 @@ const SitesSection = () => {
                 </div>
               </div>
               
+              {/* Action Buttons */}
               <div className="flex justify-end gap-2 pt-4 border-t">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setViewDialogOpen(false);
-                    handleEditSite(selectedSite);
-                  }}
-                >
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit Site
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => handleToggleStatus(selectedSite._id)}
-                >
-                  {selectedSite.status === "active" ? "Deactivate" : "Activate"}
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={() => {
-                    setViewDialogOpen(false);
-                    handleDeleteSite(selectedSite._id);
-                  }}
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete Site
-                </Button>
+                {(userRole === 'superadmin' || selectedSite.addedBy === userId) ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setViewDialogOpen(false);
+                        handleEditSite(selectedSite);
+                      }}
+                    >
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit Site
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleToggleStatus(selectedSite._id)}
+                    >
+                      {selectedSite.status === "active" ? "Deactivate" : "Activate"}
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => {
+                        setViewDialogOpen(false);
+                        handleDeleteSite(selectedSite._id);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete Site
+                    </Button>
+                  </>
+                ) : (
+                  <Badge variant="outline">
+                    You can only view this site
+                  </Badge>
+                )}
               </div>
             </div>
           )}
@@ -1083,4 +1505,4 @@ const SitesSection = () => {
   );
 };
 
-export default SitesSection;
+export default SitesSectionA;

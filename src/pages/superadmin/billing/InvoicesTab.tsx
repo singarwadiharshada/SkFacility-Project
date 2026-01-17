@@ -20,86 +20,28 @@ import {
   Trash2,
   Loader2,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  Share2
 } from "lucide-react";
-import { getServiceIcon, getStatusColor, formatCurrency } from "../Billing";
+import { Invoice } from "../Billing";
 import { PerformInvoiceForm } from "./PerformInvoiceForm";
 import { TaxInvoiceForm } from "./TaxInvoiceForm";
 import jsPDF from "jspdf";
 import InvoiceService from "../../../services/InvoiceService";
-
-// Define a unified Invoice type with all properties needed
-interface InvoiceItem {
-  description: string;
-  quantity: number;
-  rate: number;
-  amount: number;
-  unit?: string;
-}
-
-interface Invoice {
-  id: string;
-  client: string;
-  clientEmail: string;
-  amount: number;
-  date: string;
-  dueDate?: string;
-  status: string;
-  items: InvoiceItem[];
-  tax: number;
-  serviceType?: string;
-  site?: string;
-  
-  // Required by invoiceService
-  invoiceNumber: string;
-  
-  // Common properties for both invoice types
-  invoiceType?: "perform" | "tax";
-  voucherNo?: string;
-  consignee?: string;
-  consigneeAddress?: string;
-  consigneeGSTIN?: string;
-  consigneeState?: string;
-  consigneeStateCode?: string;
-  buyer?: string;
-  buyerAddress?: string;
-  buyerGSTIN?: string;
-  buyerState?: string;
-  buyerStateCode?: string;
-  buyerRef?: string;
-  dispatchedThrough?: string;
-  paymentTerms?: string;
-  notes?: string;
-  destination?: string;
-  deliveryTerms?: string;
-  amountInWords?: string;
-  
-  // Company details
-  companyName?: string;
-  companyAddress?: string;
-  companyGSTIN?: string;
-  companyState?: string;
-  companyStateCode?: string;
-  email?: string;
-  accountHolder?: string;
-  bankName?: string;
-  accountNumber?: string;
-  branchAndIFSC?: string;
-  
-  // Tax invoice specific
-  managementFeesPercent?: number;
-  managementFeesAmount?: number;
-  roundUp?: number;
-}
+import { formatCurrency, formatDate, convertToIndianWords } from "../../../utils/formatters";
 
 interface InvoicesTabProps {
   onInvoiceCreate?: (invoice: Invoice) => void;
   onMarkAsPaid?: (invoiceId: string) => void;
+  userId?: string;
+  userRole?: string;
 }
 
 const InvoicesTab: React.FC<InvoicesTabProps> = ({
   onInvoiceCreate,
-  onMarkAsPaid
+  onMarkAsPaid,
+  userId,
+  userRole = 'superadmin'
 }) => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,6 +49,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
   const [performInvoiceDialogOpen, setPerformInvoiceDialogOpen] = useState(false);
   const [taxInvoiceDialogOpen, setTaxInvoiceDialogOpen] = useState(false);
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "card">("table");
   const [searchTerm, setSearchTerm] = useState("");
@@ -114,39 +57,23 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
   const [itemsPerPage] = useState(10);
   const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
   const [markingAsPaidId, setMarkingAsPaidId] = useState<string | null>(null);
+  const [sharingInvoiceId, setSharingInvoiceId] = useState<string | null>(null);
+  const [shareUserId, setShareUserId] = useState("");
+
+  // Initialize InvoiceService with user info
+  const invoiceService = new InvoiceService(userId, userRole);
 
   // Fetch invoices on component mount
   useEffect(() => {
     fetchInvoices();
-  }, []);
-
-  // Format date to DD-MMM-YY
-  const formatDate = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) {
-        // If it's already in DD-MMM-YY format, return as is
-        if (dateString.match(/\d{2}-[A-Za-z]{3}-\d{2}/)) {
-          return dateString;
-        }
-        return dateString;
-      }
-      const day = date.getDate().toString().padStart(2, '0');
-      const month = date.toLocaleString('en-US', { month: 'short' });
-      const year = date.getFullYear().toString().slice(-2);
-      return `${day}-${month}-${year}`;
-    } catch (error) {
-      return dateString;
-    }
-  };
+  }, [userId, userRole]);
 
   const fetchInvoices = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await InvoiceService.getAllInvoices();
-      // Cast to our unified Invoice type
-      setInvoices(data as Invoice[]);
+      const data = await invoiceService.getAllInvoices();
+      setInvoices(data);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch invoices');
       console.error('Error fetching invoices:', err);
@@ -158,8 +85,8 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
   // Handle creating a new invoice
   const handleCreateInvoice = async (invoice: Invoice) => {
     try {
-      const newInvoice = await InvoiceService.createInvoice(invoice);
-      setInvoices(prev => [newInvoice as Invoice, ...prev]);
+      const newInvoice = await invoiceService.createInvoice(invoice);
+      setInvoices(prev => [newInvoice, ...prev]);
       
       // Call the parent callback if provided
       if (onInvoiceCreate) {
@@ -180,7 +107,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
   const handleMarkAsPaid = async (invoiceId: string) => {
     try {
       setMarkingAsPaidId(invoiceId);
-      const updatedInvoice = await InvoiceService.markAsPaid(invoiceId);
+      const updatedInvoice = await invoiceService.markAsPaid(invoiceId);
       
       // Update local state
       setInvoices(prev => 
@@ -217,7 +144,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
 
     try {
       setDeletingInvoiceId(invoiceId);
-      await InvoiceService.deleteInvoice(invoiceId);
+      await invoiceService.deleteInvoice(invoiceId);
       setInvoices(prev => prev.filter(invoice => invoice.id !== invoiceId));
       
       // Close preview if open and showing the deleted invoice
@@ -235,77 +162,38 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
     }
   };
 
-  // Number to words converter
-  const convertToIndianWords = (num: number) => {
-    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
-    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-    const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-    
-    function convert_hundreds(num: number) {
-      let result = '';
-      if (num >= 100) {
-        result += ones[Math.floor(num / 100)] + ' Hundred ';
-        num %= 100;
-      }
-      if (num >= 20) {
-        result += tens[Math.floor(num / 10)] + ' ';
-        num %= 10;
-      }
-      if (num >= 10) {
-        result += teens[num - 10] + ' ';
-        return result;
-      }
-      if (num > 0) {
-        result += ones[num] + ' ';
-      }
-      return result;
+  // Handle sharing an invoice with admin
+  const handleShareInvoice = async (invoiceId: string, shareWithUserId: string) => {
+    if (!shareWithUserId.trim()) {
+      alert('Please enter a user ID to share with');
+      return;
     }
-    
-    function convert_number(num: number) {
-      if (num === 0) return 'Zero';
+
+    try {
+      setSharingInvoiceId(invoiceId);
+      await invoiceService.shareInvoice(invoiceId, [shareWithUserId]);
       
-      let result = '';
-      const crore = Math.floor(num / 10000000);
-      if (crore > 0) {
-        result += convert_hundreds(crore) + 'Crore ';
-        num %= 10000000;
-      }
+      // Update local state
+      setInvoices(prev => 
+        prev.map(invoice => 
+          invoice.id === invoiceId 
+            ? { 
+                ...invoice, 
+                sharedWith: [...(invoice.sharedWith || []), shareWithUserId] 
+              } 
+            : invoice
+        )
+      );
       
-      const lakh = Math.floor(num / 100000);
-      if (lakh > 0) {
-        result += convert_hundreds(lakh) + 'Lakh ';
-        num %= 100000;
-      }
-      
-      const thousand = Math.floor(num / 1000);
-      if (thousand > 0) {
-        result += convert_hundreds(thousand) + 'Thousand ';
-        num %= 1000;
-      }
-      
-      const hundred = Math.floor(num / 100);
-      if (hundred > 0) {
-        result += convert_hundreds(hundred) + 'Hundred ';
-        num %= 100;
-      }
-      
-      if (num > 0) {
-        result += convert_hundreds(num);
-      }
-      
-      return result.trim();
+      setShareDialogOpen(false);
+      setShareUserId("");
+      alert('Invoice shared successfully!');
+    } catch (err: any) {
+      alert(`Failed to share invoice: ${err.message}`);
+      console.error('Error sharing invoice:', err);
+    } finally {
+      setSharingInvoiceId(null);
     }
-    
-    const rupees = Math.floor(num);
-    const paise = Math.round((num - rupees) * 100);
-    
-    let result = convert_number(rupees) + ' Rupees';
-    if (paise > 0) {
-      result += ' and ' + convert_number(paise) + ' Paise';
-    }
-    result += ' Only';
-    
-    return `INR ${result.toUpperCase()}`;
   };
 
   // Generate Sales Order PDF for existing invoices
@@ -340,7 +228,6 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       };
 
       // ==================== HEADER SECTION ====================
-      // Sales Order Title
       addText("SALES ORDER", pageWidth / 2, yPos, { 
         size: 16, 
         style: 'bold', 
@@ -348,7 +235,6 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       });
       yPos += 8;
       
-      // Company Name
       addText(invoice.companyName || "S K Enterprises", pageWidth / 2, yPos, { 
         size: 12, 
         style: 'bold', 
@@ -356,7 +242,6 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       });
       yPos += 6;
       
-      // Company Address
       const companyAddress = invoice.companyAddress || "Office No 505, 5th Floor, Global Square\nDeccan College Road, Yerwada, Pune";
       const companyAddressLines = companyAddress.split('\n');
       companyAddressLines.forEach((line: string) => {
@@ -369,14 +254,12 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       
       yPos += 2;
       
-      // GSTIN
       addText(`GSTIN/UIN: ${invoice.companyGSTIN || "27ALKPK7734N1ZE"}`, pageWidth / 2, yPos, { 
         size: 9, 
         align: 'center' 
       });
       yPos += 4;
       
-      // State and Code
       addText(`State Name : ${invoice.companyState || "Maharashtra"}, Code : ${invoice.companyStateCode || "27"}`, 
         pageWidth / 2, yPos, { 
           size: 9, 
@@ -384,8 +267,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
         });
       yPos += 4;
       
-      // Email
-      addText(`E-Mail : ${invoice.email || "s.k.enterprises7583@gmail.com"}`, 
+      addText(`E-Mail : ${invoice.companyEmail || "s.k.enterprises7583@gmail.com"}`, 
         pageWidth / 2, yPos, { 
           size: 9, 
           align: 'center' 
@@ -393,14 +275,12 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       yPos += 10;
 
       // ==================== CONSIGNEE SECTION ====================
-      // Section Title
       addText("Consignee (Ship to)", leftMargin, yPos, { 
         size: 10, 
         style: 'bold' 
       });
       yPos += 5;
       
-      // Consignee Name
       const consigneeName = invoice.consignee || invoice.client || "";
       addText(consigneeName, leftMargin, yPos, { 
         size: 10, 
@@ -408,7 +288,6 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       });
       yPos += 4;
       
-      // Consignee Address
       if (invoice.consigneeAddress) {
         const consigneeAddressLines = invoice.consigneeAddress.split('\n');
         consigneeAddressLines.forEach((line: string) => {
@@ -417,7 +296,6 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
         });
       }
       
-      // Consignee GSTIN
       if (invoice.consigneeGSTIN) {
         addText(`GSTIN/UIN : ${invoice.consigneeGSTIN}`, leftMargin, yPos, { size: 9 });
         yPos += 4;
@@ -432,14 +310,12 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       yPos += 8;
 
       // ==================== BUYER SECTION ====================
-      // Section Title
       addText("Buyer (Bill to)", leftMargin, yPos, { 
         size: 10, 
         style: 'bold' 
       });
       yPos += 5;
       
-      // Buyer Name
       const buyerName = invoice.buyer || invoice.client || "";
       addText(buyerName, leftMargin, yPos, { 
         size: 10, 
@@ -447,7 +323,6 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       });
       yPos += 4;
       
-      // Buyer Address
       if (invoice.buyerAddress) {
         const buyerAddressLines = invoice.buyerAddress.split('\n');
         buyerAddressLines.forEach((line: string) => {
@@ -456,7 +331,6 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
         });
       }
       
-      // Buyer GSTIN
       if (invoice.buyerGSTIN) {
         addText(`GSTIN/UIN : ${invoice.buyerGSTIN}`, leftMargin, yPos, { size: 9 });
         yPos += 4;
@@ -471,12 +345,10 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       yPos += 8;
 
       // ==================== ORDER DETAILS TABLE ====================
-      // Create a 2-column layout for order details
       const orderDetailsY = yPos;
       const col1X = leftMargin;
       const col2X = leftMargin + contentWidth * 0.6;
       
-      // Column 1 - Left side
       addText("Voucher No.", col1X, orderDetailsY, { size: 9 });
       addText(invoice.voucherNo || invoice.id || "", col1X + 40, orderDetailsY, { 
         size: 9, 
@@ -492,7 +364,6 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       addText("Dated", col1X, orderDetailsY + 18, { size: 9 });
       addText(invoice.date || "", col1X + 40, orderDetailsY + 18, { size: 9 });
       
-      // Column 2 - Right side
       addText("Mode/Terms of Payment", col2X, orderDetailsY, { size: 9 });
       addText(invoice.paymentTerms || "", col2X + 50, orderDetailsY, { size: 9 });
       
@@ -508,7 +379,6 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       yPos = orderDetailsY + 24;
 
       // ==================== ITEMS TABLE HEADER ====================
-      // Table Headers - Fixed aligned positions
       const columnPositions = {
         slNo: leftMargin + 5,
         description: leftMargin + 20,
@@ -517,11 +387,9 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
         amount: leftMargin + 180
       };
 
-      // Draw header line
       drawLine(yPos);
       yPos += 8;
 
-      // Table headers - All aligned properly
       addText("Sl No.", columnPositions.slNo, yPos, { size: 9, style: 'bold', align: 'center' });
       addText("Description of Goods", columnPositions.description, yPos, { size: 9, style: 'bold', align: 'left' });
       addText("Quantity", columnPositions.quantity, yPos, { size: 9, style: 'bold', align: 'right' });
@@ -534,14 +402,12 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
 
       // ==================== ITEMS TABLE ROWS ====================
       invoice.items.forEach((item, index) => {
-        // Check for page break
         if (yPos > pageHeight - 50) {
           doc.addPage();
           yPos = 20;
           addText("Continued...", pageWidth / 2, yPos, { size: 10, align: 'center' });
           yPos += 15;
           
-          // Redraw table header on new page
           drawLine(yPos - 8);
           addText("Sl No.", columnPositions.slNo, yPos, { size: 9, style: 'bold', align: 'center' });
           addText("Description of Goods", columnPositions.description, yPos, { size: 9, style: 'bold', align: 'left' });
@@ -553,44 +419,39 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
           yPos += 6;
         }
 
-        // Serial Number - Centered
         addText(`${index + 1}`, columnPositions.slNo, yPos, { size: 9, align: 'center' });
         
-        // Description - Left aligned
         let description = item.description || "";
-        let unit = item.unit || "No";
+        let unit = "No";
         
-        // Display description without unit in description column
+        if ((item as any).unit) {
+          unit = (item as any).unit;
+        } else {
+          const unitMatch = description.match(/\s(\w+)$/);
+          if (unitMatch) {
+            unit = unitMatch[1];
+            description = description.replace(/\s\w+$/, '');
+          }
+        }
+        
         addText(description, columnPositions.description, yPos, { size: 9, align: 'left' });
-        
-        // Quantity with unit in the same cell but on different lines
-        // First line: Quantity value
         addText(`${item.quantity}`, columnPositions.quantity, yPos, { size: 9, align: 'right' });
-        
-        // Rate per - Right aligned
         addText(formatCurrency(item.rate), columnPositions.rate, yPos, { size: 9, align: 'right' });
-        
-        // Amount - Right aligned
         addText(formatCurrency(item.amount), columnPositions.amount, yPos, { size: 9, align: 'right' });
         
-        // Add unit on the next line under quantity column
         yPos += 4;
         addText(unit, columnPositions.quantity, yPos, { size: 8, align: 'right', style: 'italic' });
         
         yPos += 6;
       });
 
-      // Draw line after items
       drawLine(yPos);
       yPos += 8;
 
       // ==================== TOTAL SECTION ====================
       const subtotal = invoice.items.reduce((sum, item) => sum + item.amount, 0);
       
-      // Total label
       addText("Total", columnPositions.description, yPos, { size: 10, style: 'bold', align: 'left' });
-      
-      // Total amount
       addText(formatCurrency(invoice.amount), columnPositions.amount, yPos, { 
         size: 10, 
         style: 'bold',
@@ -624,14 +485,12 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       yPos += 8;
 
       // ==================== BANK DETAILS ====================
-      // Section title
       addText("Company's Bank Details", leftMargin, yPos, { 
         size: 10, 
         style: 'bold' 
       });
       yPos += 6;
       
-      // Bank details
       addText(`A/c Holder's Name : ${invoice.accountHolder || "S K ENTEPRISES"}`, leftMargin, yPos, { size: 9 });
       yPos += 4;
       
@@ -645,11 +504,9 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       yPos += 12;
 
       // ==================== SIGNATURE SECTION ====================
-      // Draw line for signature
       const signatureY = pageHeight - 40;
       drawLine(signatureY - 10);
       
-      // Company signature
       addText("for S K Enterprises", leftMargin + contentWidth * 0.25, signatureY, { 
         size: 9, 
         align: 'center' 
@@ -839,6 +696,17 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
   const paginatedPerformInvoices = getPaginatedData(filteredPerformInvoices);
   const paginatedTaxInvoices = getPaginatedData(filteredTaxInvoices);
 
+  // Get status color
+ // In InvoicesTab components (both superadmin and admin)
+const getStatusColor = (status: string) => {
+  switch (status.toLowerCase()) {
+    case 'paid': return 'default';     // Changed from 'success'
+    case 'pending': return 'secondary'; // Changed from 'warning'
+    case 'overdue': return 'destructive';
+    default: return 'secondary';
+  }
+};
+
   // Render tables based on view mode
   const renderTable = (invoicesToShow: Invoice[]) => {
     if (viewMode === "table") {
@@ -855,7 +723,8 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                   <TableHead className="min-w-[100px]">Status</TableHead>
                   <TableHead className="min-w-[100px]">Date</TableHead>
                   <TableHead className="min-w-[100px]">Type</TableHead>
-                  <TableHead className="min-w-[150px]">Actions</TableHead>
+                  <TableHead className="min-w-[100px]">Created By</TableHead>
+                  <TableHead className="min-w-[200px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -882,6 +751,11 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                     <TableCell>
                       <Badge variant={invoice.invoiceType === "tax" ? "secondary" : "outline"}>
                         {invoice.invoiceType === "tax" ? "Tax" : "Sales"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={invoice.createdBy === 'superadmin' ? 'default' : 'outline'}>
+                        {invoice.createdBy || 'superadmin'}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -920,6 +794,20 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                             ) : (
                               "Mark Paid"
                             )}
+                          </Button>
+                        )}
+                        {userRole === 'superadmin' && (
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => {
+                              setSelectedInvoice(invoice);
+                              setShareDialogOpen(true);
+                            }}
+                            className="h-8 px-2"
+                            disabled={sharingInvoiceId === invoice.id}
+                          >
+                            <Share2 className="h-4 w-4" />
                           </Button>
                         )}
                         <Button 
@@ -997,6 +885,9 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                       <Badge variant={invoice.invoiceType === "tax" ? "secondary" : "outline"} className="text-xs">
                         {invoice.invoiceType === "tax" ? "Tax" : "Sales"}
                       </Badge>
+                      <Badge variant="outline" className="text-xs">
+                        {invoice.createdBy || 'superadmin'}
+                      </Badge>
                     </div>
                   </div>
                 </CardHeader>
@@ -1051,6 +942,20 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                         ) : (
                           "Mark Paid"
                         )}
+                      </Button>
+                    )}
+                    {userRole === 'superadmin' && (
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        className="flex-1 h-8"
+                        onClick={() => {
+                          setSelectedInvoice(invoice);
+                          setShareDialogOpen(true);
+                        }}
+                        disabled={sharingInvoiceId === invoice.id}
+                      >
+                        <Share2 className="h-4 w-4" />
                       </Button>
                     )}
                     <Button 
@@ -1296,6 +1201,8 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
         onClose={() => setPerformInvoiceDialogOpen(false)}
         onInvoiceCreate={handleCreateInvoice}
         performInvoicesCount={performInvoices.length}
+        userId={userId}
+        userRole={userRole}
       />
 
       <TaxInvoiceForm
@@ -1303,6 +1210,8 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
         onClose={() => setTaxInvoiceDialogOpen(false)}
         onInvoiceCreate={handleCreateInvoice}
         taxInvoicesCount={taxInvoices.length}
+        userId={userId}
+        userRole={userRole}
       />
 
       {/* Invoice Preview Dialog */}
@@ -1322,6 +1231,10 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                   {selectedInvoice.voucherNo && selectedInvoice.voucherNo !== selectedInvoice.id && (
                     <p className="text-muted-foreground">Voucher: {selectedInvoice.voucherNo}</p>
                   )}
+                  <p className="text-sm text-muted-foreground">
+                    Created by: {selectedInvoice.createdBy || 'superadmin'}
+                    {selectedInvoice.userId && ` (${selectedInvoice.userId})`}
+                  </p>
                 </div>
                 <Badge variant={getStatusColor(selectedInvoice.status)}>
                   {selectedInvoice.status.toUpperCase()}
@@ -1491,6 +1404,65 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
                     <>
                       <Trash2 className="mr-2 h-4 w-4" />
                       Delete Invoice
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Share Invoice Dialog */}
+      <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Share Invoice</DialogTitle>
+          </DialogHeader>
+          {selectedInvoice && (
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium mb-2">Share Invoice: {selectedInvoice.id}</p>
+                <p className="text-sm text-muted-foreground">
+                  Enter the Admin User ID to share this invoice with:
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <label htmlFor="userId" className="text-sm font-medium">
+                  Admin User ID
+                </label>
+                <Input
+                  id="userId"
+                  placeholder="Enter admin user ID"
+                  value={shareUserId}
+                  onChange={(e) => setShareUserId(e.target.value)}
+                />
+              </div>
+              
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShareDialogOpen(false);
+                    setShareUserId("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => handleShareInvoice(selectedInvoice.id, shareUserId)}
+                  disabled={!shareUserId.trim() || sharingInvoiceId === selectedInvoice.id}
+                >
+                  {sharingInvoiceId === selectedInvoice.id ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Sharing...
+                    </>
+                  ) : (
+                    <>
+                      <Share2 className="mr-2 h-4 w-4" />
+                      Share Invoice
                     </>
                   )}
                 </Button>

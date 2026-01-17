@@ -25,8 +25,8 @@ router.get('/test', (req, res) => {
       'PATCH /api/alerts/:id/status',
       'DELETE /api/alerts/:id',
       'GET /api/alerts/stats/overview'
-    ]
-  });
+    
+ ] });
 });
 
 // CRUD routes

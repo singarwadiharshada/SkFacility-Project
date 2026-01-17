@@ -14,7 +14,7 @@ import PriceCalculatorA from "./components/PriceCalculatorA";
 import { initialTasks, initialSites, initialRosterA, serviceTypes, initialAlertsA } from "./datas";
 
 const Operations = () => {
-  const [activeTab, setActiveTab] = useState("tasks");
+  const [activeTab, setActiveTab] = useState("sites"); // Changed default to "sites"
   const [tasks] = useState(initialTasks);
 
   return (
@@ -29,8 +29,8 @@ const Operations = () => {
         <StatsCards tasks={tasks} sites={initialSites} />
         
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-6">
-            <TabsTrigger value="tasks">Tasks</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5">
+            {/* Removed Tasks tab */}
             <TabsTrigger value="sites">Sites</TabsTrigger>
             <TabsTrigger value="roster">Roster</TabsTrigger>
             <TabsTrigger value="services">Services</TabsTrigger>
@@ -41,9 +41,7 @@ const Operations = () => {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="tasks">
-            <TasksSectionA />
-          </TabsContent>
+          {/* Removed Tasks TabsContent */}
 
           <TabsContent value="sites">
             <SitesSectionA />

@@ -1,128 +1,65 @@
-/**
- * Format currency in Indian Rupees (₹)
- */
+// Format currency
 export const formatCurrency = (amount: number): string => {
-  if (isNaN(amount)) {
-    return '₹0.00';
-  }
-  
-  return `₹${amount.toLocaleString('en-IN', {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
-  })}`;
+  }).format(amount).replace('₹', '₹ ');
 };
 
-/**
- * Format date to DD-MMM-YY format
- */
-export const formatDate = (dateString: string | Date): string => {
+// Format date to DD-MMM-YY
+export const formatDate = (dateString: string): string => {
   try {
-    let date: Date;
-    
-    if (dateString instanceof Date) {
-      date = dateString;
-    } else {
-      date = new Date(dateString);
-    }
-    
+    const date = new Date(dateString);
     if (isNaN(date.getTime())) {
-      // If it's already in DD-MMM-YY format, return as is
-      if (typeof dateString === 'string' && dateString.match(/\d{2}-[A-Za-z]{3}-\d{2}/)) {
+      if (dateString.match(/\d{2}-[A-Za-z]{3}-\d{2}/)) {
         return dateString;
       }
-      return dateString.toString();
+      return dateString;
     }
-    
     const day = date.getDate().toString().padStart(2, '0');
     const month = date.toLocaleString('en-US', { month: 'short' });
     const year = date.getFullYear().toString().slice(-2);
     return `${day}-${month}-${year}`;
   } catch (error) {
-    console.error('Error formatting date:', error);
-    return typeof dateString === 'string' ? dateString : 'Invalid Date';
+    return dateString;
   }
 };
 
-/**
- * Format date for input fields (YYYY-MM-DD)
- */
-export const formatDateForInput = (dateString: string | Date): string => {
+// Calculate due date
+export const calculateDueDate = (dateString: string, daysToAdd: number = 30): string => {
   try {
-    let date: Date;
-    
-    if (dateString instanceof Date) {
-      date = dateString;
-    } else {
-      date = new Date(dateString);
+    const dateParts = dateString.split('-');
+    if (dateParts.length === 3) {
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const day = parseInt(dateParts[0]);
+      const monthIndex = months.indexOf(dateParts[1]);
+      const year = parseInt('20' + dateParts[2]);
+      
+      if (!isNaN(day) && monthIndex >= 0 && !isNaN(year)) {
+        const invoiceDate = new Date(year, monthIndex, day);
+        invoiceDate.setDate(invoiceDate.getDate() + daysToAdd);
+        
+        const dueDay = invoiceDate.getDate().toString().padStart(2, '0');
+        const dueMonth = months[invoiceDate.getMonth()];
+        const dueYear = invoiceDate.getFullYear().toString().slice(-2);
+        return `${dueDay}-${dueMonth}-${dueYear}`;
+      }
     }
-    
-    if (isNaN(date.getTime())) {
-      return '';
-    }
-    
-    const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    
-    return `${year}-${month}-${day}`;
+    return dateString;
   } catch (error) {
-    console.error('Error formatting date for input:', error);
-    return '';
+    return dateString;
   }
 };
 
-/**
- * Get status color
- */
-export const getStatusColor = (status: string) => {
-  const statusLower = status.toLowerCase();
-  
-  switch (statusLower) {
-    case 'paid':
-      return 'success';
-    case 'pending':
-      return 'warning';
-    case 'overdue':
-      return 'destructive';
-    default:
-      return 'default';
-  }
-};
-
-/**
- * Calculate due date from invoice date
- */
-export const calculateDueDate = (invoiceDate: string | Date, days: number = 30): string => {
-  try {
-    let date: Date;
-    
-    if (invoiceDate instanceof Date) {
-      date = new Date(invoiceDate);
-    } else {
-      date = new Date(invoiceDate);
-    }
-    
-    if (isNaN(date.getTime())) {
-      return 'Invalid Date';
-    }
-    
-    date.setDate(date.getDate() + days);
-    return formatDate(date);
-  } catch (error) {
-    console.error('Error calculating due date:', error);
-    return 'Error';
-  }
-};
-
-/**
- * Number to words converter for Indian numbering system
- */
+// Number to words converter
 export const convertToIndianWords = (num: number): string => {
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
   const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
   const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
   
-  function convert_hundreds(num: number) {
+  function convert_hundreds(num: number): string {
     let result = '';
     if (num >= 100) {
       result += ones[Math.floor(num / 100)] + ' Hundred ';
@@ -142,7 +79,7 @@ export const convertToIndianWords = (num: number): string => {
     return result;
   }
   
-  function convert_number(num: number) {
+  function convert_number(num: number): string {
     if (num === 0) return 'Zero';
     
     let result = '';
@@ -187,29 +124,4 @@ export const convertToIndianWords = (num: number): string => {
   result += ' Only';
   
   return `INR ${result.toUpperCase()}`;
-};
-
-/**
- * Generate invoice ID
- */
-export const generateInvoiceId = (
-  prefix: string = 'INV', 
-  count: number = 0
-): string => {
-  const date = new Date();
-  const year = date.getFullYear().toString().slice(-2);
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const sequence = (count + 1).toString().padStart(3, '0');
-  
-  return `${prefix}-${year}${month}-${sequence}`;
-};
-
-export default {
-  formatCurrency,
-  formatDate,
-  formatDateForInput,
-  getStatusColor,
-  calculateDueDate,
-  convertToIndianWords,
-  generateInvoiceId
 };

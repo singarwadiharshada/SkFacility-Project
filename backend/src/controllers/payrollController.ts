@@ -5,14 +5,6 @@ import SalaryStructure from '../models/SalaryStructure';
 import SalarySlip from '../models/SalarySlip';
 import Employee, { IEmployee } from '../models/Employee';
 
-// Define custom Request type with user
-interface AuthRequest extends Request {
-  user?: {
-    id: string;
-    [key: string]: any;
-  };
-}
-
 // Helper function to populate employee data
 const populateEmployeeData = async (payrollRecords: any[]) => {
   try {
@@ -917,7 +909,7 @@ export const getPayrollSummary = async (req: Request, res: Response) => {
       }
     });
 
-    // Get employees with and without salary structure
+    // Get employees with and without salary structure..
     summary.activeEmployees = await Employee.countDocuments({ status: 'active' });
     summary.employeesWithStructure = await SalaryStructure.countDocuments({ isActive: true });
     summary.employeesWithoutStructure = Math.max(0, summary.activeEmployees - summary.employeesWithStructure);
@@ -1025,7 +1017,6 @@ export const exportPayroll = async (req: Request, res: Response) => {
         'ESIC NO': employee.esicNumber || 'N/A',
         'UAN': employee.uanNumber || 'N/A'
       };
-      
       return row;
     });
 

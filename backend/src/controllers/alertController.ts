@@ -5,7 +5,7 @@ import Alert, { IAlert } from '../models/Alert';
 // Get all alerts
 export const getAllAlerts = async (req: Request, res: Response): Promise<Response> => {
   try {
-    console.log('📋 Fetching all alerts from database...');
+    console.log('📋 Fetching all alerts from database....');
     const alerts: IAlert[] = await Alert.find().sort({ createdAt: -1 });
     
     console.log(`✅ Found ${alerts.length} alerts`);

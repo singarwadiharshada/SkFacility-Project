@@ -1341,7 +1341,7 @@ const FormatLibrarySection = () => {
                 <CardContent className="space-y-3">
                   <p className="text-sm text-muted-foreground">{format.description}</p>
                   <div className="flex justify-between items-center">
-                    <span className="text-xs text-muted-foreground">Size: {format.size}</span>
+                    <span className="text-xs text-muted-foreground">Size:{format.size}</span>
                     <Button 
                       variant="outline" 
                       size="sm"

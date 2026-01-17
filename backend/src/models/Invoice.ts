@@ -21,6 +21,11 @@ export interface IInvoice extends Document {
   date: string;
   dueDate?: string;
   
+  // Added fields for user/role tracking
+  createdBy?: string; // 'admin' or 'superadmin'
+  userId?: string; // User ID who created the invoice
+  sharedWith?: string[]; // Array of user IDs who can view this invoice
+  
   // Client info
   client: string;
   clientEmail?: string;
@@ -130,6 +135,11 @@ const InvoiceSchema = new Schema<IInvoice>({
   },
   date: { type: String, required: true },
   dueDate: { type: String },
+  
+  // User/Role tracking
+  createdBy: { type: String, enum: ['admin', 'superadmin'], default: 'superadmin' },
+  userId: { type: String },
+  sharedWith: [{ type: String }],
   
   // Client info
   client: { type: String, required: true },
@@ -244,16 +254,39 @@ InvoiceSchema.pre('save', function(next) {
   
   // Set default dates
   if (!this.date) {
-    const now = new Date();
-    const day = now.getDate().toString().padStart(2, '0');
-    const month = now.toLocaleString('en-US', { month: 'short' });
-    const year = now.getFullYear().toString().slice(-2);
-    this.date = `${day}-${month}-${year}`;
+    this.date = formatDate(new Date().toISOString());
   }
   
   if (!this.dueDate && this.date) {
     // Add 30 days to invoice date for due date
-    const dateParts = this.date.split('-');
+    this.dueDate = calculateDueDate(this.date, 30);
+  }
+  
+  next();
+});
+
+// Helper functions
+function formatDate(dateString: string): string {
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+      if (dateString.match(/\d{2}-[A-Za-z]{3}-\d{2}/)) {
+        return dateString;
+      }
+      return dateString;
+    }
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = date.toLocaleString('en-US', { month: 'short' });
+    const year = date.getFullYear().toString().slice(-2);
+    return `${day}-${month}-${year}`;
+  } catch (error) {
+    return dateString;
+  }
+}
+
+function calculateDueDate(dateString: string, daysToAdd: number): string {
+  try {
+    const dateParts = dateString.split('-');
     if (dateParts.length === 3) {
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       const day = parseInt(dateParts[0]);
@@ -262,18 +295,19 @@ InvoiceSchema.pre('save', function(next) {
       
       if (!isNaN(day) && monthIndex >= 0 && !isNaN(year)) {
         const invoiceDate = new Date(year, monthIndex, day);
-        invoiceDate.setDate(invoiceDate.getDate() + 30);
+        invoiceDate.setDate(invoiceDate.getDate() + daysToAdd);
         
         const dueDay = invoiceDate.getDate().toString().padStart(2, '0');
         const dueMonth = months[invoiceDate.getMonth()];
         const dueYear = invoiceDate.getFullYear().toString().slice(-2);
-        this.dueDate = `${dueDay}-${dueMonth}-${dueYear}`;
+        return `${dueDay}-${dueMonth}-${dueYear}`;
       }
     }
+    return dateString;
+  } catch (error) {
+    return dateString;
   }
-  
-  next();
-});
+}
 
 const Invoice = mongoose.model<IInvoice>('Invoice', InvoiceSchema);
 export default Invoice;

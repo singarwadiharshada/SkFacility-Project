@@ -51,7 +51,7 @@ const alertSchema: Schema = new Schema(
     },
     site: {
       type: String,
-      required: [true, 'Site is required'],
+      required: [true, 'Site is required..'],
       trim: true
     },
     photos: {

@@ -1,4 +1,3 @@
-// models/Site.js
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface ISite extends Document {
@@ -12,9 +11,9 @@ export interface ISite extends Document {
   // Manager
   manager?: string;
   
-  // NEW: Manager and Supervisor Limits
-  managerCount: number; // ADD THIS
-  supervisorCount: number; // ADD THIS
+  // Manager and Supervisor Limits
+  managerCount: number;
+  supervisorCount: number;
   
   // Services
   services: string[];
@@ -31,6 +30,10 @@ export interface ISite extends Document {
   
   // Status
   status: 'active' | 'inactive';
+  
+  // User who added this site
+  addedBy: string;
+  addedByRole: 'superadmin' | 'admin' | 'manager';
   
   // System Fields
   createdAt: Date;
@@ -72,13 +75,13 @@ const SiteSchema: Schema = new Schema(
       default: undefined
     },
     
-    // NEW FIELDS: Manager and Supervisor Limits
-    managerCount: { // ADD THIS
+    // Manager and Supervisor Limits
+    managerCount: {
       type: Number,
       default: 0,
       min: [0, 'Manager count cannot be negative']
     },
-    supervisorCount: { // ADD THIS
+    supervisorCount: {
       type: Number,
       default: 0,
       min: [0, 'Supervisor count cannot be negative']
@@ -142,6 +145,19 @@ const SiteSchema: Schema = new Schema(
       type: String,
       enum: ['active', 'inactive'],
       default: 'active'
+    },
+    
+    // User who added this site
+    addedBy: {
+      type: String,
+      required: [true, 'Added by user ID is required'],
+      default: 'unknown'
+    },
+    addedByRole: {
+      type: String,
+      enum: ['superadmin', 'admin', 'manager'],
+      required: [true, 'User role is required'],
+      default: 'admin'
     }
   },
   {
@@ -157,13 +173,15 @@ SiteSchema.index({ clientName: 1 });
 SiteSchema.index({ status: 1 });
 SiteSchema.index({ contractEndDate: 1 });
 SiteSchema.index({ location: 'text' });
+SiteSchema.index({ addedBy: 1 });
+SiteSchema.index({ addedByRole: 1 });
 
 // Virtual for total staff count
 SiteSchema.virtual('totalStaff').get(function(this: ISite) {
   return this.staffDeployment.reduce((total, item) => total + item.count, 0);
 });
 
-// NEW: Virtual for available manager slots
+// Virtual for available manager slots
 SiteSchema.virtual('availableManagerSlots').get(function(this: ISite) {
   const currentManagers = this.staffDeployment
     .filter(item => item.role === 'Manager')
@@ -171,12 +189,24 @@ SiteSchema.virtual('availableManagerSlots').get(function(this: ISite) {
   return Math.max(0, this.managerCount - currentManagers);
 });
 
-// NEW: Virtual for available supervisor slots
+// Virtual for available supervisor slots
 SiteSchema.virtual('availableSupervisorSlots').get(function(this: ISite) {
   const currentSupervisors = this.staffDeployment
     .filter(item => item.role === 'Supervisor')
     .reduce((total, item) => total + item.count, 0);
   return Math.max(0, this.supervisorCount - currentSupervisors);
+});
+
+// Virtual for user display name
+SiteSchema.virtual('addedByDisplay').get(function(this: ISite) {
+  if (this.addedByRole === 'superadmin') {
+    return 'SuperAdmin';
+  } else if (this.addedByRole === 'admin') {
+    return 'Admin';
+  } else if (this.addedByRole === 'manager') {
+    return 'Manager';
+  }
+  return this.addedBy;
 });
 
 export default mongoose.model<ISite>('Site', SiteSchema);

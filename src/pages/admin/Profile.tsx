@@ -283,32 +283,7 @@ const Profile = () => {
         transition={{ duration: 0.5 }}
         className="p-6 max-w-6xl mx-auto space-y-6"
       >
-        {/* Debug panel - only in development */}
-        {process.env.NODE_ENV === 'development' && (
-          <Card className="border-dashed border-2 border-yellow-500">
-            <CardContent className="p-4">
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="text-sm font-semibold text-yellow-700">Debug Info</h3>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  onClick={fetchCurrentUser}
-                  className="h-8"
-                >
-                  <RefreshCw className="h-3 w-3 mr-1" />
-                  Retry
-                </Button>
-              </div>
-              <div className="text-xs space-y-1">
-                <p>Auth User ID: {authUser?._id || authUser?.id || 'None'}</p>
-                <p>Current User ID: {currentUser?._id || 'None'}</p>
-                <p>Status: {debugInfo}</p>
-                <p className="truncate">Token exists: {localStorage.getItem('sk_token') ? 'Yes' : 'No'}</p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
+       
         {/* User Header Card */}
         <Card className="border shadow-sm">
           <CardContent className="p-6">

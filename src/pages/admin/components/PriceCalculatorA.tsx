@@ -65,12 +65,18 @@ import {
   ChevronRight,
   ChevronLeft,
   CheckSquare,
-  Square
+  Square,
+  RefreshCw
 } from "lucide-react";
 import { format } from 'date-fns';
 
+// Import API functions from your API files
+import { trainingApi } from '@/api/trainingApi';
+import { briefingApi } from '@/api/briefingApi';
+
 // Types
 interface TrainingSession {
+  _id: string;
   id: string;
   title: string;
   description: string;
@@ -89,9 +95,12 @@ interface TrainingSession {
   feedback: Feedback[];
   location: string;
   objectives: string[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface StaffBriefing {
+  _id: string;
   id: string;
   date: string;
   time: string;
@@ -105,10 +114,13 @@ interface StaffBriefing {
   attachments: Attachment[];
   notes: string;
   shift: 'morning' | 'evening' | 'night';
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface Attachment {
-  id: string;
+  _id?: string;
+  id?: string;
   name: string;
   type: 'image' | 'document' | 'video';
   url: string;
@@ -117,7 +129,8 @@ interface Attachment {
 }
 
 interface Feedback {
-  id: string;
+  _id?: string;
+  id?: string;
   employeeId: string;
   employeeName: string;
   rating: number;
@@ -126,7 +139,8 @@ interface Feedback {
 }
 
 interface ActionItem {
-  id: string;
+  _id?: string;
+  id?: string;
   description: string;
   assignedTo: string;
   dueDate: string;
@@ -134,12 +148,13 @@ interface ActionItem {
   priority: 'low' | 'medium' | 'high';
 }
 
-// Sample data
-const initialTrainingSessions: TrainingSession[] = [
+// Sample data (fallback)
+const sampleTrainingSessions: TrainingSession[] = [
   {
+    _id: 'TRN001',
     id: 'TRN001',
     title: 'Fire Safety Training',
-    description: 'Comprehensive fire safety training covering evacuation procedures, fire extinguisher usage, and emergency response protocols.',
+    description: 'Comprehensive fire safety training covering evacuation procedures, fire extinguifier usage, and emergency response protocols.',
     type: 'safety',
     date: '2024-12-15',
     time: '10:00 AM',
@@ -157,62 +172,13 @@ const initialTrainingSessions: TrainingSession[] = [
     ],
     feedback: [],
     location: 'Main Conference Room',
-    objectives: ['Understand fire safety protocols', 'Learn evacuation procedures', 'Practice fire extinguisher usage']
+    objectives: ['Understand fire safety protocols', 'Learn evacuation procedures', 'Practice fire extinguifier usage']
   },
-  {
-    id: 'TRN002',
-    title: 'Equipment Operation Training',
-    description: 'Training on proper operation and maintenance of heavy machinery and equipment.',
-    type: 'technical',
-    date: '2024-12-10',
-    time: '09:00 AM',
-    duration: '4 hours',
-    trainer: 'Robert Engineer',
-    supervisor: 'Supervisor Lee',
-    site: 'Warehouse',
-    department: 'Operations',
-    attendees: ['EMP006', 'EMP007', 'EMP008'],
-    maxAttendees: 15,
-    status: 'ongoing',
-    attachments: [
-      { id: 'ATT003', name: 'equipment_manual.pdf', type: 'document', url: '#', size: '3.1 MB', uploadedAt: '2024-12-05' },
-      { id: 'ATT004', name: 'safety_video.mp4', type: 'video', url: '#', size: '45 MB', uploadedAt: '2024-12-05' }
-    ],
-    feedback: [
-      { id: 'FB001', employeeId: 'EMP006', employeeName: 'Mike Johnson', rating: 4, comment: 'Very informative session', submittedAt: '2024-12-10' }
-    ],
-    location: 'Equipment Room',
-    objectives: ['Safe equipment operation', 'Basic troubleshooting', 'Preventive maintenance']
-  },
-  {
-    id: 'TRN003',
-    title: 'Customer Service Excellence',
-    description: 'Enhancing customer service skills and handling difficult customer situations.',
-    type: 'soft_skills',
-    date: '2024-12-05',
-    time: '02:00 PM',
-    duration: '2 hours',
-    trainer: 'Sarah Customer Manager',
-    supervisor: 'Manager Garcia',
-    site: 'Admin Block',
-    department: 'Front Desk',
-    attendees: ['EMP009', 'EMP010', 'EMP011', 'EMP012'],
-    maxAttendees: 12,
-    status: 'completed',
-    attachments: [
-      { id: 'ATT005', name: 'customer_service_guide.pdf', type: 'document', url: '#', size: '1.8 MB', uploadedAt: '2024-12-01' }
-    ],
-    feedback: [
-      { id: 'FB002', employeeId: 'EMP009', employeeName: 'Lisa Brown', rating: 5, comment: 'Excellent training material', submittedAt: '2024-12-05' },
-      { id: 'FB003', employeeId: 'EMP010', employeeName: 'David Wilson', rating: 4, comment: 'Good practical examples', submittedAt: '2024-12-05' }
-    ],
-    location: 'Training Room A',
-    objectives: ['Improve communication skills', 'Handle complaints effectively', 'Build customer relationships']
-  }
 ];
 
-const initialStaffBriefings: StaffBriefing[] = [
+const sampleStaffBriefings: StaffBriefing[] = [
   {
+    _id: 'BRI001',
     id: 'BRI001',
     date: '2024-12-12',
     time: '08:00 AM',
@@ -227,51 +193,11 @@ const initialStaffBriefings: StaffBriefing[] = [
       { id: 'ACT002', description: 'Inspect cleaning equipment', assignedTo: 'Team B', dueDate: '2024-12-13', status: 'pending', priority: 'medium' }
     ],
     attachments: [
-      { id: 'ATT006', name: 'briefing_notes.pdf', type: 'document', url: '#', size: '0.8 MB', uploadedAt: '2024-12-12' },
-      { id: 'ATT007', name: 'team_photo.jpg', type: 'image', url: '#', size: '2.1 MB', uploadedAt: '2024-12-12' }
+      { id: 'ATT006', name: 'briefing_notes.pdf', type: 'document', url: '#', size: '0.8 MB', uploadedAt: '2024-12-12' }
     ],
     notes: 'All team members present. Emphasized on maintaining hygiene standards.',
     shift: 'morning'
   },
-  {
-    id: 'BRI002',
-    date: '2024-12-11',
-    time: '04:00 PM',
-    conductedBy: 'Supervisor Lee',
-    site: 'Parking Area',
-    department: 'Security',
-    attendeesCount: 8,
-    topics: ['Night shift protocols', 'Security checks', 'Emergency procedures'],
-    keyPoints: ['Regular patrol rounds', 'Monitor CCTV cameras', 'Report suspicious activities'],
-    actionItems: [
-      { id: 'ACT003', description: 'Check all emergency exits', assignedTo: 'Night Team', dueDate: '2024-12-11', status: 'completed', priority: 'high' }
-    ],
-    attachments: [
-      { id: 'ATT008', name: 'security_checklist.pdf', type: 'document', url: '#', size: '1.1 MB', uploadedAt: '2024-12-11' }
-    ],
-    notes: 'Briefing for night shift team. All equipment checked and functional.',
-    shift: 'evening'
-  },
-  {
-    id: 'BRI003',
-    date: '2024-12-10',
-    time: '10:00 PM',
-    conductedBy: 'Manager Garcia',
-    site: 'IT Building',
-    department: 'Maintenance',
-    attendeesCount: 6,
-    topics: ['Equipment maintenance', 'Safety protocols', 'Work order priorities'],
-    keyPoints: ['Follow lockout-tagout procedures', 'Wear proper PPE', 'Complete work orders by priority'],
-    actionItems: [
-      { id: 'ACT004', description: 'Repair AC unit in server room', assignedTo: 'Tech Team', dueDate: '2024-12-11', status: 'in_progress', priority: 'high' }
-    ],
-    attachments: [
-      { id: 'ATT009', name: 'maintenance_schedule.pdf', type: 'document', url: '#', size: '1.5 MB', uploadedAt: '2024-12-10' },
-      { id: 'ATT010', name: 'equipment_photo.jpg', type: 'image', url: '#', size: '3.2 MB', uploadedAt: '2024-12-10' }
-    ],
-    notes: 'Urgent maintenance required for server room AC. Team assigned for immediate action.',
-    shift: 'night'
-  }
 ];
 
 const departments = ['All Departments', 'Housekeeping', 'Security', 'Maintenance', 'Operations', 'Front Desk', 'Administration', 'IT Support'];
@@ -284,13 +210,12 @@ const trainingTypes = [
 ];
 const shifts = ['morning', 'evening', 'night'];
 const priorities = ['low', 'medium', 'high'];
-const sites = ['Main Building', 'Parking Area', 'IT Building', 'Warehouse', 'Admin Block', 'All Sites'];
 const supervisors = ['John Safety Officer', 'Robert Engineer', 'Sarah Customer Manager', 'Manager Smith', 'Supervisor Lee', 'Manager Garcia', 'Team Lead Brown'];
 
 const PriceCalculator: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'training' | 'briefing'>('training');
-  const [trainingSessions, setTrainingSessions] = useState<TrainingSession[]>(initialTrainingSessions);
-  const [staffBriefings, setStaffBriefings] = useState<StaffBriefing[]>(initialStaffBriefings);
+  const [trainingSessions, setTrainingSessions] = useState<TrainingSession[]>([]);
+  const [staffBriefings, setStaffBriefings] = useState<StaffBriefing[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDepartment, setFilterDepartment] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -302,6 +227,13 @@ const PriceCalculator: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalTrainings: 0,
+    staffBriefings: 0,
+    completedTraining: 0,
+    pendingActions: 0
+  });
 
   // Form states for training
   const [trainingForm, setTrainingForm] = useState({
@@ -312,8 +244,7 @@ const PriceCalculator: React.FC = () => {
     time: '',
     duration: '',
     trainer: '',
-    supervisor: '',
-    site: 'Main Building',
+    site: '',
     department: 'All Departments',
     maxAttendees: 20,
     location: '',
@@ -335,19 +266,95 @@ const PriceCalculator: React.FC = () => {
     shift: 'morning' as const
   });
 
-  // Filter training sessions
+  // Fetch data on component mount and when filters change
+  useEffect(() => {
+    fetchTrainingSessions();
+    fetchStaffBriefings();
+    fetchStats();
+  }, [searchTerm, filterDepartment, filterStatus]);
+
+  const fetchTrainingSessions = async () => {
+    try {
+      setLoading(true);
+      const filters = {
+        department: filterDepartment === 'all' ? '' : filterDepartment,
+        status: filterStatus === 'all' ? '' : filterStatus,
+        search: searchTerm
+      };
+      
+      const response = await trainingApi.getAllTrainings(filters);
+      setTrainingSessions(response.trainings || response.data || []);
+    } catch (error: any) {
+      console.error('Error fetching training sessions:', error);
+      toast.error('Error fetching training sessions');
+      // Fallback to sample data if API fails
+      setTrainingSessions(sampleTrainingSessions);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchStaffBriefings = async () => {
+    try {
+      const filters = {
+        department: filterDepartment === 'all' ? '' : filterDepartment,
+        search: searchTerm
+      };
+      
+      const response = await briefingApi.getAllBriefings(filters);
+      setStaffBriefings(response.briefings || response.data || []);
+    } catch (error: any) {
+      console.error('Error fetching staff briefings:', error);
+      toast.error('Error fetching staff briefings');
+      // Fallback to sample data if API fails
+      setStaffBriefings(sampleStaffBriefings);
+    }
+  };
+
+  const fetchStats = async () => {
+    try {
+      const [trainingStats, briefingStats] = await Promise.all([
+        trainingApi.getTrainingStats(),
+        briefingApi.getBriefingStats()
+      ]);
+      
+      setStats({
+        totalTrainings: trainingStats.data?.totalTrainings || trainingSessions.length,
+        staffBriefings: briefingStats.data?.totalBriefings || staffBriefings.length,
+        completedTraining: trainingStats.data?.completedTrainings || 
+                          trainingSessions.filter(t => t.status === 'completed').length,
+        pendingActions: briefingStats.data?.pendingActions || 
+                       staffBriefings.reduce((acc, briefing) => 
+                         acc + briefing.actionItems.filter(a => a.status === 'pending').length, 0
+                       )
+      });
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+      // Calculate stats from local data if API fails
+      setStats({
+        totalTrainings: trainingSessions.length,
+        staffBriefings: staffBriefings.length,
+        completedTraining: trainingSessions.filter(t => t.status === 'completed').length,
+        pendingActions: staffBriefings.reduce((acc, briefing) => 
+          acc + briefing.actionItems.filter(a => a.status === 'pending').length, 0
+        )
+      });
+    }
+  };
+
+  // Filter training sessions (client-side fallback)
   const filteredTrainingSessions = trainingSessions.filter(session => {
     const matchesSearch = session.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          session.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          session.trainer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         session.supervisor.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         session.supervisor?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          session.site.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesDepartment = filterDepartment === 'all' || session.department === filterDepartment;
     const matchesStatus = filterStatus === 'all' || session.status === filterStatus;
     return matchesSearch && matchesDepartment && matchesStatus;
   });
 
-  // Filter staff briefings
+  // Filter staff briefings (client-side fallback)
   const filteredStaffBriefings = staffBriefings.filter(briefing => {
     const matchesSearch = briefing.conductedBy.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          briefing.site.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -370,42 +377,42 @@ const PriceCalculator: React.FC = () => {
   };
 
   // Add training session
-  const handleAddTraining = () => {
-    if (!trainingForm.title || !trainingForm.date || !trainingForm.trainer) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
+const handleAddTraining = async () => {
+  if (!trainingForm.title || !trainingForm.date || !trainingForm.trainer) {
+    toast.error('Please fill in all required fields');
+    return;
+  }
 
-    const newTraining: TrainingSession = {
-      id: `TRN${String(trainingSessions.length + 1).padStart(3, '0')}`,
+  try {
+    // Create a simplified training data object
+    const trainingData = {
       title: trainingForm.title,
-      description: trainingForm.description,
+      description: trainingForm.description || '',
       type: trainingForm.type,
       date: trainingForm.date,
-      time: trainingForm.time,
-      duration: trainingForm.duration,
+      time: trainingForm.time || '',
+      duration: trainingForm.duration || '',
       trainer: trainingForm.trainer,
-      supervisor: trainingForm.supervisor,
-      site: trainingForm.site,
+      site: trainingForm.site || '',
       department: trainingForm.department,
-      attendees: [],
-      maxAttendees: trainingForm.maxAttendees,
-      status: 'scheduled',
-      attachments: attachments.map((file, index) => ({
-        id: `ATT${String(trainingSessions.length * 10 + index + 1).padStart(3, '0')}`,
-        name: file.name,
-        type: file.type.startsWith('image/') ? 'image' : 
-               file.type.startsWith('video/') ? 'video' : 'document',
-        url: '#',
-        size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-        uploadedAt: new Date().toISOString().split('T')[0]
-      })),
-      feedback: [],
-      location: trainingForm.location,
+      maxAttendees: trainingForm.maxAttendees || 20,
+      location: trainingForm.location || '',
       objectives: trainingForm.objectives.filter(obj => obj.trim() !== '')
     };
 
-    setTrainingSessions(prev => [newTraining, ...prev]);
+    console.log('Sending training data:', trainingData);
+    console.log('Attachments:', attachments.length);
+
+    // Test without files first
+    const response = await trainingApi.createTraining(trainingData, []);
+
+    console.log('API response:', response);
+    
+    // If successful, refresh data
+    await fetchTrainingSessions();
+    await fetchStats();
+    
+    // Reset form
     setTrainingForm({
       title: '',
       description: '',
@@ -414,8 +421,7 @@ const PriceCalculator: React.FC = () => {
       time: '',
       duration: '',
       trainer: '',
-      supervisor: '',
-      site: 'Main Building',
+      site: '',
       department: 'All Departments',
       maxAttendees: 20,
       location: '',
@@ -423,44 +429,61 @@ const PriceCalculator: React.FC = () => {
     });
     setAttachments([]);
     setShowAddTraining(false);
-    toast.success('Training session added successfully');
-  };
+    
+    toast.success(response.message || 'Training session added successfully');
+  } catch (error: any) {
+    console.error('Full error:', error);
+    console.error('Error response:', error.response?.data);
+    toast.error(error.response?.data?.message || error.message || 'Error adding training session');
+  }
+};
 
   // Add staff briefing
-  const handleAddBriefing = () => {
-    if (!briefingForm.date || !briefingForm.conductedBy || !briefingForm.site) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
+const handleAddBriefing = async () => {
+  if (!briefingForm.date || !briefingForm.conductedBy || !briefingForm.site) {
+    toast.error('Please fill in all required fields');
+    return;
+  }
 
-    const newBriefing: StaffBriefing = {
-      id: `BRI${String(staffBriefings.length + 1).padStart(3, '0')}`,
+  try {
+    console.log('=== Frontend: Creating briefing ===');
+    
+    // Prepare action items
+    const actionItems = briefingForm.actionItems.map(item => ({
+      description: item.description,
+      assignedTo: item.assignedTo,
+      dueDate: item.dueDate,
+      status: item.status || 'pending',
+      priority: item.priority || 'medium'
+    }));
+
+    const briefingData = {
       date: briefingForm.date,
-      time: briefingForm.time,
+      time: briefingForm.time || '',
       conductedBy: briefingForm.conductedBy,
       site: briefingForm.site,
-      department: briefingForm.department,
-      attendeesCount: briefingForm.attendeesCount,
+      department: briefingForm.department || '',
+      attendeesCount: briefingForm.attendeesCount || 0,
       topics: briefingForm.topics.filter(topic => topic.trim() !== ''),
       keyPoints: briefingForm.keyPoints.filter(point => point.trim() !== ''),
-      actionItems: briefingForm.actionItems.map((item, index) => ({
-        id: `ACT${String(staffBriefings.length * 10 + index + 1).padStart(3, '0')}`,
-        ...item
-      })),
-      attachments: attachments.map((file, index) => ({
-        id: `ATT${String(staffBriefings.length * 10 + index + 1).padStart(3, '0')}`,
-        name: file.name,
-        type: file.type.startsWith('image/') ? 'image' : 
-               file.type.startsWith('video/') ? 'video' : 'document',
-        url: '#',
-        size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-        uploadedAt: new Date().toISOString().split('T')[0]
-      })),
-      notes: briefingForm.notes,
+      actionItems: actionItems,
+      notes: briefingForm.notes || '',
       shift: briefingForm.shift
     };
 
-    setStaffBriefings(prev => [newBriefing, ...prev]);
+    console.log('Briefing data to send:', briefingData);
+    console.log('Attachments:', attachments.length);
+
+    // First test without files
+    const response = await briefingApi.createBriefing(briefingData, []);
+
+    console.log('API response:', response);
+    
+    // Refresh the briefing list
+    await fetchStaffBriefings();
+    await fetchStats();
+    
+    // Reset form
     setBriefingForm({
       date: '',
       time: '',
@@ -470,49 +493,76 @@ const PriceCalculator: React.FC = () => {
       attendeesCount: 0,
       topics: [''],
       keyPoints: [''],
-      actionItems: [],
+      actionItems: [] as Omit<ActionItem, 'id'>[],
       notes: '',
       shift: 'morning'
     });
     setAttachments([]);
     setShowAddBriefing(false);
-    toast.success('Staff briefing added successfully');
-  };
+    
+    toast.success(response.message || 'Staff briefing added successfully');
+  } catch (error: any) {
+    console.error('Full error:', error);
+    console.error('Error response:', error.response?.data);
+    console.error('Error message:', error.message);
+    toast.error(error.response?.data?.message || error.message || 'Error adding staff briefing');
+  }
+};
 
   // Delete training session
-  const deleteTraining = (id: string) => {
-    setTrainingSessions(prev => prev.filter(session => session.id !== id));
-    toast.success('Training session deleted');
+  const deleteTraining = async (id: string) => {
+    try {
+      await trainingApi.deleteTraining(id);
+      // Refresh the list
+      await fetchTrainingSessions();
+      await fetchStats();
+      toast.success('Training session deleted');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Error deleting training session');
+    }
   };
 
   // Delete briefing
-  const deleteBriefing = (id: string) => {
-    setStaffBriefings(prev => prev.filter(briefing => briefing.id !== id));
-    toast.success('Staff briefing deleted');
+  const deleteBriefing = async (id: string) => {
+    try {
+      await briefingApi.deleteBriefing(id);
+      // Refresh the list
+      await fetchStaffBriefings();
+      await fetchStats();
+      toast.success('Staff briefing deleted');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Error deleting staff briefing');
+    }
   };
 
   // Update training status
-  const updateTrainingStatus = (id: string, status: TrainingSession['status']) => {
-    setTrainingSessions(prev => prev.map(session => 
-      session.id === id ? { ...session, status } : session
-    ));
-    toast.success(`Training status updated to ${status}`);
+  const updateTrainingStatus = async (id: string, status: TrainingSession['status']) => {
+    try {
+      await trainingApi.updateTrainingStatus(id, status);
+      // Refresh the list
+      await fetchTrainingSessions();
+      await fetchStats();
+      toast.success(`Training status updated to ${status}`);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Error updating training status');
+    }
   };
 
   // Update action item status
-  const updateActionItemStatus = (briefingId: string, actionItemId: string, status: ActionItem['status']) => {
-    setStaffBriefings(prev => prev.map(briefing => {
-      if (briefing.id === briefingId) {
-        return {
-          ...briefing,
-          actionItems: briefing.actionItems.map(item => 
-            item.id === actionItemId ? { ...item, status } : item
-          )
-        };
-      }
-      return briefing;
-    }));
-    toast.success('Action item status updated');
+  const updateActionItemStatus = async (
+    briefingId: string, 
+    actionItemId: string, 
+    status: ActionItem['status']
+  ) => {
+    try {
+      await briefingApi.updateActionItemStatus(briefingId, actionItemId, status);
+      // Refresh the list
+      await fetchStaffBriefings();
+      await fetchStats();
+      toast.success('Action item status updated');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Error updating action item status');
+    }
   };
 
   // Add objective field
@@ -649,13 +699,19 @@ const PriceCalculator: React.FC = () => {
 
   // Format date
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return dateString;
+      
+      return date.toLocaleDateString('en-US', { 
+        weekday: 'short',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch {
+      return dateString;
+    }
   };
 
   // Calendar navigation
@@ -682,7 +738,7 @@ const PriceCalculator: React.FC = () => {
     // Training events
     trainingSessions.forEach(session => {
       events.push({
-        id: session.id,
+        id: session._id,
         title: session.title,
         date: session.date,
         type: 'training',
@@ -694,7 +750,7 @@ const PriceCalculator: React.FC = () => {
     // Briefing events
     staffBriefings.forEach(briefing => {
       events.push({
-        id: briefing.id,
+        id: briefing._id,
         title: `Briefing - ${briefing.department}`,
         date: briefing.date,
         type: 'briefing',
@@ -707,6 +763,14 @@ const PriceCalculator: React.FC = () => {
   };
 
   const calendarEvents = getCalendarEvents();
+
+  // Refresh data
+  const handleRefresh = () => {
+    fetchTrainingSessions();
+    fetchStaffBriefings();
+    fetchStats();
+    toast.success('Data refreshed');
+  };
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-6">
@@ -725,6 +789,7 @@ const PriceCalculator: React.FC = () => {
             <Button 
               variant="outline" 
               onClick={() => setViewMode(viewMode === 'list' ? 'calendar' : 'list')}
+              disabled={loading}
             >
               {viewMode === 'list' ? (
                 <>
@@ -738,9 +803,17 @@ const PriceCalculator: React.FC = () => {
                 </>
               )}
             </Button>
+            <Button 
+              variant="outline" 
+              onClick={handleRefresh}
+              disabled={loading}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
             <Dialog open={showAddTraining} onOpenChange={setShowAddTraining}>
               <DialogTrigger asChild>
-                <Button>
+                <Button disabled={loading}>
                   <Plus className="h-4 w-4 mr-2" />
                   Add Training
                 </Button>
@@ -761,6 +834,7 @@ const PriceCalculator: React.FC = () => {
                         placeholder="Enter training title"
                         value={trainingForm.title}
                         onChange={(e) => setTrainingForm(prev => ({ ...prev, title: e.target.value }))}
+                        disabled={loading}
                       />
                     </div>
                     
@@ -769,6 +843,7 @@ const PriceCalculator: React.FC = () => {
                       <Select
                         value={trainingForm.type}
                         onValueChange={(value: any) => setTrainingForm(prev => ({ ...prev, type: value }))}
+                        disabled={loading}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select type" />
@@ -789,6 +864,7 @@ const PriceCalculator: React.FC = () => {
                         type="date"
                         value={trainingForm.date}
                         onChange={(e) => setTrainingForm(prev => ({ ...prev, date: e.target.value }))}
+                        disabled={loading}
                       />
                     </div>
                     
@@ -798,6 +874,7 @@ const PriceCalculator: React.FC = () => {
                         type="time"
                         value={trainingForm.time}
                         onChange={(e) => setTrainingForm(prev => ({ ...prev, time: e.target.value }))}
+                        disabled={loading}
                       />
                     </div>
                     
@@ -807,6 +884,7 @@ const PriceCalculator: React.FC = () => {
                         placeholder="e.g., 2 hours"
                         value={trainingForm.duration}
                         onChange={(e) => setTrainingForm(prev => ({ ...prev, duration: e.target.value }))}
+                        disabled={loading}
                       />
                     </div>
                     
@@ -816,47 +894,20 @@ const PriceCalculator: React.FC = () => {
                         placeholder="Enter trainer name"
                         value={trainingForm.trainer}
                         onChange={(e) => setTrainingForm(prev => ({ ...prev, trainer: e.target.value }))}
+                        disabled={loading}
                       />
-                    </div>
-                    
-                    <div>
-                      <label className="text-sm font-medium mb-2 block">Supervisor</label>
-                      <Select
-                        value={trainingForm.supervisor}
-                        onValueChange={(value) => setTrainingForm(prev => ({ ...prev, supervisor: value }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select supervisor" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {supervisors.map(supervisor => (
-                            <SelectItem key={supervisor} value={supervisor}>
-                              {supervisor}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
                     </div>
                   </div>
                   
                   <div className="space-y-4">
                     <div>
                       <label className="text-sm font-medium mb-2 block">Site</label>
-                      <Select
+                      <Input
+                        placeholder="Enter site/location"
                         value={trainingForm.site}
-                        onValueChange={(value) => setTrainingForm(prev => ({ ...prev, site: value }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select site" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {sites.map(site => (
-                            <SelectItem key={site} value={site}>
-                              {site}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        onChange={(e) => setTrainingForm(prev => ({ ...prev, site: e.target.value }))}
+                        disabled={loading}
+                      />
                     </div>
                     
                     <div>
@@ -864,6 +915,7 @@ const PriceCalculator: React.FC = () => {
                       <Select
                         value={trainingForm.department}
                         onValueChange={(value) => setTrainingForm(prev => ({ ...prev, department: value }))}
+                        disabled={loading}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select department" />
@@ -885,6 +937,7 @@ const PriceCalculator: React.FC = () => {
                         min="1"
                         value={trainingForm.maxAttendees}
                         onChange={(e) => setTrainingForm(prev => ({ ...prev, maxAttendees: parseInt(e.target.value) || 1 }))}
+                        disabled={loading}
                       />
                     </div>
                     
@@ -894,6 +947,7 @@ const PriceCalculator: React.FC = () => {
                         placeholder="Enter location"
                         value={trainingForm.location}
                         onChange={(e) => setTrainingForm(prev => ({ ...prev, location: e.target.value }))}
+                        disabled={loading}
                       />
                     </div>
                     
@@ -906,6 +960,7 @@ const PriceCalculator: React.FC = () => {
                               placeholder={`Objective ${index + 1}`}
                               value={objective}
                               onChange={(e) => updateObjective(index, e.target.value)}
+                              disabled={loading}
                             />
                             {trainingForm.objectives.length > 1 && (
                               <Button
@@ -913,6 +968,7 @@ const PriceCalculator: React.FC = () => {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => removeObjective(index)}
+                                disabled={loading}
                               >
                                 <XCircle className="h-4 w-4 text-red-500" />
                               </Button>
@@ -924,6 +980,7 @@ const PriceCalculator: React.FC = () => {
                           variant="outline"
                           size="sm"
                           onClick={addObjective}
+                          disabled={loading}
                         >
                           <Plus className="h-4 w-4 mr-2" />
                           Add Objective
@@ -938,6 +995,7 @@ const PriceCalculator: React.FC = () => {
                         value={trainingForm.description}
                         onChange={(e) => setTrainingForm(prev => ({ ...prev, description: e.target.value }))}
                         rows={3}
+                        disabled={loading}
                       />
                     </div>
                   </div>
@@ -958,11 +1016,13 @@ const PriceCalculator: React.FC = () => {
                         onChange={handleFileUpload}
                         className="hidden"
                         accept="image/*,video/*,.pdf,.doc,.docx,.ppt,.pptx"
+                        disabled={loading}
                       />
                       <Button
                         type="button"
                         variant="outline"
                         onClick={() => fileInputRef.current?.click()}
+                        disabled={loading}
                       >
                         <Upload className="h-4 w-4 mr-2" />
                         Upload Files
@@ -993,6 +1053,7 @@ const PriceCalculator: React.FC = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => removeAttachment(index)}
+                            disabled={loading}
                           >
                             <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
@@ -1004,16 +1065,18 @@ const PriceCalculator: React.FC = () => {
                 
                 <DialogFooter>
                   <DialogClose asChild>
-                    <Button variant="outline">Cancel</Button>
+                    <Button variant="outline" disabled={loading}>Cancel</Button>
                   </DialogClose>
-                  <Button onClick={handleAddTraining}>Add Training Session</Button>
+                  <Button onClick={handleAddTraining} disabled={loading}>
+                    {loading ? 'Adding...' : 'Add Training Session'}
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
             
             <Dialog open={showAddBriefing} onOpenChange={setShowAddBriefing}>
               <DialogTrigger asChild>
-                <Button variant="secondary">
+                <Button variant="secondary" disabled={loading}>
                   <Plus className="h-4 w-4 mr-2" />
                   Add Briefing
                 </Button>
@@ -1034,6 +1097,7 @@ const PriceCalculator: React.FC = () => {
                         type="date"
                         value={briefingForm.date}
                         onChange={(e) => setBriefingForm(prev => ({ ...prev, date: e.target.value }))}
+                        disabled={loading}
                       />
                     </div>
                     
@@ -1043,6 +1107,7 @@ const PriceCalculator: React.FC = () => {
                         type="time"
                         value={briefingForm.time}
                         onChange={(e) => setBriefingForm(prev => ({ ...prev, time: e.target.value }))}
+                        disabled={loading}
                       />
                     </div>
                     
@@ -1051,6 +1116,7 @@ const PriceCalculator: React.FC = () => {
                       <Select
                         value={briefingForm.shift}
                         onValueChange={(value: any) => setBriefingForm(prev => ({ ...prev, shift: value }))}
+                        disabled={loading}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select shift" />
@@ -1071,6 +1137,7 @@ const PriceCalculator: React.FC = () => {
                         placeholder="Enter conductor name"
                         value={briefingForm.conductedBy}
                         onChange={(e) => setBriefingForm(prev => ({ ...prev, conductedBy: e.target.value }))}
+                        disabled={loading}
                       />
                     </div>
                     
@@ -1080,6 +1147,7 @@ const PriceCalculator: React.FC = () => {
                         placeholder="Enter site/location"
                         value={briefingForm.site}
                         onChange={(e) => setBriefingForm(prev => ({ ...prev, site: e.target.value }))}
+                        disabled={loading}
                       />
                     </div>
                     
@@ -1088,6 +1156,7 @@ const PriceCalculator: React.FC = () => {
                       <Select
                         value={briefingForm.department}
                         onValueChange={(value) => setBriefingForm(prev => ({ ...prev, department: value }))}
+                        disabled={loading}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select department" />
@@ -1109,6 +1178,7 @@ const PriceCalculator: React.FC = () => {
                         min="0"
                         value={briefingForm.attendeesCount}
                         onChange={(e) => setBriefingForm(prev => ({ ...prev, attendeesCount: parseInt(e.target.value) || 0 }))}
+                        disabled={loading}
                       />
                     </div>
                   </div>
@@ -1123,6 +1193,7 @@ const PriceCalculator: React.FC = () => {
                               placeholder={`Topic ${index + 1}`}
                               value={topic}
                               onChange={(e) => updateTopic(index, e.target.value)}
+                              disabled={loading}
                             />
                             {briefingForm.topics.length > 1 && (
                               <Button
@@ -1130,6 +1201,7 @@ const PriceCalculator: React.FC = () => {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => removeTopic(index)}
+                                disabled={loading}
                               >
                                 <XCircle className="h-4 w-4 text-red-500" />
                               </Button>
@@ -1141,6 +1213,7 @@ const PriceCalculator: React.FC = () => {
                           variant="outline"
                           size="sm"
                           onClick={addTopic}
+                          disabled={loading}
                         >
                           <Plus className="h-4 w-4 mr-2" />
                           Add Topic
@@ -1157,6 +1230,7 @@ const PriceCalculator: React.FC = () => {
                               placeholder={`Key point ${index + 1}`}
                               value={point}
                               onChange={(e) => updateKeyPoint(index, e.target.value)}
+                              disabled={loading}
                             />
                             {briefingForm.keyPoints.length > 1 && (
                               <Button
@@ -1164,6 +1238,7 @@ const PriceCalculator: React.FC = () => {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => removeKeyPoint(index)}
+                                disabled={loading}
                               >
                                 <XCircle className="h-4 w-4 text-red-500" />
                               </Button>
@@ -1175,6 +1250,7 @@ const PriceCalculator: React.FC = () => {
                           variant="outline"
                           size="sm"
                           onClick={addKeyPoint}
+                          disabled={loading}
                         >
                           <Plus className="h-4 w-4 mr-2" />
                           Add Key Point
@@ -1189,6 +1265,7 @@ const PriceCalculator: React.FC = () => {
                         value={briefingForm.notes}
                         onChange={(e) => setBriefingForm(prev => ({ ...prev, notes: e.target.value }))}
                         rows={3}
+                        disabled={loading}
                       />
                     </div>
                   </div>
@@ -1205,6 +1282,7 @@ const PriceCalculator: React.FC = () => {
                       type="button"
                       variant="outline"
                       onClick={addActionItem}
+                      disabled={loading}
                     >
                       <Plus className="h-4 w-4 mr-2" />
                       Add Action Item
@@ -1219,6 +1297,7 @@ const PriceCalculator: React.FC = () => {
                           placeholder="Task description"
                           value={item.description}
                           onChange={(e) => updateActionItem(index, 'description', e.target.value)}
+                          disabled={loading}
                         />
                       </div>
                       <div>
@@ -1227,6 +1306,7 @@ const PriceCalculator: React.FC = () => {
                           placeholder="Person/Team"
                           value={item.assignedTo}
                           onChange={(e) => updateActionItem(index, 'assignedTo', e.target.value)}
+                          disabled={loading}
                         />
                       </div>
                       <div>
@@ -1235,6 +1315,7 @@ const PriceCalculator: React.FC = () => {
                           type="date"
                           value={item.dueDate}
                           onChange={(e) => updateActionItem(index, 'dueDate', e.target.value)}
+                          disabled={loading}
                         />
                       </div>
                       <div className="flex items-end gap-2">
@@ -1243,6 +1324,7 @@ const PriceCalculator: React.FC = () => {
                           <Select
                             value={item.priority}
                             onValueChange={(value: any) => updateActionItem(index, 'priority', value)}
+                            disabled={loading}
                           >
                             <SelectTrigger>
                               <SelectValue />
@@ -1261,6 +1343,7 @@ const PriceCalculator: React.FC = () => {
                           variant="ghost"
                           size="sm"
                           onClick={() => removeActionItem(index)}
+                          disabled={loading}
                         >
                           <Trash2 className="h-4 w-4 text-red-500" />
                         </Button>
@@ -1284,11 +1367,13 @@ const PriceCalculator: React.FC = () => {
                         onChange={handleFileUpload}
                         className="hidden"
                         accept="image/*,video/*,.pdf,.doc,.docx"
+                        disabled={loading}
                       />
                       <Button
                         type="button"
                         variant="outline"
                         onClick={() => fileInputRef.current?.click()}
+                        disabled={loading}
                       >
                         <Upload className="h-4 w-4 mr-2" />
                         Upload Files
@@ -1319,6 +1404,7 @@ const PriceCalculator: React.FC = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => removeAttachment(index)}
+                            disabled={loading}
                           >
                             <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
@@ -1330,9 +1416,11 @@ const PriceCalculator: React.FC = () => {
                 
                 <DialogFooter>
                   <DialogClose asChild>
-                    <Button variant="outline">Cancel</Button>
+                    <Button variant="outline" disabled={loading}>Cancel</Button>
                   </DialogClose>
-                  <Button onClick={handleAddBriefing}>Add Staff Briefing</Button>
+                  <Button onClick={handleAddBriefing} disabled={loading}>
+                    {loading ? 'Adding...' : 'Add Staff Briefing'}
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -1346,7 +1434,7 @@ const PriceCalculator: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Total Training Sessions</p>
-                  <p className="text-2xl font-bold text-gray-900">{trainingSessions.length}</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.totalTrainings}</p>
                   <p className="text-xs text-green-600 mt-1">
                     +2 this week
                   </p>
@@ -1363,7 +1451,7 @@ const PriceCalculator: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Staff Briefings</p>
-                  <p className="text-2xl font-bold text-gray-900">{staffBriefings.length}</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.staffBriefings}</p>
                   <p className="text-xs text-green-600 mt-1">
                     Daily average: 3
                   </p>
@@ -1380,11 +1468,12 @@ const PriceCalculator: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Completed Training</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {trainingSessions.filter(t => t.status === 'completed').length}
-                  </p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.completedTraining}</p>
                   <p className="text-xs text-gray-600 mt-1">
-                    {Math.round((trainingSessions.filter(t => t.status === 'completed').length / trainingSessions.length) * 100)}% completion rate
+                    {stats.totalTrainings > 0 
+                      ? `${Math.round((stats.completedTraining / stats.totalTrainings) * 100)}% completion rate`
+                      : '0% completion rate'
+                    }
                   </p>
                 </div>
                 <div className="p-3 bg-purple-100 rounded-full">
@@ -1399,11 +1488,7 @@ const PriceCalculator: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Pending Actions</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {staffBriefings.reduce((acc, briefing) => 
-                      acc + briefing.actionItems.filter(a => a.status === 'pending').length, 0
-                    )}
-                  </p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.pendingActions}</p>
                   <p className="text-xs text-red-600 mt-1">
                     Requires attention
                   </p>
@@ -1418,16 +1503,23 @@ const PriceCalculator: React.FC = () => {
       </motion.div>
 
       {/* Main Content */}
-      {viewMode === 'list' ? (
+      {loading && viewMode === 'list' ? (
+        <div className="flex justify-center items-center py-20">
+          <div className="text-center">
+            <RefreshCw className="h-12 w-12 text-blue-500 animate-spin mx-auto mb-4" />
+            <p className="text-gray-600">Loading data...</p>
+          </div>
+        </div>
+      ) : viewMode === 'list' ? (
         <>
           {/* Tabs */}
           <Tabs defaultValue="training" className="mb-6" onValueChange={(value: any) => setActiveTab(value)}>
             <TabsList className="grid w-full md:w-auto grid-cols-2">
-              <TabsTrigger value="training" className="flex items-center gap-2">
+              <TabsTrigger value="training" className="flex items-center gap-2" disabled={loading}>
                 <Calendar className="h-4 w-4" />
                 Training Sessions
               </TabsTrigger>
-              <TabsTrigger value="briefing" className="flex items-center gap-2">
+              <TabsTrigger value="briefing" className="flex items-center gap-2" disabled={loading}>
                 <MessageSquare className="h-4 w-4" />
                 Staff Briefings
               </TabsTrigger>
@@ -1451,13 +1543,14 @@ const PriceCalculator: React.FC = () => {
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="w-full md:w-64"
+                      disabled={loading}
                     />
                   </div>
                   
                   <div className="flex flex-wrap gap-3">
                     <div className="flex items-center gap-2">
                       <Filter className="h-4 w-4 text-gray-400" />
-                      <Select value={filterDepartment} onValueChange={setFilterDepartment}>
+                      <Select value={filterDepartment} onValueChange={setFilterDepartment} disabled={loading}>
                         <SelectTrigger className="w-40">
                           <SelectValue placeholder="All Departments" />
                         </SelectTrigger>
@@ -1471,7 +1564,7 @@ const PriceCalculator: React.FC = () => {
                     </div>
                     
                     {activeTab === 'training' && (
-                      <Select value={filterStatus} onValueChange={setFilterStatus}>
+                      <Select value={filterStatus} onValueChange={setFilterStatus} disabled={loading}>
                         <SelectTrigger className="w-40">
                           <SelectValue placeholder="All Status" />
                         </SelectTrigger>
@@ -1485,7 +1578,7 @@ const PriceCalculator: React.FC = () => {
                       </Select>
                     )}
                     
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" disabled={loading}>
                       <Download className="h-4 w-4 mr-2" />
                       Export
                     </Button>
@@ -1518,7 +1611,7 @@ const PriceCalculator: React.FC = () => {
                         <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-4" />
                         <h3 className="text-lg font-medium text-gray-900 mb-2">No training sessions found</h3>
                         <p className="text-gray-500 mb-4">Try adjusting your filters or add a new training session.</p>
-                        <Button onClick={() => setShowAddTraining(true)}>
+                        <Button onClick={() => setShowAddTraining(true)} disabled={loading}>
                           <Plus className="h-4 w-4 mr-2" />
                           Add Training Session
                         </Button>
@@ -1526,7 +1619,7 @@ const PriceCalculator: React.FC = () => {
                     ) : (
                       <div className="space-y-4">
                         {filteredTrainingSessions.map(session => (
-                          <Card key={session.id} className="overflow-hidden">
+                          <Card key={session._id} className="overflow-hidden">
                             <div className="p-6">
                               <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-4">
                                 <div className="flex-1">
@@ -1559,10 +1652,6 @@ const PriceCalculator: React.FC = () => {
                                       <span className="text-sm text-gray-600">{session.trainer}</span>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                      <User className="h-4 w-4 text-gray-400" />
-                                      <span className="text-sm text-gray-600">Supervisor: {session.supervisor}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
                                       <Building className="h-4 w-4 text-gray-400" />
                                       <span className="text-sm text-gray-600">Site: {session.site}</span>
                                     </div>
@@ -1573,7 +1662,7 @@ const PriceCalculator: React.FC = () => {
                                     <div className="flex items-center gap-2">
                                       <Users className="h-4 w-4 text-gray-400" />
                                       <span className="text-sm text-gray-600">
-                                        {session.attendees.length}/{session.maxAttendees} attendees
+                                        {session.attendees?.length || 0}/{session.maxAttendees} attendees
                                       </span>
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -1582,7 +1671,7 @@ const PriceCalculator: React.FC = () => {
                                     </div>
                                   </div>
                                   
-                                  {session.objectives.length > 0 && (
+                                  {session.objectives && session.objectives.length > 0 && (
                                     <div className="mt-4">
                                       <h4 className="text-sm font-medium text-gray-700 mb-2">Objectives:</h4>
                                       <ul className="list-disc pl-5 space-y-1">
@@ -1593,12 +1682,12 @@ const PriceCalculator: React.FC = () => {
                                     </div>
                                   )}
                                   
-                                  {session.attachments.length > 0 && (
+                                  {session.attachments && session.attachments.length > 0 && (
                                     <div className="mt-4">
                                       <h4 className="text-sm font-medium text-gray-700 mb-2">Attachments:</h4>
                                       <div className="flex flex-wrap gap-2">
                                         {session.attachments.map(attachment => (
-                                          <Badge key={attachment.id} variant="outline" className="flex items-center gap-1">
+                                          <Badge key={attachment._id || attachment.id} variant="outline" className="flex items-center gap-1">
                                             {attachment.type === 'image' ? (
                                               <ImageIcon className="h-3 w-3" />
                                             ) : attachment.type === 'video' ? (
@@ -1617,7 +1706,7 @@ const PriceCalculator: React.FC = () => {
                                 <div className="flex flex-col gap-2">
                                   <Dialog>
                                     <DialogTrigger asChild>
-                                      <Button variant="outline" size="sm">
+                                      <Button variant="outline" size="sm" disabled={loading}>
                                         <Eye className="h-4 w-4 mr-2" />
                                         View Details
                                       </Button>
@@ -1646,10 +1735,6 @@ const PriceCalculator: React.FC = () => {
                                             <p>{session.trainer}</p>
                                           </div>
                                           <div>
-                                            <p className="text-sm font-medium text-gray-500">Supervisor</p>
-                                            <p>{session.supervisor}</p>
-                                          </div>
-                                          <div>
                                             <p className="text-sm font-medium text-gray-500">Site</p>
                                             <p>{session.site}</p>
                                           </div>
@@ -1669,12 +1754,12 @@ const PriceCalculator: React.FC = () => {
                                           </div>
                                         </div>
                                         
-                                        {session.feedback.length > 0 && (
+                                        {session.feedback && session.feedback.length > 0 && (
                                           <div>
                                             <h4 className="font-medium mb-2">Feedback</h4>
                                             <div className="space-y-2">
                                               {session.feedback.map(fb => (
-                                                <div key={fb.id} className="p-3 bg-gray-50 rounded">
+                                                <div key={fb._id || fb.id} className="p-3 bg-gray-50 rounded">
                                                   <div className="flex justify-between">
                                                     <p className="font-medium">{fb.employeeName}</p>
                                                     <div className="flex">
@@ -1696,7 +1781,8 @@ const PriceCalculator: React.FC = () => {
                                   <div className="flex gap-2">
                                     <Select
                                       value={session.status}
-                                      onValueChange={(value: any) => updateTrainingStatus(session.id, value)}
+                                      onValueChange={(value: any) => updateTrainingStatus(session._id, value)}
+                                      disabled={loading}
                                     >
                                       <SelectTrigger className="w-full">
                                         <SelectValue />
@@ -1712,7 +1798,8 @@ const PriceCalculator: React.FC = () => {
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      onClick={() => deleteTraining(session.id)}
+                                      onClick={() => deleteTraining(session._id)}
+                                      disabled={loading}
                                     >
                                       <Trash2 className="h-4 w-4 text-red-500" />
                                     </Button>
@@ -1748,7 +1835,7 @@ const PriceCalculator: React.FC = () => {
                         <MessageSquare className="h-12 w-12 text-gray-300 mx-auto mb-4" />
                         <h3 className="text-lg font-medium text-gray-900 mb-2">No staff briefings found</h3>
                         <p className="text-gray-500 mb-4">Try adjusting your filters or add a new staff briefing.</p>
-                        <Button onClick={() => setShowAddBriefing(true)}>
+                        <Button onClick={() => setShowAddBriefing(true)} disabled={loading}>
                           <Plus className="h-4 w-4 mr-2" />
                           Add Staff Briefing
                         </Button>
@@ -1756,7 +1843,7 @@ const PriceCalculator: React.FC = () => {
                     ) : (
                       <div className="space-y-4">
                         {filteredStaffBriefings.map(briefing => (
-                          <Card key={briefing.id} className="overflow-hidden">
+                          <Card key={briefing._id} className="overflow-hidden">
                             <div className="p-6">
                               <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-4">
                                 <div className="flex-1">
@@ -1789,7 +1876,7 @@ const PriceCalculator: React.FC = () => {
                                     </div>
                                   </div>
                                   
-                                  {briefing.topics.length > 0 && (
+                                  {briefing.topics && briefing.topics.length > 0 && (
                                     <div className="mt-4">
                                       <h4 className="text-sm font-medium text-gray-700 mb-2">Topics Discussed:</h4>
                                       <div className="flex flex-wrap gap-2">
@@ -1802,7 +1889,7 @@ const PriceCalculator: React.FC = () => {
                                     </div>
                                   )}
                                   
-                                  {briefing.keyPoints.length > 0 && (
+                                  {briefing.keyPoints && briefing.keyPoints.length > 0 && (
                                     <div className="mt-4">
                                       <h4 className="text-sm font-medium text-gray-700 mb-2">Key Points:</h4>
                                       <ul className="list-disc pl-5 space-y-1">
@@ -1813,21 +1900,22 @@ const PriceCalculator: React.FC = () => {
                                     </div>
                                   )}
                                   
-                                  {briefing.actionItems.length > 0 && (
+                                  {briefing.actionItems && briefing.actionItems.length > 0 && (
                                     <div className="mt-4">
                                       <h4 className="text-sm font-medium text-gray-700 mb-2">Action Items:</h4>
                                       <div className="space-y-2">
                                         {briefing.actionItems.map(item => (
-                                          <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                                          <div key={item._id || item.id} className="flex items-center justify-between p-3 bg-gray-50 rounded">
                                             <div className="flex items-center gap-3">
                                               <Button
                                                 variant="ghost"
                                                 size="sm"
                                                 onClick={() => updateActionItemStatus(
-                                                  briefing.id,
-                                                  item.id,
+                                                  briefing._id,
+                                                  item._id || item.id || '',
                                                   item.status === 'completed' ? 'pending' : 'completed'
                                                 )}
+                                                disabled={loading}
                                               >
                                                 {item.status === 'completed' ? (
                                                   <CheckSquare className="h-4 w-4 text-green-500" />
@@ -1852,12 +1940,12 @@ const PriceCalculator: React.FC = () => {
                                     </div>
                                   )}
                                   
-                                  {briefing.attachments.length > 0 && (
+                                  {briefing.attachments && briefing.attachments.length > 0 && (
                                     <div className="mt-4">
                                       <h4 className="text-sm font-medium text-gray-700 mb-2">Attachments:</h4>
                                       <div className="flex flex-wrap gap-2">
                                         {briefing.attachments.map(attachment => (
-                                          <Badge key={attachment.id} variant="outline" className="flex items-center gap-1">
+                                          <Badge key={attachment._id || attachment.id} variant="outline" className="flex items-center gap-1">
                                             {attachment.type === 'image' ? (
                                               <ImageIcon className="h-3 w-3" />
                                             ) : attachment.type === 'video' ? (
@@ -1883,7 +1971,7 @@ const PriceCalculator: React.FC = () => {
                                 <div className="flex flex-col gap-2">
                                   <Dialog>
                                     <DialogTrigger asChild>
-                                      <Button variant="outline" size="sm">
+                                      <Button variant="outline" size="sm" disabled={loading}>
                                         <Eye className="h-4 w-4 mr-2" />
                                         View Details
                                       </Button>
@@ -1937,7 +2025,8 @@ const PriceCalculator: React.FC = () => {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => deleteBriefing(briefing.id)}
+                                    onClick={() => deleteBriefing(briefing._id)}
+                                    disabled={loading}
                                   >
                                     <Trash2 className="h-4 w-4 text-red-500" />
                                   </Button>
@@ -1971,13 +2060,13 @@ const PriceCalculator: React.FC = () => {
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Button variant="outline" size="sm" onClick={prevMonth}>
+                  <Button variant="outline" size="sm" onClick={prevMonth} disabled={loading}>
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
                   <h3 className="text-lg font-semibold">
                     {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                   </h3>
-                  <Button variant="outline" size="sm" onClick={nextMonth}>
+                  <Button variant="outline" size="sm" onClick={nextMonth} disabled={loading}>
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
@@ -2000,7 +2089,7 @@ const PriceCalculator: React.FC = () => {
               </div>
               
               <div className="space-y-4 mt-8">
-                <h4 className="font-semibold">Upcoming Events</h4>
+                <h4 className="font-semibold">Upcoming Events..</h4>
                 {calendarEvents
                   .filter(event => new Date(event.date) >= new Date())
                   .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
@@ -2014,8 +2103,8 @@ const PriceCalculator: React.FC = () => {
                           {formatDate(event.date)} • {event.type === 'training' ? 'Training' : 'Briefing'}
                         </p>
                       </div>
-                      <Button variant="ghost" size="sm">
-                        View
+                      <Button variant="ghost" size="sm" disabled={loading}>
+                        view 
                       </Button>
                     </div>
                   ))}

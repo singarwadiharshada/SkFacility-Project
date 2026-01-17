@@ -14,35 +14,97 @@ import { Plus, FileText, DollarSign, TrendingUp, Eye, Download, Upload, IndianRu
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 
-// Import components
+// Import components - Removed RevenueAnalytics import
 import Invoice from "./Billing2/Invoice";
 import Expenses from "./Billing2/Expenses";
 import PaymentSummary from "./Billing2/PaymentSummary";
 import LedgerBalance from "./Billing2/LedgerBalance";
-import RevenueAnalytics from "./Billing2/RevenueAnalytics";
 
 // Interfaces
-export interface Invoice {
-  id: string;
-  client: string;
-  clientEmail: string;
-  amount: number;
-  status: "paid" | "pending" | "overdue";
-  date: string;
-  dueDate: string;
-  items: InvoiceItem[];
-  tax: number;
-  discount: number;
-  paymentMethod?: string;
-  serviceType?: string;
-  site?: string;
-}
-
 export interface InvoiceItem {
   description: string;
   quantity: number;
   rate: number;
   amount: number;
+}
+
+// Simplified Invoice interface - removed extension to avoid conflicts
+export interface Invoice {
+  // Basic invoice info
+  id: string;
+  invoiceNumber: string;
+  voucherNo?: string;
+  invoiceType: 'perform' | 'tax';
+  status: 'pending' | 'paid' | 'overdue';
+  date: string;
+  dueDate?: string;
+  
+  // User/Role tracking
+  createdBy?: string;
+  userId?: string;
+  sharedWith?: string[];
+  
+  // Client info
+  client: string;
+  clientEmail?: string;
+  
+  // Company info (optional)
+  companyName?: string;
+  companyAddress?: string;
+  companyGSTIN?: string;
+  companyState?: string;
+  companyStateCode?: string;
+  companyEmail?: string;
+  
+  // Consignee info (optional)
+  consignee?: string;
+  consigneeAddress?: string;
+  consigneeGSTIN?: string;
+  consigneeState?: string;
+  consigneeStateCode?: string;
+  
+  // Buyer info (optional)
+  buyer?: string;
+  buyerAddress?: string;
+  buyerGSTIN?: string;
+  buyerState?: string;
+  buyerStateCode?: string;
+  
+  // Order details (optional)
+  buyerRef?: string;
+  dispatchedThrough?: string;
+  paymentTerms?: string;
+  notes?: string;
+  site?: string;
+  destination?: string;
+  deliveryTerms?: string;
+  serviceType?: string;
+  
+  // Items
+  items: InvoiceItem[];
+  
+  // Financials
+  amount: number;
+  subtotal?: number;
+  tax: number;
+  discount?: number;
+  roundUp?: number;
+  
+  // Tax invoice specific (optional)
+  managementFeesPercent?: number;
+  managementFeesAmount?: number;
+  
+  // Bank details (optional)
+  bankName?: string;
+  accountNumber?: string;
+  accountHolder?: string;
+  branchAndIFSC?: string;
+  
+  // Additional fields
+  amountInWords?: string;
+  
+  // Payment method
+  paymentMethod?: string;
 }
 
 export interface Expense {
@@ -176,16 +238,18 @@ export const clients = [
   "WESTERN INDIA FORGINGS PVT LTD"
 ];
 
-// Initial Data
+// Initial Data - Fixed with required properties
 const initialInvoices: Invoice[] = [
   {
     id: "INV-001",
+    invoiceNumber: "INV-001",
     client: "ALYSSUM DEVELOPERS PVT. LTD.",
     clientEmail: "accounts@alyssum.com",
     amount: 125000,
     status: "paid",
     date: "2024-01-10",
     dueDate: "2024-01-20",
+    invoiceType: "perform",
     items: [
       { description: "Housekeeping Management - Monthly Service", quantity: 1, rate: 75000, amount: 75000 },
       { description: "Security Personnel Services", quantity: 4, rate: 12500, amount: 50000 }
@@ -194,16 +258,19 @@ const initialInvoices: Invoice[] = [
     discount: 0,
     paymentMethod: "Bank Transfer",
     serviceType: "Housekeeping Management",
-    site: "Tech Park Bangalore"
+    site: "Tech Park Bangalore",
+    createdBy: "admin"
   },
   {
     id: "INV-002",
+    invoiceNumber: "INV-002",
     client: "ARYA ASSOCIATES",
     clientEmail: "billing@aryaassociates.com",
     amount: 89000,
     status: "pending",
     date: "2024-01-15",
     dueDate: "2024-01-25",
+    invoiceType: "perform",
     items: [
       { description: "Parking Management Services", quantity: 1, rate: 45000, amount: 45000 },
       { description: "Waste Management - Monthly", quantity: 1, rate: 44000, amount: 44000 }
@@ -212,16 +279,19 @@ const initialInvoices: Invoice[] = [
     discount: 1000,
     paymentMethod: "UPI",
     serviceType: "Parking Management",
-    site: "Financial District Mumbai"
+    site: "Financial District Mumbai",
+    createdBy: "admin"
   },
   {
     id: "INV-003",
+    invoiceNumber: "INV-003",
     client: "ASTITVA ASSET MANAGEMENT LLP",
     clientEmail: "finance@astitva.com",
     amount: 156000,
     status: "overdue",
     date: "2024-01-05",
     dueDate: "2024-01-15",
+    invoiceType: "tax",
     items: [
       { description: "STP Tank Cleaning - Quarterly", quantity: 1, rate: 98000, amount: 98000 },
       { description: "Consumables Supply", quantity: 1, rate: 58000, amount: 58000 }
@@ -229,16 +299,19 @@ const initialInvoices: Invoice[] = [
     tax: 28080,
     discount: 5000,
     serviceType: "STP Tank Cleaning",
-    site: "IT Hub Hyderabad"
+    site: "IT Hub Hyderabad",
+    createdBy: "admin"
   },
   {
     id: "INV-004",
+    invoiceNumber: "INV-004",
     client: "CUSHMAN & WAKEFIELD PROPERTY MANAGEMENT SERVICES INDIA PVT. LTD.",
     clientEmail: "accounts@cushwake.com",
     amount: 67000,
     status: "paid",
     date: "2024-01-12",
     dueDate: "2024-01-22",
+    invoiceType: "perform",
     items: [
       { description: "Security Management - Monthly", quantity: 1, rate: 67000, amount: 67000 }
     ],
@@ -246,32 +319,38 @@ const initialInvoices: Invoice[] = [
     discount: 0,
     paymentMethod: "Bank Transfer",
     serviceType: "Security Management",
-    site: "Commercial Complex Delhi"
+    site: "Commercial Complex Delhi",
+    createdBy: "admin"
   },
   {
     id: "INV-005",
+    invoiceNumber: "INV-005",
     client: "ISS FACILITY SERVICES INDIA PVT LTD",
     clientEmail: "billing@issindia.com",
     amount: 45000,
     status: "pending",
     date: "2024-01-18",
     dueDate: "2024-01-28",
+    invoiceType: "tax",
     items: [
       { description: "Consumables Supply - Office", quantity: 1, rate: 45000, amount: 45000 }
     ],
     tax: 8100,
     discount: 2000,
     serviceType: "Consumables Supply",
-    site: "Business Center Chennai"
+    site: "Business Center Chennai",
+    createdBy: "admin"
   },
   {
     id: "INV-006",
+    invoiceNumber: "INV-006",
     client: "GANRAJ HOMES LLP-GANGA IMPERIA",
     clientEmail: "accounts@ganraj.com",
     amount: 98000,
     status: "paid",
     date: "2024-01-08",
     dueDate: "2024-01-18",
+    invoiceType: "perform",
     items: [
       { description: "Security Management Services", quantity: 3, rate: 20000, amount: 60000 },
       { description: "Housekeeping Services", quantity: 1, rate: 38000, amount: 38000 }
@@ -280,16 +359,19 @@ const initialInvoices: Invoice[] = [
     discount: 0,
     paymentMethod: "Bank Transfer",
     serviceType: "Security Management",
-    site: "Tech Park Bangalore"
+    site: "Tech Park Bangalore",
+    createdBy: "admin"
   },
   {
     id: "INV-007",
+    invoiceNumber: "INV-007",
     client: "PRIME VENTURES",
     clientEmail: "finance@primeventures.com",
     amount: 120000,
     status: "pending",
     date: "2024-01-20",
     dueDate: "2024-01-30",
+    invoiceType: "tax",
     items: [
       { description: "Parking Management - Premium", quantity: 1, rate: 80000, amount: 80000 },
       { description: "Waste Management Services", quantity: 1, rate: 40000, amount: 40000 }
@@ -297,32 +379,38 @@ const initialInvoices: Invoice[] = [
     tax: 21600,
     discount: 5000,
     serviceType: "Parking Management",
-    site: "Financial District Mumbai"
+    site: "Financial District Mumbai",
+    createdBy: "admin"
   },
   {
     id: "INV-008",
+    invoiceNumber: "INV-008",
     client: "SYNERGY INFOTECH PVT LTD",
     clientEmail: "accounts@synergy.com",
     amount: 75000,
     status: "overdue",
     date: "2024-01-03",
     dueDate: "2024-01-13",
+    invoiceType: "perform",
     items: [
       { description: "Consumables Supply - IT Equipment", quantity: 1, rate: 75000, amount: 75000 }
     ],
     tax: 13500,
     discount: 0,
     serviceType: "Consumables Supply",
-    site: "IT Hub Hyderabad"
+    site: "IT Hub Hyderabad",
+    createdBy: "admin"
   },
   {
     id: "INV-009",
+    invoiceNumber: "INV-009",
     client: "WEETAN SBRFS LLP",
     clientEmail: "billing@weetan.com",
     amount: 185000,
     status: "paid",
     date: "2024-01-25",
     dueDate: "2024-02-04",
+    invoiceType: "tax",
     items: [
       { description: "STP Tank Cleaning - Comprehensive", quantity: 1, rate: 120000, amount: 120000 },
       { description: "Waste Management - Advanced", quantity: 1, rate: 65000, amount: 65000 }
@@ -331,23 +419,27 @@ const initialInvoices: Invoice[] = [
     discount: 8000,
     paymentMethod: "UPI",
     serviceType: "STP Tank Cleaning",
-    site: "Commercial Complex Delhi"
+    site: "Commercial Complex Delhi",
+    createdBy: "admin"
   },
   {
     id: "INV-010",
+    invoiceNumber: "INV-010",
     client: "WESTERN INDIA FORGINGS PVT LTD",
     clientEmail: "accounts@westernindia.com",
     amount: 55000,
     status: "pending",
     date: "2024-01-28",
     dueDate: "2024-02-07",
+    invoiceType: "perform",
     items: [
       { description: "Housekeeping Management - Basic", quantity: 1, rate: 55000, amount: 55000 }
     ],
     tax: 9900,
     discount: 2000,
     serviceType: "Housekeeping Management",
-    site: "Business Center Chennai"
+    site: "Business Center Chennai",
+    createdBy: "admin"
   }
 ];
 
@@ -1061,22 +1153,22 @@ const Billing = () => {
                 variant="outline" 
                 size="sm"
                 onClick={() => setActiveTab("invoices")}
-                className="border-yellow-300 text-yellow-700 hover:bg-yellow-100"
-              >
-                View All
+                className="border-yellow-300 text-yellow-700 hover:bg-yellow-100" >
+             
+                View All 
               </Button>
             </div>
           </motion.div>
         )}
 
-        {/* Main Tabs */}
+        {/* Main Tabs - Reduced from 5 to 4 tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-4"> {/* Changed from grid-cols-5 to grid-cols-4 */}
             <TabsTrigger value="invoices">Invoices</TabsTrigger>
             <TabsTrigger value="expenses">Expenses</TabsTrigger>
             <TabsTrigger value="payments">Payment Summary</TabsTrigger>
             <TabsTrigger value="ledger">Ledger & Balance</TabsTrigger>
-            <TabsTrigger value="analytics">Revenue Analytics</TabsTrigger>
+            {/* Removed: <TabsTrigger value="analytics">Revenue Analytics</TabsTrigger> */}
           </TabsList>
 
           <TabsContent value="invoices">
@@ -1113,14 +1205,7 @@ const Billing = () => {
             />
           </TabsContent>
 
-          <TabsContent value="analytics">
-            <RevenueAnalytics
-              siteProfits={siteProfits}
-              invoices={invoices}
-              expenses={expenses}
-              onExportData={handleExportData}
-            />
-          </TabsContent>
+          {/* Removed Revenue Analytics tab content */}
         </Tabs>
       </motion.div>
     </div>

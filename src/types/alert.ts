@@ -4,14 +4,14 @@ export interface Alert {
   description: string;
   severity: "low" | "medium" | "high" | "critical";
   status: "open" | "in-progress" | "resolved";
-  date: string; // Format: "YYYY-MM-DD HH:mm"
+  date: string; // Format:  "YYYY-MM-DD HH:mm"
   reportedBy: string;
   site: string;
   photos: string[];
   assignedTo: string;
   createdAt?: string;
   updatedAt?: string;
-}
+  }
 
 export interface CreateAlertData {
   title: string;
@@ -24,7 +24,8 @@ export interface CreateAlertData {
   photos: string[];
 }
 
-export interface UpdateAlertData extends Partial<CreateAlertData> {
+export interface UpdateAlertData extends Partial<CreateAlertData> 
+ { 
   status?: Alert["status"];
 }
 

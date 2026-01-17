@@ -8,6 +8,7 @@ import {
   getRosterStats,
   getCalendarView,
   bulkCreateRosterEntries,
+  checkDuplicateEntry,
 } from "../controllers/rosterController";
 
 const router = express.Router();
@@ -35,5 +36,6 @@ router.put("/:id", updateRosterEntry);
 
 // Delete roster entry
 router.delete("/:id", deleteRosterEntry);
+router.get("/check-duplicate", checkDuplicateEntry);
 
 export default router;
