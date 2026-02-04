@@ -1,8 +1,33 @@
 // src/components/hrms/tabs/ReportsTab.tsx
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Download, Calendar, FileText, Users, IndianRupee, Loader2, RefreshCw, AlertTriangle } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { 
+  Download, 
+  Calendar, 
+  FileText, 
+  Users, 
+  IndianRupee, 
+  Loader2, 
+  RefreshCw, 
+  AlertTriangle,
+  TrendingUp,
+  BarChart3,
+  PieChart,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Filter,
+  ChevronRight,
+  Eye,
+  Printer,
+  FileSpreadsheet,
+  Database,
+  ShieldAlert,
+  Activity
+} from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import axios from "axios";
@@ -132,6 +157,7 @@ interface APIAttendance {
 }
 
 const API_URL = `http://${window.location.hostname}:5001/api`;
+
 const ReportsTab = ({ employees, attendance, selectedMonth = new Date().toISOString().slice(0, 7) }: ReportsTabProps) => {
   // State for payroll data
   const [payroll, setPayroll] = useState<Payroll[]>([]);
@@ -159,6 +185,9 @@ const ReportsTab = ({ employees, attendance, selectedMonth = new Date().toISOStr
   });
   const [employeesLoading, setEmployeesLoading] = useState(false);
   const [employeesError, setEmployeesError] = useState<string | null>(null);
+
+  // Active tab state
+  const [activeTab, setActiveTab] = useState("overview");
 
   // Fetch all data
   useEffect(() => {
@@ -620,6 +649,52 @@ const ReportsTab = ({ employees, attendance, selectedMonth = new Date().toISOStr
     fetchEmployeeCounts();
   };
 
+  // New: Calculate department distribution for visualization
+  const getDepartmentDistribution = () => {
+    return Object.entries(employeeCounts.departments)
+      .map(([name, count]) => ({
+        name,
+        count,
+        percentage: employeeCounts.total > 0 ? (count / employeeCounts.total) * 100 : 0
+      }))
+      .sort((a, b) => b.count - a.count);
+  };
+
+  // New: Calculate attendance percentage
+  const getAttendancePercentage = () => {
+    if (attendanceSummary.total === 0) return 0;
+    return (attendanceSummary.present / attendanceSummary.total) * 100;
+  };
+
+  // New: Calculate payroll completion percentage
+  const getPayrollCompletionPercentage = () => {
+    if (payrollSummary.total === 0) return 0;
+    return ((payrollSummary.paid + payrollSummary.partPaid) / payrollSummary.total) * 100;
+  };
+
+  // New: Get recent payroll activities
+  const getRecentPayrollActivities = () => {
+    return payroll
+      .sort((a, b) => new Date(b.updatedAt || "").getTime() - new Date(a.updatedAt || "").getTime())
+      .slice(0, 5);
+  };
+
+  // New: Get status icon
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "paid":
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case "pending":
+        return <Clock className="h-4 w-4 text-yellow-500" />;
+      case "hold":
+        return <XCircle className="h-4 w-4 text-red-500" />;
+      case "part-paid":
+        return <Clock className="h-4 w-4 text-orange-500" />;
+      default:
+        return <Clock className="h-4 w-4 text-gray-500" />;
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch(status) {
       case "valid": return "default";
@@ -636,42 +711,46 @@ const ReportsTab = ({ employees, attendance, selectedMonth = new Date().toISOStr
     return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
 
+  // Format currency
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount);
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      {/* Header Section */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="text-sm text-muted-foreground">
-            Month: {formatMonth(selectedMonth)}
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Reports Dashboard</h1>
+          <p className="text-muted-foreground">
+            Comprehensive overview of your HR analytics for {formatMonth(selectedMonth)}
           </p>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="gap-1">
+              <Database className="h-3 w-3" />
+              {employeeCounts.total} Employees
+            </Badge>
+            <Badge variant="outline" className="gap-1">
+              <IndianRupee className="h-3 w-3" />
+              {formatCurrency(payrollSummary.totalAmount)}
+            </Badge>
+          </div>
           <Button 
             variant="outline" 
             onClick={handleRefreshAll}
             disabled={loading || attendanceLoading || employeesLoading}
-            className="flex-shrink-0"
+            className="gap-2"
           >
-            <RefreshCw className={`mr-2 h-4 w-4 ${(loading || attendanceLoading || employeesLoading) ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${(loading || attendanceLoading || employeesLoading) ? 'animate-spin' : ''}`} />
             Refresh All
           </Button>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={handleExportEmployees} className="flex-shrink-0">
-              <Download className="mr-2 h-4 w-4" />
-              Employees
-            </Button>
-            <Button variant="outline" onClick={handleExportAttendance} className="flex-shrink-0">
-              <Download className="mr-2 h-4 w-4" />
-              Attendance
-            </Button>
-            <Button variant="outline" onClick={handleExportPayroll} className="flex-shrink-0">
-              <Download className="mr-2 h-4 w-4" />
-              Payroll
-            </Button>
-            <Button onClick={handleExportAllReports} className="flex-shrink-0">
-              <Download className="mr-2 h-4 w-4" />
-              All Reports
-            </Button>
-          </div>
         </div>
       </div>
 
@@ -679,11 +758,14 @@ const ReportsTab = ({ employees, attendance, selectedMonth = new Date().toISOStr
       {(attendanceError || employeesError) && (
         <div className="space-y-2">
           {attendanceError && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
               <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <AlertTriangle className="h-4 w-4 text-red-600 mr-2" />
-                  <span className="text-red-700 font-medium">Attendance: {attendanceError}</span>
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+                  <div>
+                    <p className="font-medium text-red-800 dark:text-red-300">Attendance Data Error</p>
+                    <p className="text-sm text-red-700 dark:text-red-400">{attendanceError}</p>
+                  </div>
                 </div>
                 <Button 
                   size="sm" 
@@ -697,11 +779,14 @@ const ReportsTab = ({ employees, attendance, selectedMonth = new Date().toISOStr
             </div>
           )}
           {employeesError && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
               <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <AlertTriangle className="h-4 w-4 text-yellow-600 mr-2" />
-                  <span className="text-yellow-700 font-medium">Employees: {employeesError}</span>
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+                  <div>
+                    <p className="font-medium text-yellow-800 dark:text-yellow-300">Employee Data Error</p>
+                    <p className="text-sm text-yellow-700 dark:text-yellow-400">{employeesError}</p>
+                  </div>
                 </div>
                 <Button 
                   size="sm" 
@@ -717,192 +802,491 @@ const ReportsTab = ({ employees, attendance, selectedMonth = new Date().toISOStr
         </div>
       )}
 
-      {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Total Employees
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{employeeCounts.total}</div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {employeeCounts.active} active • {employeeCounts.left} left
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <IndianRupee className="h-4 w-4" />
-              Total Payroll
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              ₹{payrollSummary.totalAmount.toLocaleString()}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {payrollSummary.total} records
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Departments
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{Object.keys(employeeCounts.departments).length}</div>
-            <div className="text-xs text-muted-foreground mt-1">
-              Active departments
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Tabs Navigation */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-flex">
+          <TabsTrigger value="overview" className="gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="payroll" className="gap-2">
+            <IndianRupee className="h-4 w-4" />
+            Payroll
+          </TabsTrigger>
+          <TabsTrigger value="attendance" className="gap-2">
+            <Calendar className="h-4 w-4" />
+            Attendance
+          </TabsTrigger>
+          <TabsTrigger value="employees" className="gap-2">
+            <Users className="h-4 w-4" />
+            Employees
+          </TabsTrigger>
+        </TabsList>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Attendance Summary Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
-              Attendance Summary
-            </CardTitle>
-            <div className="text-sm text-muted-foreground">
-              {attendanceData.length > 0 ? (
-                <span>Based on {attendanceData.length} attendance records</span>
-              ) : (
-                <span>No attendance data available</span>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            {attendanceLoading ? (
-              <div className="text-center py-4">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto mb-2"></div>
-                <p className="text-sm text-muted-foreground">Calculating attendance...</p>
-              </div>
-            ) : attendanceError ? (
-              <div className="text-center py-4">
-                <p className="text-sm text-red-600 mb-2">Failed to load attendance data</p>
-                <Button size="sm" onClick={fetchAttendanceData}>
-                  Retry
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex justify-between">
-                  <span>Present:</span>
-                  <span className="font-medium">{attendanceSummary.present}</span>
+        {/* Overview Tab */}
+        <TabsContent value="overview" className="space-y-6">
+          {/* Quick Stats */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card className="relative overflow-hidden">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center justify-between">
+                  <span className="text-muted-foreground">Total Employees</span>
+                  <Users className="h-4 w-4" />
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{employeeCounts.total}</div>
+                <div className="flex items-center justify-between mt-2">
+                  <div className="text-sm text-muted-foreground">
+                    <span className="text-green-600 font-medium">{employeeCounts.active} active</span>
+                    {" • "}
+                    <span className="text-red-600">{employeeCounts.left} left</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {((employeeCounts.active / employeeCounts.total) * 100 || 0).toFixed(1)}% active
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span>Absent:</span>
-                  <span className="font-medium text-destructive">{attendanceSummary.absent}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Late:</span>
-                  <span className="font-medium text-secondary">{attendanceSummary.late}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Half Day:</span>
-                  <span className="font-medium text-muted-foreground">{attendanceSummary.halfDay}</span>
-                </div>
-                <div className="flex justify-between border-t pt-2">
-                  <span>Total Records:</span>
-                  <span className="font-medium">{attendanceSummary.total}</span>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
 
-        {/* Payroll Summary Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              Payroll Summary (Counts)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex justify-between">
-                <span>Total Records:</span>
-                <span className="font-medium">{payrollSummary.total}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Processed:</span>
-                <Badge variant="secondary">{payrollSummary.processed}</Badge>
-              </div>
-              <div className="flex justify-between">
-                <span>Paid:</span>
-                <Badge className="bg-green-100 text-green-800 hover:bg-green-100">{payrollSummary.paid}</Badge>
-              </div>
-              <div className="flex justify-between">
-                <span>Hold:</span>
-                <Badge className="bg-red-100 text-red-800 hover:bg-red-100">{payrollSummary.hold}</Badge>
-              </div>
-              <div className="flex justify-between">
-                <span>Part Paid:</span>
-                <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">{payrollSummary.partPaid}</Badge>
-              </div>
-              <div className="flex justify-between border-t pt-2">
-                <span>Pending:</span>
-                <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">{payrollSummary.pending}</Badge>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            <Card className="relative overflow-hidden">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center justify-between">
+                  <span className="text-muted-foreground">Total Payroll</span>
+                  <IndianRupee className="h-4 w-4" />
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{formatCurrency(payrollSummary.totalAmount)}</div>
+                <div className="flex items-center justify-between mt-2">
+                  <div className="text-sm text-muted-foreground">
+                    {payrollSummary.total} records
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {getPayrollCompletionPercentage().toFixed(1)}% completed
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-        {/* Department-wise Staff */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Department-wise Staff Utilization
-            </CardTitle>
-            <div className="text-sm text-muted-foreground">
-              {employeesLoading ? "Loading department data..." : `${Object.keys(employeeCounts.departments).length} departments`}
-            </div>
-          </CardHeader>
-          <CardContent>
-            {employeesLoading ? (
-              <div className="text-center py-4">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto mb-2"></div>
-                <p className="text-sm text-muted-foreground">Loading department data...</p>
-              </div>
-            ) : employeesError ? (
-              <div className="text-center py-4">
-                <p className="text-sm text-yellow-600 mb-2">Failed to load department data</p>
-                <Button size="sm" onClick={fetchEmployeeCounts}>
-                  Retry
-                </Button>
-              </div>
-            ) : Object.keys(employeeCounts.departments).length === 0 ? (
-              <div className="text-center py-4 text-muted-foreground">
-                No department data available
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {Object.entries(employeeCounts.departments)
-                  .sort(([deptA, countA], [deptB, countB]) => countB - countA)
-                  .map(([dept, count]) => (
-                    <div key={dept} className="flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{dept}</span>
+            <Card className="relative overflow-hidden">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center justify-between">
+                  <span className="text-muted-foreground">Attendance Rate</span>
+                  <TrendingUp className="h-4 w-4" />
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{getAttendancePercentage().toFixed(1)}%</div>
+                <div className="mt-2 space-y-2">
+                  <Progress value={getAttendancePercentage()} className="h-2" />
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{attendanceSummary.present} present</span>
+                    <span>{attendanceSummary.absent} absent</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="relative overflow-hidden">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center justify-between">
+                  <span className="text-muted-foreground">Departments</span>
+                  <PieChart className="h-4 w-4" />
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{Object.keys(employeeCounts.departments).length}</div>
+                <div className="text-sm text-muted-foreground mt-2">
+                  <div className="flex items-center justify-between">
+                    <span>Largest department:</span>
+                    <span className="font-medium">
+                      {getDepartmentDistribution()[0]?.name || "N/A"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Employees in largest:</span>
+                    <span className="font-medium">
+                      {getDepartmentDistribution()[0]?.count || 0}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Main Charts Area */}
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* Department Distribution */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Department Distribution</CardTitle>
+                <CardDescription>Employee count per department</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {getDepartmentDistribution().map((dept) => (
+                    <div key={dept.name} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="h-3 w-3 rounded-full bg-primary"></div>
+                          <span className="font-medium">{dept.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold">{dept.count}</span>
+                          <span className="text-sm text-muted-foreground">
+                            ({dept.percentage.toFixed(1)}%)
+                          </span>
+                        </div>
                       </div>
-                      <Badge variant="secondary">
-                        {count} {count === 1 ? 'employee' : 'employees'}
+                      <Progress value={dept.percentage} className="h-2" />
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Payroll Status */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Payroll Status Overview</CardTitle>
+                <CardDescription>Current month payroll distribution</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {[
+                    { label: "Paid", value: payrollSummary.paid, color: "bg-green-500" },
+                    { label: "Pending", value: payrollSummary.pending, color: "bg-yellow-500" },
+                    { label: "Hold", value: payrollSummary.hold, color: "bg-red-500" },
+                    { label: "Part Paid", value: payrollSummary.partPaid, color: "bg-orange-500" },
+                    { label: "Processed", value: payrollSummary.processed, color: "bg-blue-500" },
+                  ].map((item) => (
+                    <div key={item.label} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className={`h-3 w-3 rounded-full ${item.color}`}></div>
+                          <span className="font-medium">{item.label}</span>
+                        </div>
+                        <span className="font-bold">{item.value}</span>
+                      </div>
+                      <Progress 
+                        value={(item.value / payrollSummary.total) * 100} 
+                        className="h-2"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Recent Activities */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Payroll Activities</CardTitle>
+              <CardDescription>Latest payroll updates and changes</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {getRecentPayrollActivities().map((payroll) => (
+                  <div key={payroll._id} className="flex items-center justify-between p-3 rounded-lg border">
+                    <div className="flex items-center gap-3">
+                      {getStatusIcon(payroll.status)}
+                      <div>
+                        <p className="font-medium">{payroll.employeeId}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {payroll.month} • {formatCurrency(payroll.netSalary)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className={
+                        payroll.status === "paid" ? "bg-green-50 text-green-700" :
+                        payroll.status === "pending" ? "bg-yellow-50 text-yellow-700" :
+                        payroll.status === "hold" ? "bg-red-50 text-red-700" :
+                        "bg-gray-50 text-gray-700"
+                      }>
+                        {payroll.status}
+                      </Badge>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Payroll Tab */}
+        <TabsContent value="payroll" className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Payroll Details</CardTitle>
+                    <CardDescription>{formatMonth(selectedMonth)} payroll records</CardDescription>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={handleExportPayroll}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Export
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-md border">
+                  <div className="grid grid-cols-4 p-4 font-medium border-b">
+                    <div>Employee ID</div>
+                    <div>Name</div>
+                    <div>Net Salary</div>
+                    <div>Status</div>
+                  </div>
+                  {payroll.slice(0, 8).map((p) => (
+                    <div key={p._id} className="grid grid-cols-4 p-4 border-b hover:bg-muted/50">
+                      <div className="font-medium">{p.employeeId}</div>
+                      <div>{p.employee?.name || "N/A"}</div>
+                      <div className="font-bold">{formatCurrency(p.netSalary)}</div>
+                      <div>
+                        <Badge variant="outline" className={
+                          p.status === "paid" ? "bg-green-50 text-green-700" :
+                          p.status === "pending" ? "bg-yellow-50 text-yellow-700" :
+                          p.status === "hold" ? "bg-red-50 text-red-700" :
+                          "bg-gray-50 text-gray-700"
+                        }>
+                          {p.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Payroll Summary</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  <div>
+                    <div className="text-2xl font-bold text-center mb-4">
+                      {formatCurrency(payrollSummary.totalAmount)}
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Total Records</span>
+                        <span className="font-medium">{payrollSummary.total}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Processed</span>
+                        <Badge variant="secondary">{payrollSummary.processed}</Badge>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Paid</span>
+                        <Badge className="bg-green-100 text-green-800">{payrollSummary.paid}</Badge>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Pending</span>
+                        <Badge className="bg-yellow-100 text-yellow-800">{payrollSummary.pending}</Badge>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Hold</span>
+                        <Badge className="bg-red-100 text-red-800">{payrollSummary.hold}</Badge>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Part Paid</span>
+                        <Badge className="bg-orange-100 text-orange-800">{payrollSummary.partPaid}</Badge>
+                      </div>
+                    </div>
+                  </div>
+                  <Button className="w-full" onClick={handleExportAllReports}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Export All Reports
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Attendance Tab */}
+        <TabsContent value="attendance" className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Attendance Summary</CardTitle>
+                <CardDescription>Monthly attendance overview</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  {/* Attendance Stats */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="rounded-lg border p-4 text-center">
+                      <div className="text-2xl font-bold text-green-600">{attendanceSummary.present}</div>
+                      <div className="text-sm text-muted-foreground">Present</div>
+                    </div>
+                    <div className="rounded-lg border p-4 text-center">
+                      <div className="text-2xl font-bold text-red-600">{attendanceSummary.absent}</div>
+                      <div className="text-sm text-muted-foreground">Absent</div>
+                    </div>
+                    <div className="rounded-lg border p-4 text-center">
+                      <div className="text-2xl font-bold text-yellow-600">{attendanceSummary.late}</div>
+                      <div className="text-sm text-muted-foreground">Late</div>
+                    </div>
+                    <div className="rounded-lg border p-4 text-center">
+                      <div className="text-2xl font-bold text-blue-600">{attendanceSummary.halfDay}</div>
+                      <div className="text-sm text-muted-foreground">Half Day</div>
+                    </div>
+                  </div>
+
+                  {/* Attendance Percentage */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium">Attendance Rate</span>
+                      <span className="text-2xl font-bold">{getAttendancePercentage().toFixed(1)}%</span>
+                    </div>
+                    <Progress value={getAttendancePercentage()} className="h-3" />
+                  </div>
+
+                  <Button variant="outline" onClick={handleExportAttendance} className="w-full">
+                    <Download className="h-4 w-4 mr-2" />
+                    Export Attendance Report
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Attendance</CardTitle>
+                <CardDescription>Latest attendance records</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {attendanceData.slice(0, 6).map((record, index) => (
+                    <div key={record.id || index} className="flex items-center justify-between p-3 rounded-lg border">
+                      <div className="flex items-center gap-3">
+                        <div className={`h-3 w-3 rounded-full ${
+                          record.status === "present" ? "bg-green-500" :
+                          record.status === "absent" ? "bg-red-500" :
+                          record.status === "late" ? "bg-yellow-500" :
+                          "bg-blue-500"
+                        }`}></div>
+                        <div>
+                          <p className="font-medium">{record.employeeName || record.employeeId}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {record.date} • {record.department || "N/A"}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge variant="outline">
+                        {record.status}
                       </Badge>
                     </div>
                   ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Employees Tab */}
+        <TabsContent value="employees" className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Employee Statistics</CardTitle>
+                <CardDescription>Department-wise distribution</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {getDepartmentDistribution().map((dept) => (
+                    <div key={dept.name} className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                          <Users className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium">{dept.name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {dept.count} employees
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-bold">{dept.percentage.toFixed(1)}%</div>
+                        <div className="text-xs text-muted-foreground">of total</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Document Expiry</CardTitle>
+                    <CardDescription>Expiring documents in the next 90 days</CardDescription>
+                  </div>
+                  <ShieldAlert className="h-5 w-5 text-yellow-500" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                {documentExpiryReport.length > 0 ? (
+                  <div className="space-y-4">
+                    {documentExpiryReport.slice(0, 5).map((doc, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 rounded-lg border">
+                        <div>
+                          <p className="font-medium">{doc.employee}</p>
+                          <p className="text-sm text-muted-foreground">{doc.document}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-medium">{doc.expiryDate}</p>
+                          <Badge variant={getStatusColor(doc.status)}>
+                            {doc.status}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                    <Button variant="outline" onClick={handleExportDocuments} className="w-full">
+                      <Download className="h-4 w-4 mr-2" />
+                      Export Document Report
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No document expiry data available
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      {/* Quick Actions Footer */}
+      <div className="sticky bottom-4 flex justify-center">
+        <Card className="shadow-lg border-primary/20 max-w-md">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="text-sm font-medium">Quick Actions</div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={handleExportEmployees} title="Export Employees">
+                  <Users className="h-4 w-4" />
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleExportPayroll} title="Export Payroll">
+                  <FileText className="h-4 w-4" />
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleExportAttendance} title="Export Attendance">
+                  <Calendar className="h-4 w-4" />
+                </Button>
+                <Button size="sm" onClick={handleExportAllReports} title="Export All Reports">
+                  <Database className="h-4 w-4" />
+                </Button>
               </div>
-            )}
+            </div>
           </CardContent>
         </Card>
       </div>

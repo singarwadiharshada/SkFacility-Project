@@ -5,6 +5,7 @@ import {
   CardTitle,
   CardContent,
   CardDescription,
+  CardFooter,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,7 +63,10 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
-  AlertOctagon,
+  Server,
+  Database,
+  Filter,
+  UserCog,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -70,6 +74,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { inventoryService, type FrontendInventoryItem } from '@/services/inventoryService';
 import { machineService, type FrontendMachine, type MachineStats, type MaintenanceRecordDTO } from '@/services/machineService';
+import { useRole } from '@/context/RoleContext';
 
 // Types
 interface Site {
@@ -96,6 +101,9 @@ type InventoryItem = FrontendInventoryItem;
 type Machine = FrontendMachine;
 
 const InventoryPage = () => {
+  // Get logged in user info
+  const { user, role } = useRole();
+  
   // State
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -124,10 +132,13 @@ const InventoryPage = () => {
   const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState(false);
   const [selectedMachineForMaintenance, setSelectedMachineForMaintenance] = useState<string | null>(null);
   const [maintenanceLoading, setMaintenanceLoading] = useState(false);
-  const [backendConnected, setBackendConnected] = useState<boolean | null>(null);
   
   // Track active tab
   const [activeTab, setActiveTab] = useState("inventory");
+  
+  // New state for tracking data source
+  const [usingLocalMachineStats, setUsingLocalMachineStats] = useState(false);
+  const [backendConnected, setBackendConnected] = useState(true);
   
   // New item form state
   const [newItem, setNewItem] = useState<Partial<InventoryItem>>({
@@ -152,15 +163,13 @@ const InventoryPage = () => {
     purchaseDate: new Date().toISOString().split('T')[0],
     quantity: 1,
     description: "",
-    status: 'operational' as const,
+    status: 'operational',
     location: "",
     manufacturer: "",
     model: "",
     serialNumber: "",
     department: "",
     assignedTo: "",
-    lastMaintenanceDate: "",
-    nextMaintenanceDate: "",
   });
 
   // Maintenance form state
@@ -227,7 +236,7 @@ const InventoryPage = () => {
     };
   };
 
-  // Format currency - INDIAN RUPEES
+  // Format currency - CHANGED TO INDIAN RUPEES
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -239,27 +248,21 @@ const InventoryPage = () => {
 
   // Format date
   const formatDate = (dateString: string) => {
-    if (!dateString) return 'N/A';
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('en-IN', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      });
-    } catch (error) {
-      console.error('Error formatting date:', dateString, error);
-      return 'Invalid date';
-    }
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-IN', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
   };
 
-  // Calculate machine statistics locally
-  const calculateLocalMachineStats = (machinesList: Machine[]): MachineStats => {
-    const totalMachines = machinesList.length;
-    const totalMachineValue = machinesList.reduce((sum, machine) => sum + (machine.cost * machine.quantity), 0);
-    const operationalMachines = machinesList.filter(m => m.status === 'operational').length;
-    const maintenanceMachines = machinesList.filter(m => m.status === 'maintenance').length;
-    const outOfServiceMachines = machinesList.filter(m => m.status === 'out-of-service').length;
+  // Calculate machine statistics locally if API fails
+  const calculateLocalMachineStats = () => {
+    const totalMachines = machines.length;
+    const totalMachineValue = machines.reduce((sum, machine) => sum + (machine.cost * machine.quantity), 0);
+    const operationalMachines = machines.filter(m => m.status === 'operational').length;
+    const maintenanceMachines = machines.filter(m => m.status === 'maintenance').length;
+    const outOfServiceMachines = machines.filter(m => m.status === 'out-of-service').length;
     const averageMachineCost = totalMachines > 0 ? totalMachineValue / totalMachines : 0;
     
     // Count machines needing maintenance soon (within next 30 days)
@@ -267,7 +270,7 @@ const InventoryPage = () => {
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
     const today = new Date();
     
-    const upcomingMaintenanceCount = machinesList.filter(machine => {
+    const upcomingMaintenanceCount = machines.filter(machine => {
       if (!machine.nextMaintenanceDate) return false;
       try {
         const nextMaintenanceDate = new Date(machine.nextMaintenanceDate);
@@ -279,14 +282,14 @@ const InventoryPage = () => {
     }).length;
 
     // Calculate machines by department
-    const machinesByDepartment = machinesList.reduce((acc, machine) => {
+    const machinesByDepartment = machines.reduce((acc, machine) => {
       const dept = machine.department || 'Unassigned';
       acc[dept] = (acc[dept] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
     // Calculate machines by location
-    const machinesByLocation = machinesList.reduce((acc, machine) => {
+    const machinesByLocation = machines.reduce((acc, machine) => {
       const location = machine.location || 'Unassigned';
       acc[location] = (acc[location] || 0) + 1;
       return acc;
@@ -305,25 +308,6 @@ const InventoryPage = () => {
     };
   };
 
-  // Test backend connection
-  const testBackendConnection = async () => {
-    try {
-      console.log('Testing backend connection...');
-      // Try to fetch a simple endpoint
-      await fetch(`http://${window.location.hostname}:5001/api/health`).catch(() => {
-        throw new Error('Backend not reachable');
-      });
-      setBackendConnected(true);
-      console.log('Backend connection successful');
-      return true;
-    } catch (error) {
-      console.error('Backend connection failed:', error);
-      setBackendConnected(false);
-      toast.error('Backend server is not running. Please start the backend on port 5001.');
-      return false;
-    }
-  };
-
   // Fetch data from backend on component mount
   useEffect(() => {
     fetchData();
@@ -332,71 +316,72 @@ const InventoryPage = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      console.log('Fetching inventory and machine data...');
+      setUsingLocalMachineStats(false);
+      setBackendConnected(true);
       
-      // Test connection first
-      const isConnected = await testBackendConnection();
-      if (!isConnected) {
-        console.log('Backend not connected, using empty data');
-        setItems([]);
-        setMachines([]);
-        setMachineStats(calculateLocalMachineStats([]));
-        setStats({ totalItems: 0, lowStockItems: 0, totalValue: 0 });
-        setLoading(false);
-        return;
+      // IMPORTANT: For supervisors, ONLY fetch their own data
+      let inventoryFilters = {};
+      let machineFilters = {};
+      
+      if (role === 'supervisor' && user) {
+        // ONLY fetch items assigned to this supervisor
+        inventoryFilters = { assignedManager: user.name };
+        
+        // ONLY fetch machines assigned to this supervisor
+        machineFilters = { assignedTo: user.name };
       }
       
-      // Fetch items and machines with better error handling
-      let itemsData: InventoryItem[] = [];
-      let machinesData: Machine[] = [];
+      // Fetch items and machines with filters
+      const [itemsData, machinesData] = await Promise.all([
+        inventoryService.getItems(inventoryFilters),
+        machineService.getMachines(machineFilters)
+      ]);
       
+      setItems(itemsData || []);
+      setMachines(machinesData || []);
+      
+      // Try to fetch machine stats
       try {
-        itemsData = await inventoryService.getItems() || [];
-        console.log('Fetched items:', itemsData.length);
-      } catch (itemsError) {
-        console.error('Failed to fetch items:', itemsError);
-        toast.error("Failed to load inventory items");
-        itemsData = [];
-      }
-      
-      try {
-        machinesData = await machineService.getMachines() || [];
-        console.log('Fetched machines:', machinesData.length);
-      } catch (machinesError) {
-        console.error('Failed to fetch machines:', machinesError);
-        toast.error("Failed to load machines");
-        machinesData = [];
-      }
-      
-      setItems(itemsData);
-      setMachines(machinesData);
-      
-      // Get machine stats - will handle fallback internally
-      try {
-        console.log('Fetching machine stats...');
         const statsData = await machineService.getMachineStats();
-        console.log('Machine stats:', statsData);
         setMachineStats(statsData);
-      } catch (statsError) {
-        console.warn('Failed to fetch machine stats, calculating locally:', statsError);
-        const localStats = calculateLocalMachineStats(machinesData);
-        console.log('Local machine stats:', localStats);
-        setMachineStats(localStats);
+        setUsingLocalMachineStats(false);
+      } catch (statsError: any) {
+        // Check if it's a stats endpoint error
+        if (statsError.isStatsEndpointError) {
+          console.warn('Stats endpoint unavailable, using local calculation');
+          setUsingLocalMachineStats(true);
+          const localStats = calculateLocalMachineStats();
+          setMachineStats(localStats);
+        } else {
+          // Other errors
+          console.error('Error fetching machine stats:', statsError);
+          setUsingLocalMachineStats(true);
+          const localStats = calculateLocalMachineStats();
+          setMachineStats(localStats);
+        }
       }
       
       // Calculate inventory stats locally
-      const calculatedStats = calculateStats(itemsData);
+      const calculatedStats = calculateStats(itemsData || []);
       setStats(calculatedStats);
       
     } catch (error) {
       console.error('Failed to fetch data from backend:', error);
-      toast.error("Failed to load data from backend. Please check your connection.");
+      setBackendConnected(false);
       
       // Set empty arrays if backend fails
       setItems([]);
       setMachines([]);
-      setMachineStats(calculateLocalMachineStats([]));
+      setUsingLocalMachineStats(true);
+      
+      // Calculate local machine stats even if machines array is empty
+      setMachineStats(calculateLocalMachineStats());
       setStats({ totalItems: 0, lowStockItems: 0, totalValue: 0 });
+      
+      // Show warning toast
+      toast.warning("Backend connection issue. Using local data.", {
+        description: "Some features may be limited."
+      });
     } finally {
       setLoading(false);
     }
@@ -409,7 +394,6 @@ const InventoryPage = () => {
       toast.success("Data refreshed successfully!");
     } catch (error) {
       console.error('Failed to refresh data:', error);
-      toast.error("Failed to refresh data");
     } finally {
       setRefreshing(false);
     }
@@ -425,12 +409,12 @@ const InventoryPage = () => {
     return categories[dept as keyof typeof categories] || [];
   };
 
-  // Filter items
+  // Filter items - For supervisors, this will only filter their own items since that's all they have
   const filteredItems = items.filter(item => {
     const matchesSearch = 
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (item.supplier && item.supplier.toLowerCase().includes(searchQuery.toLowerCase()));
+      item.supplier.toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesDept = selectedDepartment === "all" || item.department === selectedDepartment;
     const matchesCategory = selectedCategory === "all" || item.category === selectedCategory;
@@ -439,22 +423,20 @@ const InventoryPage = () => {
     return matchesSearch && matchesDept && matchesCategory && matchesSite;
   });
 
-  // Filter machines
+  // Filter machines - For supervisors, this will only filter their own machines since that's all they have
   const filteredMachines = machines.filter(machine => {
     const matchesSearch = 
       machine.name.toLowerCase().includes(machineSearchQuery.toLowerCase()) ||
-      (machine.manufacturer && machine.manufacturer.toLowerCase().includes(machineSearchQuery.toLowerCase())) ||
-      (machine.model && machine.model.toLowerCase().includes(machineSearchQuery.toLowerCase())) ||
-      (machine.location && machine.location.toLowerCase().includes(machineSearchQuery.toLowerCase())) ||
-      (machine.serialNumber && machine.serialNumber.toLowerCase().includes(machineSearchQuery.toLowerCase()));
+      machine.manufacturer?.toLowerCase().includes(machineSearchQuery.toLowerCase()) ||
+      machine.model?.toLowerCase().includes(machineSearchQuery.toLowerCase()) ||
+      machine.location?.toLowerCase().includes(machineSearchQuery.toLowerCase()) ||
+      machine.serialNumber?.toLowerCase().includes(machineSearchQuery.toLowerCase());
     
     return matchesSearch;
   });
 
   // Handle item actions
   const handleDeleteItem = async (itemId: string) => {
-    if (!confirm("Are you sure you want to delete this item?")) return;
-    
     try {
       await inventoryService.deleteItem(itemId);
       const updatedItems = items.filter(item => item.id !== itemId);
@@ -464,43 +446,44 @@ const InventoryPage = () => {
       setStats(calculateStats(updatedItems));
       
       toast.success("Item deleted successfully!");
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to delete item:', error);
-      toast.error(`Failed to delete item: ${error.message || 'Unknown error'}`);
+      toast.error("Failed to delete item");
     }
   };
 
   const handleAddItem = async () => {
     if (!newItem.name || !newItem.sku) {
-      toast.error("Please fill in required fields (Name and SKU)");
+      toast.error("Please fill in required fields");
       return;
     }
 
     try {
+      // For supervisor, auto-assign themselves as manager
+      const assignedManager = role === 'supervisor' && user ? user.name : (newItem.assignedManager || "John Doe");
+      
       const itemData: Omit<InventoryItem, 'id' | '_id' | 'createdAt' | 'updatedAt'> = {
         sku: newItem.sku.toUpperCase(),
         name: newItem.name,
         department: newItem.department || "cleaning",
         category: newItem.category || "Tools",
         site: newItem.site || "1",
-        assignedManager: newItem.assignedManager || "John Doe",
+        assignedManager: assignedManager,
         quantity: newItem.quantity || 0,
         price: newItem.price || 0,
         costPrice: newItem.costPrice || 0,
         supplier: newItem.supplier || "",
         reorderLevel: newItem.reorderLevel || 10,
-        description: newItem.description || "",
+        description: newItem.description,
         changeHistory: [{
           date: new Date().toISOString().split('T')[0],
           change: "Created",
-          user: "Supervisor",
+          user: role === 'supervisor' && user ? user.name : "Supervisor",
           quantity: newItem.quantity || 0
         }],
       };
 
-      console.log('Creating item:', itemData);
       const createdItem = await inventoryService.createItem(itemData);
-      console.log('Created item:', createdItem);
     
       // Add to local state
       const updatedItems = [...items, createdItem];
@@ -511,10 +494,11 @@ const InventoryPage = () => {
       
       setItemDialogOpen(false);
       resetNewItemForm();
+      
       toast.success("Item added successfully!");
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to add item:', error);
-      toast.error(`Failed to add item: ${error.message || 'Unknown error'}`);
+      toast.error("Failed to add item");
     }
   };
 
@@ -523,7 +507,7 @@ const InventoryPage = () => {
 
     try {
       // Create a clean update object without id and timestamps
-      const { id: editItemId, _id, createdAt, updatedAt, ...updateData } = editItem;
+      const { id, createdAt, updatedAt, ...updateData } = editItem;
       
       // Add change history entry for quantity changes
       const originalItem = items.find(item => item.id === editItem.id);
@@ -533,15 +517,13 @@ const InventoryPage = () => {
           {
             date: new Date().toISOString().split('T')[0],
             change: "Updated",
-            user: "Supervisor",
+            user: role === 'supervisor' && user ? user.name : "Supervisor",
             quantity: editItem.quantity - originalItem.quantity
           }
         ];
       }
 
-      console.log('Updating item:', editItemId, updateData);
       const updatedItem = await inventoryService.updateItem(editItem.id, updateData);
-      console.log('Updated item:', updatedItem);
       
       // Update local state
       const updatedItems = items.map(item => 
@@ -554,47 +536,46 @@ const InventoryPage = () => {
       
       setEditItem(null);
       setItemDialogOpen(false);
+      
       toast.success("Item updated successfully!");
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to update item:', error);
-      toast.error(`Failed to update item: ${error.message || 'Unknown error'}`);
+      toast.error("Failed to update item");
     }
   };
 
   // Machine functions
   const handleAddMachine = async () => {
     if (!newMachine.name || !newMachine.cost || !newMachine.purchaseDate) {
-      toast.error("Please fill in required fields (Name, Cost, and Purchase Date)");
+      toast.error("Please fill in required fields");
       return;
     }
 
     try {
+      // For supervisor, auto-assign to themselves
+      const assignedTo = role === 'supervisor' && user ? user.name : newMachine.assignedTo;
+
       const machineData = {
         name: newMachine.name,
         cost: newMachine.cost || 0,
         purchaseDate: newMachine.purchaseDate,
         quantity: newMachine.quantity || 1,
-        description: newMachine.description || "",
+        description: newMachine.description,
         status: newMachine.status || 'operational',
-        location: newMachine.location || "",
-        manufacturer: newMachine.manufacturer || "",
-        model: newMachine.model || "", // Fixed: changed from machineModel to model
-        serialNumber: newMachine.serialNumber || "",
-        department: newMachine.department || "",
-        assignedTo: newMachine.assignedTo || "",
-        lastMaintenanceDate: newMachine.lastMaintenanceDate || undefined,
-        nextMaintenanceDate: newMachine.nextMaintenanceDate || undefined,
+        location: newMachine.location,
+        manufacturer: newMachine.manufacturer,
+        model: newMachine.model,
+        serialNumber: newMachine.serialNumber,
+        department: newMachine.department,
+        assignedTo: assignedTo,
+        lastMaintenanceDate: newMachine.lastMaintenanceDate,
+        nextMaintenanceDate: newMachine.nextMaintenanceDate,
       };
 
-      console.log('Saving machine:', machineData);
-
-      let updatedMachines: Machine[];
-      
       if (editMachine) {
         // Update existing machine
         const updatedMachine = await machineService.updateMachine(editMachine.id, machineData);
-        console.log('Updated machine:', updatedMachine);
-        updatedMachines = machines.map(machine => 
+        const updatedMachines = machines.map(machine => 
           machine.id === editMachine.id ? updatedMachine : machine
         );
         setMachines(updatedMachines);
@@ -602,30 +583,27 @@ const InventoryPage = () => {
       } else {
         // Add new machine
         const createdMachine = await machineService.createMachine(machineData);
-        console.log('Created machine:', createdMachine);
-        updatedMachines = [...machines, createdMachine];
-        setMachines(updatedMachines);
+        setMachines([...machines, createdMachine]);
         toast.success("Machine added successfully!");
       }
 
       // Refresh machine stats
       try {
         const statsData = await machineService.getMachineStats();
-        console.log('Refreshed stats from API:', statsData);
         setMachineStats(statsData);
+        setUsingLocalMachineStats(false);
       } catch (statsError) {
-        console.warn('Failed to fetch updated machine stats, calculating locally:', statsError);
-        const localStats = calculateLocalMachineStats(updatedMachines);
-        console.log('Local machine stats after update:', localStats);
+        setUsingLocalMachineStats(true);
+        const localStats = calculateLocalMachineStats();
         setMachineStats(localStats);
       }
       
       setMachineDialogOpen(false);
       resetNewMachineForm();
       setEditMachine(null);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to save machine:', error);
-      toast.error(`Failed to save machine: ${error.message || 'Unknown error'}`);
+      toast.error("Failed to save machine");
     }
   };
 
@@ -634,60 +612,34 @@ const InventoryPage = () => {
     setNewMachine({
       name: machine.name,
       cost: machine.cost,
-      purchaseDate: machine.purchaseDate.split('T')[0], // Format date for input
+      purchaseDate: machine.purchaseDate,
       quantity: machine.quantity,
-      description: machine.description || "",
+      description: machine.description,
       status: machine.status,
-      location: machine.location || "",
-      manufacturer: machine.manufacturer || "",
-      model: machine.model || "",
-      serialNumber: machine.serialNumber || "",
-      department: machine.department || "",
-      assignedTo: machine.assignedTo || "",
-      lastMaintenanceDate: machine.lastMaintenanceDate ? machine.lastMaintenanceDate.split('T')[0] : "",
-      nextMaintenanceDate: machine.nextMaintenanceDate ? machine.nextMaintenanceDate.split('T')[0] : "",
+      location: machine.location,
+      manufacturer: machine.manufacturer,
+      model: machine.model,
+      serialNumber: machine.serialNumber,
+      department: machine.department,
+      assignedTo: machine.assignedTo,
+      lastMaintenanceDate: machine.lastMaintenanceDate,
+      nextMaintenanceDate: machine.nextMaintenanceDate,
     });
     setMachineDialogOpen(true);
   };
 
   const handleViewMachine = async (machineId: string) => {
     try {
-      console.log('Fetching machine details for:', machineId);
-      let machine;
-      
-      try {
-        // Try to fetch from backend
-        machine = await machineService.getMachineById(machineId);
-        console.log('Fetched machine details from backend:', machine);
-      } catch (backendError) {
-        console.warn('Failed to fetch from backend, using local data:', backendError);
-        // Fallback to local state
-        machine = machines.find(m => m.id === machineId);
-      }
-      
-      if (!machine) {
-        throw new Error('Machine not found');
-      }
-      
+      const machine = await machineService.getMachineById(machineId);
       setViewMachine(machine);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to fetch machine details:', error);
-      
-      // Final fallback to local state
-      const localMachine = machines.find(m => m.id === machineId);
-      if (localMachine) {
-        setViewMachine(localMachine);
-      } else {
-        toast.error(`Failed to fetch machine details: ${error.message || 'Unknown error'}`);
-      }
+      toast.error("Failed to fetch machine details");
     }
   };
 
   const handleDeleteMachine = async (machineId: string) => {
-    if (!confirm("Are you sure you want to delete this machine?")) return;
-    
     try {
-      console.log('Deleting machine:', machineId);
       await machineService.deleteMachine(machineId);
       const updatedMachines = machines.filter(machine => machine.id !== machineId);
       setMachines(updatedMachines);
@@ -696,32 +648,32 @@ const InventoryPage = () => {
       try {
         const statsData = await machineService.getMachineStats();
         setMachineStats(statsData);
+        setUsingLocalMachineStats(false);
       } catch (statsError) {
-        console.warn('Failed to fetch updated machine stats:', statsError);
-        setMachineStats(calculateLocalMachineStats(updatedMachines));
+        setUsingLocalMachineStats(true);
+        const localStats = calculateLocalMachineStats();
+        setMachineStats(localStats);
       }
       
       toast.success("Machine deleted successfully!");
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to delete machine:', error);
-      toast.error(`Failed to delete machine: ${error.message || 'Unknown error'}`);
+      toast.error("Failed to delete machine");
     }
   };
 
   const handleAddMaintenance = async () => {
     if (!selectedMachineForMaintenance || !maintenanceRecord.type || !maintenanceRecord.description || !maintenanceRecord.performedBy) {
-      toast.error("Please fill in all maintenance record fields (Type, Description, and Performed By)");
+      toast.error("Please fill in all maintenance record fields");
       return;
     }
 
     try {
       setMaintenanceLoading(true);
-      console.log('Adding maintenance for machine:', selectedMachineForMaintenance, maintenanceRecord);
       const updatedMachine = await machineService.addMaintenanceRecord(
         selectedMachineForMaintenance,
         maintenanceRecord
       );
-      console.log('Updated machine after maintenance:', updatedMachine);
       
       // Update local state
       const updatedMachines = machines.map(machine => 
@@ -733,9 +685,11 @@ const InventoryPage = () => {
       try {
         const statsData = await machineService.getMachineStats();
         setMachineStats(statsData);
+        setUsingLocalMachineStats(false);
       } catch (statsError) {
-        console.warn('Failed to fetch updated machine stats:', statsError);
-        setMachineStats(calculateLocalMachineStats(updatedMachines));
+        setUsingLocalMachineStats(true);
+        const localStats = calculateLocalMachineStats();
+        setMachineStats(localStats);
       }
       
       // Reset form
@@ -748,9 +702,9 @@ const InventoryPage = () => {
       setSelectedMachineForMaintenance(null);
       setMaintenanceDialogOpen(false);
       toast.success("Maintenance record added successfully!");
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to add maintenance record:', error);
-      toast.error(`Failed to add maintenance record: ${error.message || 'Unknown error'}`);
+      toast.error("Failed to add maintenance record");
     } finally {
       setMaintenanceLoading(false);
     }
@@ -770,8 +724,6 @@ const InventoryPage = () => {
       serialNumber: "",
       department: "",
       assignedTo: "",
-      lastMaintenanceDate: "",
-      nextMaintenanceDate: "",
     });
   };
 
@@ -797,18 +749,12 @@ const InventoryPage = () => {
     setItemDialogOpen(true);
   };
 
-  // Get selected machine object for maintenance dialog
-  const selectedMachineForMaintenanceObj = selectedMachineForMaintenance 
-    ? machines.find(m => m.id === selectedMachineForMaintenance)
-    : null;
-
   // Handle import
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     try {
-      toast.info("Importing items...");
       const text = await file.text();
       const lines = text.split('\n');
       
@@ -817,7 +763,6 @@ const InventoryPage = () => {
       
       let importedCount = 0;
       let failedCount = 0;
-      const errors: string[] = [];
       
       for (const line of dataLines) {
         if (!line.trim()) continue;
@@ -825,18 +770,20 @@ const InventoryPage = () => {
         const columns = line.split(',');
         if (columns.length < 10) {
           failedCount++;
-          errors.push(`Line "${line}" has insufficient columns (${columns.length})`);
           continue;
         }
         
         try {
+          // For supervisor, auto-assign to themselves
+          const assignedManager = role === 'supervisor' && user ? user.name : columns[5].trim();
+          
           const itemData: Omit<InventoryItem, 'id' | '_id' | 'createdAt' | 'updatedAt'> = {
             sku: columns[0].trim().toUpperCase(),
             name: columns[1].trim(),
             department: columns[2].trim().toLowerCase(),
             category: columns[3].trim(),
             site: columns[4].trim(),
-            assignedManager: columns[5].trim(),
+            assignedManager: assignedManager,
             quantity: parseInt(columns[6].trim()) || 0,
             price: parseFloat(columns[7].trim()) || 0,
             costPrice: parseFloat(columns[8].trim()) || 0,
@@ -846,7 +793,7 @@ const InventoryPage = () => {
             changeHistory: [{
               date: new Date().toISOString().split('T')[0],
               change: "Created",
-              user: "Supervisor",
+              user: role === 'supervisor' && user ? user.name : "Supervisor",
               quantity: parseInt(columns[6].trim()) || 0
             }]
           };
@@ -854,28 +801,23 @@ const InventoryPage = () => {
           await inventoryService.createItem(itemData);
           importedCount++;
           
-        } catch (error: any) {
+        } catch (error) {
           failedCount++;
-          errors.push(`Failed to import row "${line}": ${error.message}`);
           console.error('Failed to import row:', line, error);
         }
       }
       
-      if (importedCount > 0) {
-        toast.success(`Imported ${importedCount} items successfully!`);
-      }
-      
+      toast.success(`Imported ${importedCount} items successfully!`);
       if (failedCount > 0) {
-        toast.error(`${failedCount} items failed to import. Check console for details.`);
-        console.error('Import errors:', errors);
+        toast.error(`${failedCount} items failed to import`);
       }
       
       setImportDialogOpen(false);
       await fetchData(); // Refresh data
       
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to parse CSV:', error);
-      toast.error(`Failed to import items: ${error.message || 'Check CSV format.'}`);
+      toast.error("Failed to import items. Check CSV format.");
     }
   };
 
@@ -885,36 +827,31 @@ const InventoryPage = () => {
       return;
     }
 
-    try {
-      const csvContent = [
-        ["SKU", "Name", "Department", "Category", "Site", "Manager", "Quantity", "Price", "Supplier", "Reorder Level"],
-        ...items.map(item => [
-          item.sku,
-          item.name,
-          departments.find(d => d.value === item.department)?.label || item.department,
-          item.category,
-          sites.find(s => s.id === item.site)?.name || item.site,
-          item.assignedManager,
-          item.quantity.toString(),
-          item.price.toString(),
-          item.supplier || "",
-          item.reorderLevel.toString()
-        ])
-      ].map(row => row.join(",")).join("\n");
+    const csvContent = [
+      ["SKU", "Name", "Department", "Category", "Site", "Manager", "Quantity", "Price", "Supplier", "Reorder Level"],
+      ...items.map(item => [
+        item.sku,
+        item.name,
+        departments.find(d => d.value === item.department)?.label || item.department,
+        item.category,
+        sites.find(s => s.id === item.site)?.name || item.site,
+        item.assignedManager,
+        item.quantity.toString(),
+        item.price.toString(),
+        item.supplier,
+        item.reorderLevel.toString()
+      ])
+    ].map(row => row.join(",")).join("\n");
 
-      const blob = new Blob([csvContent], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `inventory-export-${new Date().toISOString().split('T')[0]}.csv`;
-      a.click();
-      window.URL.revokeObjectURL(url);
-      
-      toast.success("Inventory exported successfully!");
-    } catch (error: any) {
-      console.error('Failed to export:', error);
-      toast.error(`Failed to export: ${error.message}`);
-    }
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `inventory-export-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    
+    toast.success("Inventory exported successfully!");
   };
 
   // Export machines to CSV
@@ -951,9 +888,9 @@ const InventoryPage = () => {
       window.URL.revokeObjectURL(url);
       
       toast.success("Machines exported successfully!");
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to export machines:', error);
-      toast.error(`Failed to export machines: ${error.message}`);
+      toast.error("Failed to export machines");
     }
   };
 
@@ -966,27 +903,22 @@ const InventoryPage = () => {
       toast.info("Machine import functionality coming soon!");
       // For now, just show a message and refresh
       await fetchData();
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to import machines:', error);
-      toast.error(`Failed to import machines: ${error.message}`);
     }
   };
 
   // Calculate machine age
   const calculateMachineAge = (purchaseDate: string) => {
-    try {
-      const purchase = new Date(purchaseDate);
-      const today = new Date();
-      const diffTime = Math.abs(today.getTime() - purchase.getTime());
-      const diffYears = diffTime / (1000 * 60 * 60 * 24 * 365.25);
-      return Math.floor(diffYears);
-    } catch (error) {
-      return 0;
-    }
+    const purchase = new Date(purchaseDate);
+    const today = new Date();
+    const diffTime = Math.abs(today.getTime() - purchase.getTime());
+    const diffYears = diffTime / (1000 * 60 * 60 * 24 * 365.25);
+    return Math.floor(diffYears);
   };
 
   // Get machine stats for display
-  const machineStatsDisplay = machineStats || calculateLocalMachineStats(machines);
+  const machineStatsDisplay = machineStats || calculateLocalMachineStats();
 
   // Loading state
   if (loading) {
@@ -996,17 +928,6 @@ const InventoryPage = () => {
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
             <p className="mt-4 text-muted-foreground">Loading data from backend...</p>
-            {backendConnected === false && (
-              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <div className="flex items-center gap-2 text-red-700">
-                  <AlertOctagon className="h-5 w-5" />
-                  <span className="font-medium">Backend Server Not Running</span>
-                </div>
-                <p className="text-sm text-red-600 mt-1">
-                  Please start the backend server on port 5001
-                </p>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -1016,17 +937,40 @@ const InventoryPage = () => {
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold">Inventory Management</h1>
-          <p className="text-muted-foreground">Manage and track your inventory and machinery across all sites</p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold">Inventory Management</h1>
+            <p className="text-muted-foreground">Manage and track your inventory and machinery across all sites</p>
+            
+            {/* Role Indicator */}
+            {role === 'supervisor' && user && (
+              <div className="flex items-center gap-2 mt-2">
+                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                  <UserCog className="h-3 w-3 mr-1" />
+                  Supervisor Dashboard
+                </Badge>
+                <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                  <UserCheck className="h-3 w-3 mr-1" />
+                  {user.name}
+                </Badge>
+                <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                  <Shield className="h-3 w-3 mr-1" />
+                  Viewing only your items & machines
+                </Badge>
+              </div>
+            )}
+          </div>
+          
+          {/* Backend Status Indicator */}
+          <div className="flex items-center gap-2">
+            <div className={`h-2 w-2 rounded-full ${backendConnected ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`} />
+            <span className="text-xs text-muted-foreground">
+              {backendConnected ? 'Backend connected' : 'Backend offline'}
+            </span>
+          </div>
         </div>
+        
         <div className="flex items-center gap-2">
-          {backendConnected === false && (
-            <div className="flex items-center gap-2 px-3 py-1 bg-red-50 text-red-700 rounded-md border border-red-200">
-              <AlertOctagon className="h-4 w-4" />
-              <span className="text-sm font-medium">Backend Offline</span>
-            </div>
-          )}
           <Button 
             variant="outline" 
             onClick={refreshData}
@@ -1035,59 +979,179 @@ const InventoryPage = () => {
             <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-          <Button 
-            variant="outline" 
-            onClick={handleExport}
-            disabled={items.length === 0}
-          >
-            <Download className="mr-2 h-4 w-4" />
-            Export
-          </Button>
-          <Button 
-            variant="outline" 
-            onClick={() => setImportDialogOpen(true)}
-          >
-            <Upload className="mr-2 h-4 w-4" />
-            Import
-          </Button>
+          {role !== 'supervisor' && (
+            <>
+              <Button 
+                variant="outline" 
+                onClick={handleExport}
+                disabled={items.length === 0}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Export
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => setImportDialogOpen(true)}
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                Import
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Stats Cards - INDIAN RUPEES */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Items</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalItems}</div>
-            <p className="text-xs text-muted-foreground">Across all departments</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Low Stock</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-amber-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-amber-600">{stats.lowStockItems}</div>
-            <p className="text-xs text-muted-foreground">Need reordering</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Value</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.totalValue)}</div>
-            <p className="text-xs text-muted-foreground">Current inventory value</p>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Stats Cards - Conditionally render based on active tab */}
+      {activeTab === "inventory" || activeTab === "low-stock" ? (
+        // Inventory Stats Cards (3 cards)
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Items</CardTitle>
+              <Package className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.totalItems}</div>
+              <p className="text-xs text-muted-foreground">
+                {role === 'supervisor' ? 'Your items only' : 'Across all departments'}
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Low Stock</CardTitle>
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-amber-600">{stats.lowStockItems}</div>
+              <p className="text-xs text-muted-foreground">Need reordering</p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Value</CardTitle>
+              <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{formatCurrency(stats.totalValue)}</div>
+              <p className="text-xs text-muted-foreground">Current inventory value</p>
+            </CardContent>
+          </Card>
+        </div>
+      ) : activeTab === "machine-statistics" ? (
+        // Machine Stats Cards (6 cards)
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Machines</CardTitle>
+              <Cpu className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{machineStatsDisplay.totalMachines}</div>
+              <p className="text-xs text-muted-foreground">
+                {role === 'supervisor' ? 'Your machines only' : 'Across all locations'}
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Value</CardTitle>
+              <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{formatCurrency(machineStatsDisplay.totalMachineValue)}</div>
+              <p className="text-xs text-muted-foreground">Machinery value</p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Operational</CardTitle>
+              <div className="h-4 w-4 rounded-full bg-green-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">{machineStatsDisplay.operationalMachines}</div>
+              <p className="text-xs text-muted-foreground">Ready for use</p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Under Maintenance</CardTitle>
+              <div className="h-4 w-4 rounded-full bg-yellow-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-yellow-600">{machineStatsDisplay.maintenanceMachines}</div>
+              <p className="text-xs text-muted-foreground">Currently in maintenance</p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Out of Service</CardTitle>
+              <div className="h-4 w-4 rounded-full bg-red-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">{machineStatsDisplay.outOfServiceMachines}</div>
+              <p className="text-xs text-muted-foreground">Not operational</p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Maintenance Due</CardTitle>
+              <div className="h-4 w-4 rounded-full bg-orange-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-orange-600">{machineStatsDisplay.upcomingMaintenanceCount}</div>
+              <p className="text-xs text-muted-foreground">Within 30 days</p>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        // For Categories tab or others, show default cards
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Items</CardTitle>
+              <Package className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.totalItems}</div>
+              <p className="text-xs text-muted-foreground">
+                {role === 'supervisor' ? 'Your items only' : 'Across all departments'}
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Machines</CardTitle>
+              <Cpu className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{machineStatsDisplay.totalMachines}</div>
+              <p className="text-xs text-muted-foreground">
+                {role === 'supervisor' ? 'Your machines only' : 'Across all locations'}
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Departments</CardTitle>
+              <Tag className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{departments.length}</div>
+              <p className="text-xs text-muted-foreground">Total departments</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <div className="flex items-center justify-between mb-4">
         <Tabs defaultValue="inventory" className="flex-1" onValueChange={setActiveTab}>
@@ -1128,14 +1192,22 @@ const InventoryPage = () => {
             {/* Add Machine Button - ONLY VISIBLE IN MACHINE STATISTICS TAB */}
             {activeTab === "machine-statistics" && (
               <div className="flex items-center gap-2 ml-4">
-                <Button 
-                  variant="outline" 
-                  onClick={handleExportMachines}
-                  disabled={machines.length === 0}
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Export Machines
-                </Button>
+                {usingLocalMachineStats && (
+                  <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                    <Database className="h-3 w-3 mr-1" />
+                    Local Data
+                  </Badge>
+                )}
+                {role !== 'supervisor' && (
+                  <Button 
+                    variant="outline" 
+                    onClick={handleExportMachines}
+                    disabled={machines.length === 0}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Export Machines
+                  </Button>
+                )}
                 <Button onClick={() => {
                   setEditMachine(null);
                   resetNewMachineForm();
@@ -1203,6 +1275,20 @@ const InventoryPage = () => {
                   </Select>
                 </div>
 
+                {/* Supervisor Info Alert */}
+                {role === 'supervisor' && (
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                    <div className="flex items-center gap-2 text-blue-700">
+                      <UserCheck className="h-4 w-4" />
+                      <span className="text-sm font-medium">Personal Dashboard</span>
+                    </div>
+                    <p className="text-xs text-blue-600 mt-1">
+                      You can only see and manage items that you have created or are assigned to you.
+                      Other supervisors' items are not visible to you.
+                    </p>
+                  </div>
+                )}
+
                 {/* Table */}
                 <div className="rounded-md border">
                   <Table>
@@ -1227,8 +1313,22 @@ const InventoryPage = () => {
                             <p className="text-muted-foreground">
                               {items.length === 0 
                                 ? "No items in database. Add your first item!" 
-                                : "Try adjusting your search or filters"}
+                                : role === 'supervisor' 
+                                  ? "You haven't added any items yet." 
+                                  : "Try adjusting your search or filters"}
                             </p>
+                            {role === 'supervisor' && items.length === 0 && (
+                              <Button 
+                                onClick={() => {
+                                  setEditItem(null);
+                                  setItemDialogOpen(true);
+                                }}
+                                className="mt-4"
+                              >
+                                <Plus className="mr-2 h-4 w-4" />
+                                Add Your First Item
+                              </Button>
+                            )}
                           </TableCell>
                         </TableRow>
                       ) : (
@@ -1261,6 +1361,9 @@ const InventoryPage = () => {
                                 <div className="flex items-center gap-1">
                                   <UserCheck className="h-3 w-3" />
                                   {item.assignedManager}
+                                  {role === 'supervisor' && (
+                                    <Badge variant="secondary" className="h-5 text-xs ml-1">You</Badge>
+                                  )}
                                 </div>
                               </TableCell>
                               <TableCell>
@@ -1325,7 +1428,7 @@ const InventoryPage = () => {
                                           <div><strong>Quantity:</strong> {item.quantity}</div>
                                           <div><strong>Price:</strong> {formatCurrency(item.price)}</div>
                                           <div><strong>Cost Price:</strong> {formatCurrency(item.costPrice)}</div>
-                                          <div><strong>Supplier:</strong> {item.supplier || 'N/A'}</div>
+                                          <div><strong>Supplier:</strong> {item.supplier}</div>
                                           <div><strong>Reorder Level:</strong> {item.reorderLevel}</div>
                                           <div><strong>Manager:</strong> {item.assignedManager}</div>
                                           {item.description && (
@@ -1397,11 +1500,27 @@ const InventoryPage = () => {
                 <CardDescription>Items that need reordering</CardDescription>
               </CardHeader>
               <CardContent>
+                {role === 'supervisor' && (
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                    <div className="flex items-center gap-2 text-blue-700">
+                      <UserCheck className="h-4 w-4" />
+                      <span className="text-sm font-medium">Personal Dashboard</span>
+                    </div>
+                    <p className="text-xs text-blue-600 mt-1">
+                      Showing only your low stock items. Other supervisors' items are not visible.
+                    </p>
+                  </div>
+                )}
+                
                 {stats.lowStockItems === 0 ? (
                   <div className="text-center py-8">
                     <AlertTriangle className="h-12 w-12 mx-auto text-green-500 mb-2" />
                     <p className="text-lg font-medium">All items are in stock!</p>
-                    <p className="text-muted-foreground">No items need reordering at this time.</p>
+                    <p className="text-muted-foreground">
+                      {role === 'supervisor' 
+                        ? "Your items are well stocked." 
+                        : "No items need reordering at this time."}
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -1414,7 +1533,7 @@ const InventoryPage = () => {
                             <div>
                               <div className="font-medium">{item.name}</div>
                               <div className="text-sm text-muted-foreground">{item.sku}</div>
-                              <div className="text-sm">{item.supplier || 'No supplier'}</div>
+                              <div className="text-sm">{item.supplier}</div>
                             </div>
                           </div>
                           <div className="text-amber-600 font-medium">
@@ -1428,236 +1547,204 @@ const InventoryPage = () => {
             </Card>
           </TabsContent>
 
-          {/* MACHINE STATISTICS TAB */}
-          <TabsContent value="machine-statistics">
-            <Card>
-              <CardHeader>
-                <div>
-                  <CardTitle>Machine Statistics</CardTitle>
-                  <CardDescription>Manage and track machinery equipment</CardDescription>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {/* Machine Stats Cards - INDIAN RUPEES */}
-                <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Total Machines</CardTitle>
-                      <Cpu className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{machineStatsDisplay.totalMachines}</div>
-                      <p className="text-xs text-muted-foreground">Across all locations</p>
-                    </CardContent>
-                  </Card>
-                  
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Total Value</CardTitle>
-                      <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{formatCurrency(machineStatsDisplay.totalMachineValue)}</div>
-                      <p className="text-xs text-muted-foreground">Machinery value</p>
-                    </CardContent>
-                  </Card>
-                  
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Operational</CardTitle>
-                      <div className="h-4 w-4 rounded-full bg-green-500" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-green-600">{machineStatsDisplay.operationalMachines}</div>
-                      <p className="text-xs text-muted-foreground">Ready for use</p>
-                    </CardContent>
-                  </Card>
-                  
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Under Maintenance</CardTitle>
-                      <div className="h-4 w-4 rounded-full bg-yellow-500" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-yellow-600">{machineStatsDisplay.maintenanceMachines}</div>
-                      <p className="text-xs text-muted-foreground">Currently in maintenance</p>
-                    </CardContent>
-                  </Card>
-                  
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Out of Service</CardTitle>
-                      <div className="h-4 w-4 rounded-full bg-red-500" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-red-600">{machineStatsDisplay.outOfServiceMachines}</div>
-                      <p className="text-xs text-muted-foreground">Not operational</p>
-                    </CardContent>
-                  </Card>
-                  
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Maintenance Due</CardTitle>
-                      <div className="h-4 w-4 rounded-full bg-orange-500" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-orange-600">{machineStatsDisplay.upcomingMaintenanceCount}</div>
-                      <p className="text-xs text-muted-foreground">Within 30 days</p>
-                    </CardContent>
-                  </Card>
-                </div>
+         {/* MACHINE STATISTICS TAB */}
+<TabsContent value="machine-statistics">
+  <Card>
+    <CardHeader>
+      <div>
+        <CardTitle>Machine Statistics</CardTitle>
+        <CardDescription>Manage and track machinery equipment</CardDescription>
+        {usingLocalMachineStats && (
+          <div className="mt-2">
+            <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+              <Database className="h-3 w-3 mr-1" />
+              Using locally calculated statistics
+            </Badge>
+          </div>
+        )}
+      </div>
+    </CardHeader>
+    <CardContent>
+      {/* Supervisor Info Alert */}
+      {role === 'supervisor' && (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+          <div className="flex items-center gap-2 text-blue-700">
+            <UserCheck className="h-4 w-4" />
+            <span className="text-sm font-medium">Personal Dashboard</span>
+          </div>
+          <p className="text-xs text-blue-600 mt-1">
+            You can only see and manage machines that you have added or are assigned to you.
+            Other supervisors' machines are not visible to you.
+          </p>
+        </div>
+      )}
 
-                {/* Machine Search and Actions */}
-                <div className="flex flex-col md:flex-row gap-4 mb-6">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search machines by name, manufacturer, model, or location..."
-                      value={machineSearchQuery}
-                      onChange={(e) => setMachineSearchQuery(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setMaintenanceDialogOpen(true)}
-                    disabled={machines.length === 0}
-                  >
-                    <Wrench className="mr-2 h-4 w-4" />
-                    Add Maintenance
-                  </Button>
-                </div>
+      {/* Machine Search and Actions */}
+      <div className="flex flex-col md:flex-row gap-4 mb-6">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search machines by name, manufacturer, model, or location..."
+            value={machineSearchQuery}
+            onChange={(e) => setMachineSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <Button 
+          variant="outline" 
+          onClick={() => setMaintenanceDialogOpen(true)}
+          disabled={machines.length === 0}
+        >
+          <Wrench className="mr-2 h-4 w-4" />
+          Add Maintenance
+        </Button>
+      </div>
 
-                {/* Machines Table - INDIAN RUPEES */}
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Machine Name</TableHead>
-                        <TableHead>Model</TableHead>
-                        <TableHead>Quantity</TableHead>
-                        <TableHead>Cost</TableHead>
-                        <TableHead>Purchase Date</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredMachines.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={7} className="text-center py-8">
-                            <Cpu className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
-                            <p className="text-lg font-medium">No machines found</p>
-                            <p className="text-muted-foreground">
-                              {machines.length === 0 
-                                ? "No machines in database. Add your first machine!" 
-                                : "Try adjusting your search"}
-                            </p>
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        filteredMachines.map((machine) => {
-                          const statusOption = machineStatusOptions.find(s => s.value === machine.status);
-                          const StatusIcon = statusOption?.icon || CheckCircle;
-                          const machineAge = calculateMachineAge(machine.purchaseDate);
-                          
-                          return (
-                            <TableRow key={machine.id}>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  <Cpu className="h-4 w-4 text-muted-foreground" />
-                                  <div>
-                                    <span className="font-medium">{machine.name}</span>
-                                    {machine.manufacturer && (
-                                      <div className="text-xs text-muted-foreground">{machine.manufacturer}</div>
-                                    )}
-                                  </div>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div>{machine.model || 'N/A'}</div>
-                                {machine.serialNumber && (
-                                  <div className="text-xs text-muted-foreground">SN: {machine.serialNumber}</div>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                <div className="font-medium">{machine.quantity}</div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="font-medium">{formatCurrency(machine.cost)}</div>
-                                <div className="text-xs text-muted-foreground">
-                                  Total: {formatCurrency(machine.cost * machine.quantity)}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-1">
-                                  <Calendar className="h-3 w-3 text-muted-foreground" />
-                                  {formatDate(machine.purchaseDate)}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  Age: {machineAge} year{machineAge !== 1 ? 's' : ''}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <Badge className={`${statusOption?.color} border-0 flex items-center gap-1`}>
-                                  <StatusIcon className="h-3 w-3" />
-                                  {statusOption?.label}
-                                </Badge>
-                                {machine.nextMaintenanceDate && (
-                                  <div className="text-xs text-muted-foreground mt-1">
-                                    Next: {formatDate(machine.nextMaintenanceDate)}
-                                  </div>
-                                )}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => handleViewMachine(machine.id)}
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                  
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => handleEditMachine(machine)}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                  
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => {
-                                      setSelectedMachineForMaintenance(machine.id);
-                                      setMaintenanceDialogOpen(true);
-                                    }}
-                                  >
-                                    <Wrench className="h-4 w-4" />
-                                  </Button>
-                                  
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => handleDeleteMachine(machine.id)}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })
+      {/* Machines Table - CHANGED TO INDIAN RUPEES */}
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Machine Name</TableHead>
+              <TableHead>Model</TableHead>
+              <TableHead>Quantity</TableHead>
+              <TableHead>Cost</TableHead>
+              <TableHead>Purchase Date</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredMachines.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="text-center py-8">
+                  <Cpu className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+                  <p className="text-lg font-medium">No machines found</p>
+                  <p className="text-muted-foreground">
+                    {machines.length === 0 
+                      ? "No machines in database. Add your first machine!" 
+                      : role === 'supervisor'
+                        ? "You haven't added any machines yet." 
+                        : "Try adjusting your search"}
+                  </p>
+                  {role === 'supervisor' && machines.length === 0 && (
+                    <Button 
+                      onClick={() => {
+                        setEditMachine(null);
+                        resetNewMachineForm();
+                        setMachineDialogOpen(true);
+                      }}
+                      className="mt-4"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Your First Machine
+                    </Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredMachines.map((machine) => {
+                const statusOption = machineStatusOptions.find(s => s.value === machine.status);
+                const StatusIcon = statusOption?.icon || CheckCircle;
+                const machineAge = calculateMachineAge(machine.purchaseDate);
+                
+                return (
+                  <TableRow key={machine.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Cpu className="h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <span className="font-medium">{machine.name}</span>
+                          {machine.manufacturer && (
+                            <div className="text-xs text-muted-foreground">{machine.manufacturer}</div>
+                          )}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div>{machine.model || 'N/A'}</div>
+                      {machine.serialNumber && (
+                        <div className="text-xs text-muted-foreground">SN: {machine.serialNumber}</div>
                       )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-          
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-medium">{machine.quantity}</div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-medium">{formatCurrency(machine.cost)}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Total: {formatCurrency(machine.cost * machine.quantity)}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Calendar className="h-3 w-3 text-muted-foreground" />
+                        {formatDate(machine.purchaseDate)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Age: {machineAge} year{machineAge !== 1 ? 's' : ''}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={`${statusOption?.color} border-0 flex items-center gap-1`}>
+                        <StatusIcon className="h-3 w-3" />
+                        {statusOption?.label}
+                      </Badge>
+                      {machine.nextMaintenanceDate && (
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Next: {formatDate(machine.nextMaintenanceDate)}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleViewMachine(machine.id)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEditMachine(machine)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setSelectedMachineForMaintenance(machine.id);
+                            setMaintenanceDialogOpen(true);
+                          }}
+                        >
+                          <Wrench className="h-4 w-4" />
+                        </Button>
+                        
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteMachine(machine.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </CardContent>
+  </Card>
+</TabsContent>
+
           {/* CATEGORIES TAB */}
           <TabsContent value="categories">
             <Card>
@@ -1666,11 +1753,27 @@ const InventoryPage = () => {
                 <CardDescription>Item categories by department</CardDescription>
               </CardHeader>
               <CardContent>
+                {role === 'supervisor' && (
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                    <div className="flex items-center gap-2 text-blue-700">
+                      <UserCheck className="h-4 w-4" />
+                      <span className="text-sm font-medium">Personal Dashboard</span>
+                    </div>
+                    <p className="text-xs text-blue-600 mt-1">
+                      Showing categories based on your items only.
+                    </p>
+                  </div>
+                )}
+                
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {departments.map(dept => {
                     const Icon = dept.icon;
                     const deptItems = items.filter(item => item.department === dept.value);
                     const deptCategories = [...new Set(deptItems.map(item => item.category))];
+                    
+                    if (deptItems.length === 0 && role === 'supervisor') {
+                      return null; // Don't show empty departments for supervisor
+                    }
                     
                     return (
                       <Card key={dept.value}>
@@ -1681,6 +1784,7 @@ const InventoryPage = () => {
                           </div>
                           <CardDescription>
                             {deptItems.length} items • {deptCategories.length} categories
+                            {role === 'supervisor' && " (Your items only)"}
                           </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -1702,7 +1806,7 @@ const InventoryPage = () => {
                         </CardContent>
                       </Card>
                     );
-                  })}
+                  }).filter(Boolean)}
                 </div>
               </CardContent>
             </Card>
@@ -1804,23 +1908,34 @@ const InventoryPage = () => {
             
             <div className="space-y-2">
               <Label htmlFor="assignedManager">Assigned Manager *</Label>
-              <Select
-                value={editItem ? editItem.assignedManager : newItem.assignedManager}
-                onValueChange={(value) => 
-                  editItem 
-                    ? setEditItem({...editItem, assignedManager: value})
-                    : setNewItem({...newItem, assignedManager: value})
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select manager" />
-                </SelectTrigger>
-                <SelectContent>
-                  {managers.map(manager => (
-                    <SelectItem key={manager} value={manager}>{manager}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {role === 'supervisor' && user ? (
+                <div className="p-2 border rounded-md bg-gray-50">
+                  <div className="flex items-center gap-2">
+                    <UserCheck className="h-4 w-4" />
+                    <span>{user.name}</span>
+                    <Badge variant="secondary" className="h-5 text-xs">You</Badge>
+                  </div>
+                  <input type="hidden" value={user.name} />
+                </div>
+              ) : (
+                <Select
+                  value={editItem ? editItem.assignedManager : newItem.assignedManager}
+                  onValueChange={(value) => 
+                    editItem 
+                      ? setEditItem({...editItem, assignedManager: value})
+                      : setNewItem({...newItem, assignedManager: value})
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select manager" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {managers.map(manager => (
+                      <SelectItem key={manager} value={manager}>{manager}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             
             <div className="space-y-2">
@@ -2077,12 +2192,23 @@ const InventoryPage = () => {
             
             <div className="space-y-2">
               <Label htmlFor="assignedTo">Assigned To</Label>
-              <Input
-                id="assignedTo"
-                value={newMachine.assignedTo}
-                onChange={(e) => setNewMachine({...newMachine, assignedTo: e.target.value})}
-                placeholder="Enter assigned person"
-              />
+              {role === 'supervisor' && user ? (
+                <div className="p-2 border rounded-md bg-gray-50">
+                  <div className="flex items-center gap-2">
+                    <UserCheck className="h-4 w-4" />
+                    <span>{user.name}</span>
+                    <Badge variant="secondary" className="h-5 text-xs">You</Badge>
+                  </div>
+                  <input type="hidden" value={user.name} />
+                </div>
+              ) : (
+                <Input
+                  id="assignedTo"
+                  value={newMachine.assignedTo}
+                  onChange={(e) => setNewMachine({...newMachine, assignedTo: e.target.value})}
+                  placeholder="Enter assigned person"
+                />
+              )}
             </div>
             
             <div className="space-y-2">
@@ -2157,7 +2283,14 @@ const InventoryPage = () => {
                 <div><strong>Age:</strong> {calculateMachineAge(viewMachine.purchaseDate)} years</div>
                 {viewMachine.location && <div><strong>Location:</strong> {viewMachine.location}</div>}
                 {viewMachine.department && <div><strong>Department:</strong> {viewMachine.department}</div>}
-                {viewMachine.assignedTo && <div><strong>Assigned To:</strong> {viewMachine.assignedTo}</div>}
+                {viewMachine.assignedTo && (
+                  <div>
+                    <strong>Assigned To:</strong> {viewMachine.assignedTo}
+                    {role === 'supervisor' && viewMachine.assignedTo === user?.name && (
+                      <Badge variant="secondary" className="h-5 text-xs ml-2">You</Badge>
+                    )}
+                  </div>
+                )}
                 {viewMachine.lastMaintenanceDate && (
                   <div><strong>Last Maintenance:</strong> {formatDate(viewMachine.lastMaintenanceDate)}</div>
                 )}
@@ -2213,29 +2346,15 @@ const InventoryPage = () => {
       }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {selectedMachineForMaintenanceObj 
-                ? `Add Maintenance for ${selectedMachineForMaintenanceObj.name}`
-                : 'Add Maintenance Record'
-              }
-            </DialogTitle>
+            <DialogTitle>Add Maintenance Record</DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="maintenanceMachine">Select Machine *</Label>
+              <Label htmlFor="maintenanceMachine">Select Machine</Label>
               <Select
                 value={selectedMachineForMaintenance || ""}
-                onValueChange={(value) => {
-                  setSelectedMachineForMaintenance(value);
-                  // Reset maintenance record when machine changes
-                  setMaintenanceRecord({
-                    type: "Routine",
-                    description: "",
-                    cost: 0,
-                    performedBy: "",
-                  });
-                }}
+                onValueChange={setSelectedMachineForMaintenance}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select machine" />
@@ -2243,23 +2362,12 @@ const InventoryPage = () => {
                 <SelectContent>
                   {machines.map(machine => (
                     <SelectItem key={machine.id} value={machine.id}>
-                      {machine.name} {machine.model ? `(${machine.model})` : ''} - {machine.status}
+                      {machine.name} {machine.model ? `(${machine.model})` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            
-            {selectedMachineForMaintenanceObj && (
-              <div className="p-3 bg-muted/50 rounded-lg text-sm">
-                <div className="grid grid-cols-2 gap-2">
-                  <div><span className="font-medium">Model:</span> {selectedMachineForMaintenanceObj.model || 'N/A'}</div>
-                  <div><span className="font-medium">Location:</span> {selectedMachineForMaintenanceObj.location || 'N/A'}</div>
-                  <div><span className="font-medium">Last Maintenance:</span> {selectedMachineForMaintenanceObj.lastMaintenanceDate ? formatDate(selectedMachineForMaintenanceObj.lastMaintenanceDate) : 'N/A'}</div>
-                  <div><span className="font-medium">Next Maintenance:</span> {selectedMachineForMaintenanceObj.nextMaintenanceDate ? formatDate(selectedMachineForMaintenanceObj.nextMaintenanceDate) : 'N/A'}</div>
-                </div>
-              </div>
-            )}
             
             {selectedMachineForMaintenance && (
               <>
@@ -2288,34 +2396,41 @@ const InventoryPage = () => {
                     onChange={(e) => setMaintenanceRecord({...maintenanceRecord, description: e.target.value})}
                     placeholder="Describe the maintenance performed"
                     rows={3}
-                    required
                   />
                 </div>
                 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="maintenanceCost">Cost (₹)</Label>
-                    <Input
-                      id="maintenanceCost"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={maintenanceRecord.cost}
-                      onChange={(e) => setMaintenanceRecord({...maintenanceRecord, cost: parseFloat(e.target.value) || 0})}
-                      placeholder="Enter maintenance cost"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="performedBy">Performed By *</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="maintenanceCost">Cost</Label>
+                  <Input
+                    id="maintenanceCost"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={maintenanceRecord.cost}
+                    onChange={(e) => setMaintenanceRecord({...maintenanceRecord, cost: parseFloat(e.target.value) || 0})}
+                    placeholder="Enter maintenance cost"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="performedBy">Performed By *</Label>
+                  {role === 'supervisor' && user ? (
+                    <div className="p-2 border rounded-md bg-gray-50">
+                      <div className="flex items-center gap-2">
+                        <UserCheck className="h-4 w-4" />
+                        <span>{user.name}</span>
+                        <Badge variant="secondary" className="h-5 text-xs">You</Badge>
+                      </div>
+                      <input type="hidden" value={user.name} />
+                    </div>
+                  ) : (
                     <Input
                       id="performedBy"
                       value={maintenanceRecord.performedBy}
                       onChange={(e) => setMaintenanceRecord({...maintenanceRecord, performedBy: e.target.value})}
                       placeholder="Enter technician name"
-                      required
                     />
-                  </div>
+                  )}
                 </div>
               </>
             )}
@@ -2327,66 +2442,68 @@ const InventoryPage = () => {
             </Button>
             <Button 
               onClick={handleAddMaintenance}
-              disabled={!selectedMachineForMaintenance || !maintenanceRecord.description || !maintenanceRecord.performedBy || maintenanceLoading}
+              disabled={!selectedMachineForMaintenance || maintenanceLoading}
             >
-              {maintenanceLoading ? "Adding..." : "Add Maintenance Record"}
+              {maintenanceLoading ? "Adding..." : "Add Maintenance"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* IMPORT DIALOG */}
-      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Import Data</DialogTitle>
-          </DialogHeader>
-          
-          <Tabs defaultValue="inventory">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="inventory">Inventory</TabsTrigger>
-              <TabsTrigger value="machines">Machines</TabsTrigger>
-            </TabsList>
+      {/* IMPORT DIALOG - Only for non-supervisors */}
+      {role !== 'supervisor' && (
+        <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Import Data</DialogTitle>
+            </DialogHeader>
             
-            <TabsContent value="inventory" className="space-y-4">
-              <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center">
-                <Upload className="h-12 w-12 mx-auto text-muted-foreground" />
-                <p className="mt-4">Drop your CSV file here or click to browse</p>
-                <p className="text-sm text-muted-foreground">Supports .csv files with item data</p>
-                <Input
-                  type="file"
-                  accept=".csv"
-                  onChange={handleImport}
-                  className="mt-4 mx-auto max-w-xs"
-                />
-              </div>
-              <div className="text-sm text-muted-foreground">
-                <p className="font-semibold">CSV Format:</p>
-                <p>SKU,Name,Department,Category,Site,Manager,Quantity,Price,CostPrice,Supplier,ReorderLevel</p>
-                <p className="mt-2 text-xs">Note: SKU must be unique</p>
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="machines" className="space-y-4">
-              <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center">
-                <Upload className="h-12 w-12 mx-auto text-muted-foreground" />
-                <p className="mt-4">Drop your CSV file here or click to browse</p>
-                <p className="text-sm text-muted-foreground">Supports .csv files with machine data</p>
-                <Input
-                  type="file"
-                  accept=".csv"
-                  onChange={handleImportMachines}
-                  className="mt-4 mx-auto max-w-xs"
-                />
-              </div>
-              <div className="text-sm text-muted-foreground">
-                <p className="font-semibold">CSV Format:</p>
-                <p>Name,Cost,PurchaseDate,Quantity,Status,Location,Manufacturer,Model,SerialNumber,Department,AssignedTo</p>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </DialogContent>
-      </Dialog>
+            <Tabs defaultValue="inventory">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="inventory">Inventory</TabsTrigger>
+                <TabsTrigger value="machines">Machines</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="inventory" className="space-y-4">
+                <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center">
+                  <Upload className="h-12 w-12 mx-auto text-muted-foreground" />
+                  <p className="mt-4">Drop your CSV file here or click to browse</p>
+                  <p className="text-sm text-muted-foreground">Supports .csv files with item data</p>
+                  <Input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleImport}
+                    className="mt-4 mx-auto max-w-xs"
+                  />
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  <p className="font-semibold">CSV Format:</p>
+                  <p>SKU,Name,Department,Category,Site,AssignedManager,Quantity,Price,CostPrice,Supplier,ReorderLevel</p>
+                  <p className="mt-2 text-xs">Note: SKU must be unique</p>
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="machines" className="space-y-4">
+                <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center">
+                  <Upload className="h-12 w-12 mx-auto text-muted-foreground" />
+                  <p className="mt-4">Drop your CSV file here or click to browse</p>
+                  <p className="text-sm text-muted-foreground">Supports .csv files with machine data</p>
+                  <Input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleImportMachines}
+                    className="mt-4 mx-auto max-w-xs"
+                  />
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  <p className="font-semibold">CSV Format:</p>
+                  <p>Name,Cost,PurchaseDate,Quantity,Description,Status,Location,Manufacturer,Model,SerialNumber,Department,AssignedTo</p>
+                </div>
+              </TabsContent>
+            </Tabs>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* CHANGE HISTORY DIALOG */}
       <Dialog open={!!changeHistoryDialogOpen} onOpenChange={() => setChangeHistoryDialogOpen(null)}>

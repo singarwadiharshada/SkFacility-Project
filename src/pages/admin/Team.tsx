@@ -15,6 +15,7 @@ import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import userService from "@/services/userService"; 
 import type { User, UserRole, CreateUserData } from "@/types/user";
+import { sites } from "./AdminBilling";
 
 // Utility functions for date handling
 const formatDateForDisplay = (dateValue: any): string => {
@@ -70,7 +71,7 @@ interface FormUserData {
 }
 
 const departments = ['IT', 'HR', 'Finance', 'Operations', 'Marketing', 'Sales', 'Admin'];
-const sites = ['Mumbai Office', 'Delhi Branch', 'Bangalore Tech Park', 'Chennai Center', 'Hyderabad Campus'];
+// const sites = ['Mumbai Office', 'Delhi Branch', 'Bangalore Tech Park', 'Chennai Center', 'Hyderabad Campus'];
 const roles: UserRole[] = ['manager', 'supervisor', 'employee'];
 
 // User Form Component
@@ -91,7 +92,7 @@ const UserForm = ({
     password: '',
     role: (user?.role as UserRole) || defaultRole,
     department: user?.department || 'Operations',
-    site: user?.site || 'Mumbai Office',
+    site: user?.site || 'string',
     phone: user?.phone || '',
     status: user?.isActive ? 'active' : 'inactive',
     joinDate: user?.joinDate ? 

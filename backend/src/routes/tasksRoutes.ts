@@ -12,7 +12,10 @@ import {
   deleteAttachment,
   getTaskStats,
   searchTasks,
-  getAssignees
+  getAssignees,
+  getTasksByAssignee,
+  getTasksByCreator,
+  getTasksBySite
 } from '../controllers/taskController';
 
 const router = express.Router();
@@ -22,6 +25,9 @@ router.get('/', getAllTasks);
 router.get('/search', searchTasks);
 router.get('/stats', getTaskStats);
 router.get('/assignees', getAssignees);
+router.get('/assignee/:assigneeId', getTasksByAssignee);
+router.get('/creator/:creatorId', getTasksByCreator);
+router.get('/site/:siteName', getTasksBySite);
 router.get('/:id', getTaskById);
 router.post('/', createTask);
 router.post('/multiple', createMultipleTasks);

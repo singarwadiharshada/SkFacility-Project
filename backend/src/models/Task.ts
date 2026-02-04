@@ -87,21 +87,24 @@ const TaskSchema: Schema = new Schema(
     title: {
       type: String,
       required: [true, 'Task title is required'],
-      trim: true
+      trim: true,
+      minlength: [3, 'Task title must be at least 3 characters']
     },
     description: {
       type: String,
       required: [true, 'Task description is required'],
-      trim: true
+      trim: true,
+      minlength: [10, 'Task description must be at least 10 characters']
     },
     assignedTo: {
       type: String,
       required: [true, 'Assignee is required'],
-      ref: 'User'
+      trim: true
     },
     assignedToName: {
       type: String,
-      required: true
+      required: [true, 'Assignee name is required'],
+      trim: true
     },
     priority: {
       type: String,
@@ -117,29 +120,43 @@ const TaskSchema: Schema = new Schema(
     },
     deadline: {
       type: Date,
-      required: [true, 'Deadline is required']
+      required: [true, 'Deadline is required'],
+      validate: {
+        validator: function(value: Date) {
+          return value instanceof Date && !isNaN(value.getTime());
+        },
+        message: 'Invalid deadline date'
+      }
     },
     dueDateTime: {
       type: Date,
-      required: [true, 'Due date and time is required']
+      required: [true, 'Due date and time is required'],
+      validate: {
+        validator: function(value: Date) {
+          return value instanceof Date && !isNaN(value.getTime());
+        },
+        message: 'Invalid due date and time'
+      }
     },
     siteId: {
       type: String,
       required: [true, 'Site ID is required'],
-      ref: 'Site'
+      trim: true
     },
     siteName: {
       type: String,
-      required: true
+      required: [true, 'Site name is required'],
+      trim: true
     },
     clientName: {
       type: String,
-      required: true
+      required: [true, 'Client name is required'],
+      trim: true
     },
     taskType: {
       type: String,
-      enum: ['inspection', 'maintenance', 'training', 'audit', 'emergency', 'routine', 'safety', 'equipment', 'other'],
-      default: 'routine'
+      enum: ['inspection', 'maintenance', 'training', 'audit', 'emergency', 'routine', 'safety', 'equipment', 'general', 'other'],
+      default: 'general'
     },
     attachments: {
       type: [AttachmentSchema],
@@ -151,8 +168,8 @@ const TaskSchema: Schema = new Schema(
     },
     createdBy: {
       type: String,
-      required: true,
-      ref: 'User'
+      required: [true, 'Creator ID is required'],
+      trim: true
     }
   },
   {

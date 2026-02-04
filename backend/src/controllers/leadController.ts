@@ -11,7 +11,9 @@ export const getLeads = async (req: Request, res: Response) => {
           $or: [
             { name: { $regex: search, $options: 'i' } },
             { company: { $regex: search, $options: 'i' } },
-            { email: { $regex: search, $options: 'i' } }
+            { email: { $regex: search, $options: 'i' } },
+            { source: { $regex: search, $options: 'i' } },
+            { assignedTo: { $regex: search, $options: 'i' } }
           ]
         }
       : {};
@@ -44,6 +46,46 @@ export const createLead = async (req: Request, res: Response) => {
     res.status(400).json({
       success: false,
       message: error.message || 'Error creating lead'
+    });
+  }
+};
+
+// Bulk create leads (for import)
+export const bulkCreateLeads = async (req: Request, res: Response) => {
+  try {
+    const leads = req.body; // Array of lead objects
+    
+    if (!Array.isArray(leads) || leads.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid lead data'
+      });
+    }
+    
+    // Validate each lead
+    const validLeads = leads.filter(lead => {
+      return lead.name && lead.company && lead.email && lead.phone;
+    });
+    
+    if (validLeads.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No valid leads to import'
+      });
+    }
+    
+    // Create all leads
+    const createdLeads = await Lead.insertMany(validLeads);
+    
+    res.status(201).json({
+      success: true,
+      data: createdLeads,
+      message: `Successfully imported ${createdLeads.length} leads`
+    });
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Error importing leads'
     });
   }
 };

@@ -114,4 +114,3 @@ ClientSchema.index({ value: 1 });
 ClientSchema.index({ city: 1 });
 
 export default mongoose.model<IClient>('Client', ClientSchema);
-

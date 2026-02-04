@@ -8,7 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useRole, UserRole } from "@/context/RoleContext";
 import { toast } from "sonner";
-import { Lock, Mail, Shield, User, AlertCircle, CheckCircle } from "lucide-react";
+import { Lock, Mail, Shield, User, AlertCircle, CheckCircle, Sparkles, KeyRound, Eye, EyeOff, ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const Signup = () => {
   const [name, setName] = useState("");
@@ -16,6 +17,8 @@ const Signup = () => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [selectedRole, setSelectedRole] = useState<UserRole>("superadmin");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
@@ -79,7 +82,10 @@ const Signup = () => {
 
     try {
       await signup(name, email, password, selectedRole);
-      toast.success("Super Admin account created successfully!");
+      toast.success("Super Admin account created successfully!", {
+        description: "Welcome to SK PROJECT!",
+        icon: <Sparkles className="h-4 w-4" />,
+      });
       
       // Navigate to superadmin dashboard
       navigate("/superadmin/dashboard");
@@ -112,62 +118,184 @@ const Signup = () => {
     }
   };
 
+  const roleColors = {
+    superadmin: "from-purple-500 to-pink-500",
+    admin: "from-blue-500 to-cyan-500",
+    manager: "from-emerald-500 to-teal-500",
+    supervisor: "from-amber-500 to-orange-500",
+    employee: "from-slate-500 to-gray-500",
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center gradient-subtle p-4">
+    <div className="min-h-screen relative flex items-center justify-center p-4 overflow-hidden bg-gradient-to-br from-gray-900 via-slate-900 to-gray-950">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden">
+        {[...Array(20)].map((_, i) => (
+          <motion.div
+            key={i}
+            className="absolute w-[2px] h-[2px] bg-white/20 rounded-full"
+            initial={{
+              x: Math.random() * 100 + "vw",
+              y: Math.random() * 100 + "vh",
+            }}
+            animate={{
+              x: Math.random() * 100 + "vw",
+              y: Math.random() * 100 + "vh",
+            }}
+            transition={{
+              duration: Math.random() * 20 + 20,
+              repeat: Infinity,
+              ease: "linear",
+            }}
+          />
+        ))}
+        
+        {/* Gradient Orbs */}
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500/20 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl" />
+      </div>
+
       <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.3 }}
-        className="w-full max-w-md"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
+        className="w-full max-w-md relative z-10"
       >
-        <Card className="shadow-glow">
-          <CardHeader className="space-y-3 text-center">
-            <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
-              <Shield className="h-8 w-8 text-primary" />
-            </div>
-            <CardTitle className="text-3xl font-bold">Create Super Admin Account</CardTitle>
-            <CardDescription>Super Admin registration portal</CardDescription>
+        {/* Role-based glowing border */}
+        <div className={cn(
+          "absolute -inset-0.5 rounded-2xl blur opacity-70 transition duration-500",
+          roleColors[selectedRole]
+        )}>
+          <div className="absolute inset-0 bg-gradient-to-r opacity-30 animate-pulse" />
+        </div>
+
+        <Card className="relative bg-gray-900/80 backdrop-blur-xl border-gray-800 shadow-2xl overflow-hidden">
+          {/* Animated top accent */}
+          <motion.div
+            className={cn(
+              "h-1 w-full bg-gradient-to-r",
+              roleColors[selectedRole]
+            )}
+            initial={{ width: 0 }}
+            animate={{ width: "100%" }}
+            transition={{ duration: 1, ease: "easeInOut" }}
+          />
+
+          <CardHeader className="space-y-4 text-center relative">
+            {/* Floating particles */}
+            <motion.div
+              className="absolute -top-10 -right-10"
+              animate={{ rotate: 360 }}
+              transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+            >
+              <Sparkles className="h-6 w-6 text-purple-400/30" />
+            </motion.div>
+            
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.2, type: "spring" }}
+              className="mx-auto relative"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full blur-lg opacity-30 animate-pulse" />
+              <div className="relative w-20 h-20 bg-gradient-to-br from-gray-900 to-gray-800 rounded-full flex items-center justify-center border-2 border-gray-800">
+                <KeyRound className="h-10 w-10 text-white" />
+              </div>
+            </motion.div>
+            
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+            >
+              <CardTitle className="text-4xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+                SK PROJECT
+              </CardTitle>
+              <CardDescription className="text-gray-400 mt-2">
+                Super Admin Registration
+              </CardDescription>
+            </motion.div>
           </CardHeader>
+
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="role">Select Role</Label>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Role Selection */}
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.4 }}
+                className="space-y-3"
+              >
+                <Label className="text-gray-300">Select Role</Label>
                 <Select 
                   value={selectedRole || ""} 
                   onValueChange={(value) => setSelectedRole(value as UserRole)}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select your role" />
+                  <SelectTrigger className="bg-gray-800/50 border-gray-700 hover:bg-gray-800/80 transition-all duration-300 h-12 text-white">
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "p-1.5 rounded-md bg-gradient-to-br",
+                        roleColors[selectedRole]
+                      )}>
+                        <KeyRound className="h-5 w-5" />
+                      </div>
+                      <SelectValue placeholder="Select your role" />
+                    </div>
+                    <ChevronDown className="h-4 w-4 text-gray-400" />
                   </SelectTrigger>
-                  <SelectContent className="bg-popover z-50">
-                    <SelectItem value="superadmin">Super Admin</SelectItem>
+                  <SelectContent className="bg-gray-900 border-gray-800 backdrop-blur-xl text-white">
+                    <SelectItem 
+                      value="superadmin" 
+                      className="focus:bg-gray-800/50 focus:text-white text-white hover:text-white py-3"
+                    >
+                      <div className="flex items-center gap-3 text-white">
+                        <KeyRound className="h-5 w-5" />
+                        <span>Super Admin</span>
+                      </div>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-gray-400 mt-1">
                   Only Super Admin role is available for direct registration
                 </p>
-              </div>
+              </motion.div>
 
-              <div className="space-y-2">
-                <Label htmlFor="name">Full Name *</Label>
-                <div className="relative">
-                  <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              {/* Name Input */}
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.5 }}
+                className="space-y-3"
+              >
+                <Label className="text-gray-300">Full Name</Label>
+                <div className="relative group">
+                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                    <User className="h-5 w-5 text-gray-400 group-focus-within:text-purple-400 transition-colors" />
+                  </div>
                   <Input
                     id="name"
                     type="text"
                     placeholder="Enter your full name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="pl-10"
+                    className="pl-12 h-12 bg-gray-800/50 border-gray-700 focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 transition-all duration-300 text-white placeholder:text-gray-400"
                     required
                   />
                 </div>
-              </div>
+              </motion.div>
 
-              <div className="space-y-2">
-                <Label htmlFor="email">Email *</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              {/* Email Input */}
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.6 }}
+                className="space-y-3"
+              >
+                <Label className="text-gray-300">Email Address</Label>
+                <div className="relative group">
+                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                    <Mail className="h-5 w-5 text-gray-400 group-focus-within:text-purple-400 transition-colors" />
+                  </div>
                   <Input
                     id="email"
                     type="email"
@@ -175,93 +303,177 @@ const Signup = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     onBlur={handleEmailBlur}
-                    className={`pl-10 ${emailError ? 'border-destructive' : ''}`}
+                    className={`pl-12 h-12 bg-gray-800/50 border-gray-700 focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 transition-all duration-300 text-white placeholder:text-gray-400 ${emailError ? 'border-red-500/50' : ''}`}
                     required
                   />
                   {email && !emailError && (
-                    <CheckCircle className="absolute right-3 top-3 h-4 w-4 text-green-500" />
+                    <CheckCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-green-400" />
                   )}
                 </div>
                 {emailError && (
-                  <div className="flex items-center gap-1 text-sm text-destructive">
-                    <AlertCircle className="h-4 w-4" />
+                  <div className="flex items-center gap-2 text-sm text-red-400 mt-1">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
                     {emailError}
                   </div>
                 )}
-              </div>
+              </motion.div>
 
-              <div className="space-y-2">
-                <Label htmlFor="password">Password *</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              {/* Password Input */}
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.7 }}
+                className="space-y-3"
+              >
+                <Label className="text-gray-300">Password</Label>
+                <div className="relative group">
+                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                    <Lock className="h-5 w-5 text-gray-400 group-focus-within:text-purple-400 transition-colors" />
+                  </div>
                   <Input
                     id="password"
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     placeholder="Create a password (min. 6 characters)"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     onBlur={handlePasswordBlur}
-                    className={`pl-10 ${passwordError ? 'border-destructive' : ''}`}
+                    className={`pl-12 pr-12 h-12 bg-gray-800/50 border-gray-700 focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 transition-all duration-300 text-white placeholder:text-gray-400 ${passwordError ? 'border-red-500/50' : ''}`}
                     required
                     minLength={6}
                   />
+                  <motion.button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-10 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-300 transition-colors"
+                    whileTap={{ scale: 0.9 }}
+                  >
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </motion.button>
                   {password && password.length >= 6 && !passwordError && (
-                    <CheckCircle className="absolute right-3 top-3 h-4 w-4 text-green-500" />
+                    <CheckCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-green-400" />
                   )}
                 </div>
                 {passwordError && (
-                  <div className="flex items-center gap-1 text-sm text-destructive">
-                    <AlertCircle className="h-4 w-4" />
+                  <div className="flex items-center gap-2 text-sm text-red-400 mt-1">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
                     {passwordError}
                   </div>
                 )}
-              </div>
+              </motion.div>
 
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirm Password *</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              {/* Confirm Password Input */}
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.8 }}
+                className="space-y-3"
+              >
+                <Label className="text-gray-300">Confirm Password</Label>
+                <div className="relative group">
+                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                    <Lock className="h-5 w-5 text-gray-400 group-focus-within:text-purple-400 transition-colors" />
+                  </div>
                   <Input
                     id="confirmPassword"
-                    type="password"
+                    type={showConfirmPassword ? "text" : "password"}
                     placeholder="Confirm your password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="pl-10"
+                    className="pl-12 pr-12 h-12 bg-gray-800/50 border-gray-700 focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 transition-all duration-300 text-white placeholder:text-gray-400"
                     required
                     minLength={6}
                   />
+                  <motion.button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-10 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-300 transition-colors"
+                    whileTap={{ scale: 0.9 }}
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </motion.button>
                   {confirmPassword && password === confirmPassword && (
-                    <CheckCircle className="absolute right-3 top-3 h-4 w-4 text-green-500" />
+                    <CheckCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-green-400" />
                   )}
                 </div>
-              </div>
+              </motion.div>
 
-              <Button 
-                type="submit" 
-                className="w-full"
-                disabled={loading}
+              {/* Sign Up Button */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.9 }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
               >
-                {loading ? (
-                  <>
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
-                    Creating Account...
-                  </>
-                ) : (
-                  "Create Super Admin Account"
-                )}
-              </Button>
+                <Button
+                  type="submit"
+                  className={cn(
+                    "w-full h-12 text-lg font-semibold transition-all duration-300 relative overflow-hidden group",
+                    "bg-gradient-to-r hover:shadow-xl hover:shadow-purple-500/20",
+                    roleColors[selectedRole]
+                  )}
+                  disabled={loading}
+                >
+                  <span className="relative z-10 flex items-center justify-center gap-2">
+                    {loading ? (
+                      <>
+                        <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                          className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full"
+                        />
+                        Creating Account...
+                      </>
+                    ) : (
+                      <>
+                        <KeyRound className="h-5 w-5" />
+                        Create Super Admin Account
+                      </>
+                    )}
+                  </span>
+                  <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                </Button>
+              </motion.div>
 
-              <div className="text-center text-sm text-muted-foreground">
-                Already have an account?{" "}
-                <a href="/login" className="text-primary hover:underline font-medium">
-                  Sign in
-                </a>
-              </div>
-
-            
+              {/* Sign In Link */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1 }}
+                className="text-center"
+              >
+                <p className="text-gray-400 text-sm">
+                  Already have an account?{" "}
+                  <motion.a
+                    href="/login"
+                    className="text-purple-400 hover:text-purple-300 font-medium inline-flex items-center gap-1 group"
+                    whileHover={{ x: 2 }}
+                  >
+                    Sign in here
+                    <motion.span
+                      initial={{ x: -5, opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      className="group-hover:translate-x-1 transition-transform"
+                    >
+                      →
+                    </motion.span>
+                  </motion.a>
+                </p>
+              </motion.div>
             </form>
           </CardContent>
+
+          {/* Footer note */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1.1 }}
+            className="px-6 pb-4 text-center"
+          >
+            <p className="text-xs text-gray-500">
+              Secure access to SK PROJECT management system
+            </p>
+          </motion.div>
         </Card>
       </motion.div>
     </div>

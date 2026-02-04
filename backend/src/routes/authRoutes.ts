@@ -86,7 +86,7 @@ router.post('/signup', async (req: Request, res: Response) => {
       firstName: name.split(' ')[0],
       lastName: name.split(' ').slice(1).join(' ') || '',
       isActive: true,
-      site: 'Mumbai Office',
+      // site: 'Mumbai Office',
       joinDate: new Date()
     });
 
@@ -109,7 +109,7 @@ router.post('/signup', async (req: Request, res: Response) => {
       role: newUser.role,
       isActive: newUser.isActive,
       joinDate: newUser.joinDate.toISOString().split('T')[0],
-      site: newUser.site || '',
+      // site: newUser.site || '',
       department: newUser.department || ''
     };
 
@@ -260,7 +260,7 @@ router.post('/login', async (req: Request, res: Response) => {
       joinDate: user.joinDate.toISOString().split('T')[0],
       lastLogin: user.lastLogin,
       department: user.department || '',
-      site: user.site || '',
+      // site: user.site || '',
       phone: user.phone || '',
       avatar: user.avatar || ''
     };
@@ -268,7 +268,7 @@ router.post('/login', async (req: Request, res: Response) => {
     console.log(`\n✅ ========== LOGIN SUCCESSFUL ==========`);
     console.log(`👤 User: ${userResponse.email}`);
     console.log(`🎭 Role: ${userResponse.role}`);
-    console.log(`📍 Site: ${userResponse.site}`);
+    // console.log(`📍 Site: ${userResponse.site}`);
     console.log(`📅 Joined: ${userResponse.joinDate}`);
     console.log(`==========================================\n`);
 
@@ -324,7 +324,7 @@ router.get('/me', async (req: Request, res: Response) => {
       joinDate: user.joinDate.toISOString().split('T')[0],
       lastLogin: user.lastLogin,
       department: user.department || '',
-      site: user.site || '',
+      // site: user.site || '',
       phone: user.phone || '',
       avatar: user.avatar || ''
     };
@@ -420,7 +420,7 @@ router.post('/create-default-admin', async (req: Request, res: Response) => {
       firstName: 'Super',
       lastName: 'Admin',
       isActive: true,
-      site: 'Mumbai Office',
+      // site: 'Mumbai Office',
       joinDate: new Date()
     });
 
@@ -688,7 +688,7 @@ router.post('/test-password-storage', async (req: Request, res: Response) => {
       role: 'superadmin',
       isActive: true,
       username: 'testuser',
-      site: 'Test Site'
+      // site: 'Test Site'
     });
     
     console.log('\n🔍 BEFORE SAVE:');

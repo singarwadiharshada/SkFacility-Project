@@ -1,4 +1,3 @@
-
 import { toast } from "sonner";
 
 // Base URL for your backend
@@ -57,8 +56,8 @@ export interface Communication {
 export interface CRMStats {
   totalClients: number;
   activeLeads: number;
+  totalCommunications: number;
   totalValue: string;
-  communications: number;
 }
 
 export interface ApiResponse<T> {
@@ -98,7 +97,7 @@ const fetchApi = async <T>(
 export const crmStatsService = {
   async getStats(): Promise<CRMStats> {
     try {
-      const response = await fetchApi<ApiResponse<CRMStats>>(`${API_URL}/crm/stats`);
+      const response = await fetchApi<ApiResponse<CRMStats>>(`${API_URL}/crm/clients/crm-stats`);
       if (response.success) {
         return response.data;
       }
@@ -144,7 +143,7 @@ export const clientService = {
 
   async create(clientData: Omit<Client, '_id' | 'createdAt' | 'updatedAt'>): Promise<Client> {
     try {
-      console.log('Creating client with data:', clientData); // Debug log
+      console.log('Creating client with data:', clientData);
       
       const response = await fetchApi<ApiResponse<Client>>(`${API_URL}/crm/clients`, {
         method: 'POST',
@@ -164,7 +163,7 @@ export const clientService = {
 
   async update(id: string, clientData: Partial<Client>): Promise<Client> {
     try {
-      console.log('Updating client with data:', clientData); // Debug log
+      console.log('Updating client with data:', clientData);
       
       const response = await fetchApi<ApiResponse<Client>>(`${API_URL}/crm/clients/${id}`, {
         method: 'PUT',
@@ -246,6 +245,24 @@ export const leadService = {
       throw new Error(response.message || 'Failed to create lead');
     } catch (error: any) {
       toast.error(error.message || 'Failed to create lead');
+      throw error;
+    }
+  },
+
+  async bulkCreate(leadsData: Omit<Lead, '_id' | 'createdAt' | 'updatedAt'>[]): Promise<Lead[]> {
+    try {
+      const response = await fetchApi<ApiResponse<Lead[]>>(`${API_URL}/crm/leads/bulk`, {
+        method: 'POST',
+        body: JSON.stringify(leadsData),
+      });
+      
+      if (response.success) {
+        toast.success(`${leadsData.length} leads imported successfully!`);
+        return response.data;
+      }
+      throw new Error(response.message || 'Failed to import leads');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to import leads');
       throw error;
     }
   },

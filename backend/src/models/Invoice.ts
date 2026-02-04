@@ -25,6 +25,7 @@ export interface IInvoice extends Document {
   createdBy?: string; // 'admin' or 'superadmin'
   userId?: string; // User ID who created the invoice
   sharedWith?: string[]; // Array of user IDs who can view this invoice
+  isVisibleToAdmin: boolean; // NEW: Control if admins can see this invoice
   
   // Client info
   client: string;
@@ -140,6 +141,11 @@ const InvoiceSchema = new Schema<IInvoice>({
   createdBy: { type: String, enum: ['admin', 'superadmin'], default: 'superadmin' },
   userId: { type: String },
   sharedWith: [{ type: String }],
+  isVisibleToAdmin: { 
+    type: Boolean, 
+    default: true,
+    required: true 
+  },
   
   // Client info
   client: { type: String, required: true },
@@ -262,8 +268,59 @@ InvoiceSchema.pre('save', function(next) {
     this.dueDate = calculateDueDate(this.date, 30);
   }
   
+  // NEW: Auto-set visibility based on creator
+  if (!this.isVisibleToAdmin && this.createdBy === 'superadmin') {
+    // Keep as is (superadmin might have explicitly set it to false)
+  } else if (this.createdBy === 'superadmin') {
+    // Default superadmin invoices to NOT visible to admins
+    this.isVisibleToAdmin = false;
+  } else if (this.createdBy === 'admin') {
+    // Default admin invoices to visible to admins
+    this.isVisibleToAdmin = true;
+  }
+  
   next();
 });
+
+// Add static method for querying invoices by user
+InvoiceSchema.statics.findByUser = async function(
+  userId: string, 
+  userRole: string,
+  filters: any = {}
+) {
+  const query: any = { ...filters };
+  
+  if (userRole === 'admin') {
+    // Admin can only see:
+    // 1. Invoices created by admins that are visible to admins
+    // 2. AND that they created themselves
+    query.$and = [
+      { createdBy: 'admin' },
+      { userId: userId },
+      { isVisibleToAdmin: true }
+    ];
+  }
+  // For superadmin, no restriction - they see everything
+  
+  return await this.find(query).sort({ createdAt: -1 });
+};
+
+// Add method to check if a user can view this invoice
+InvoiceSchema.methods.canUserView = function(userId: string, userRole: string) {
+  if (userRole === 'superadmin') {
+    return true; // Superadmins can view everything
+  }
+  
+  if (userRole === 'admin') {
+    return (
+      this.createdBy === 'admin' &&
+      this.userId === userId &&
+      this.isVisibleToAdmin === true
+    );
+  }
+  
+  return false;
+};
 
 // Helper functions
 function formatDate(dateString: string): string {
@@ -309,5 +366,10 @@ function calculateDueDate(dateString: string, daysToAdd: number): string {
   }
 }
 
-const Invoice = mongoose.model<IInvoice>('Invoice', InvoiceSchema);
+// Add type for static methods
+interface InvoiceModel extends mongoose.Model<IInvoice> {
+  findByUser(userId: string, userRole: string, filters?: any): Promise<IInvoice[]>;
+}
+
+const Invoice = mongoose.model<IInvoice, InvoiceModel>('Invoice', InvoiceSchema);
 export default Invoice;

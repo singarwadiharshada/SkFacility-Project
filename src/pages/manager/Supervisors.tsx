@@ -44,6 +44,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import {
   Plus,
   Search,
   Edit,
@@ -58,11 +64,14 @@ import {
   Briefcase,
   Loader2,
   AlertCircle,
-  Calendar,
   FileText,
   CheckCircle,
   XCircle,
   Clock,
+  List,
+  Calendar,
+  UserPlus,
+  Database,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -128,11 +137,15 @@ const Supervisors = () => {
   const { onMenuClick } = useOutletContext<{ onMenuClick: () => void }>();
   const { user: currentUser, role } = useRole();
 
+  const [activeTab, setActiveTab] = useState<string>("task-supervisors");
   const [supervisors, setSupervisors] = useState<EnhancedSupervisor[]>([]);
+  const [managedSupervisors, setManagedSupervisors] = useState<Supervisor[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingManaged, setLoadingManaged] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSupervisor, setEditingSupervisor] = useState<Supervisor | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchQueryManaged, setSearchQueryManaged] = useState("");
   
   // Site selection state
   const [sites, setSites] = useState<Site[]>([]);
@@ -163,6 +176,41 @@ const Supervisors = () => {
       site: "",
     },
   });
+
+  /* ------------------------------------------------------------------ */
+  /* FETCH MANAGED SUPERVISORS (FROM SUPERVISOR SERVICE) */
+  /* ------------------------------------------------------------------ */
+
+  const fetchManagedSupervisors = async () => {
+    try {
+      setLoadingManaged(true);
+      const supervisors = await supervisorService.getAllSupervisors();
+      
+      // Filter by site if needed
+      let filteredSupervisors = supervisors;
+      
+      if (selectedSiteId !== "all" && selectedSiteName) {
+        filteredSupervisors = supervisors.filter(supervisor => 
+          supervisor.site === selectedSiteName
+        );
+      }
+      
+      // Exclude current user if they are a supervisor
+      if (role === "supervisor" && currentUser) {
+        filteredSupervisors = filteredSupervisors.filter(s => 
+          s.email.toLowerCase() !== currentUser.email?.toLowerCase()
+        );
+      }
+      
+      setManagedSupervisors(filteredSupervisors);
+    } catch (error: any) {
+      console.error("Error fetching managed supervisors:", error);
+      toast.error("Could not load managed supervisors");
+      setManagedSupervisors([]);
+    } finally {
+      setLoadingManaged(false);
+    }
+  };
 
   /* ------------------------------------------------------------------ */
   /* FETCH TASKS (USING assignedTo FIELD) */
@@ -379,15 +427,13 @@ const Supervisors = () => {
   const combineSupervisorData = async () => {
     try {
       // Fetch all data in parallel
-      const [allTasks, assigneeList, supervisorServiceList] = await Promise.allSettled([
+      const [allTasks, assigneeList] = await Promise.allSettled([
         fetchAllTasks(),
         fetchAssignees(),
-        supervisorService.getAllSupervisors().catch(() => [])
       ]);
       
       const tasks = allTasks.status === 'fulfilled' ? allTasks.value : [];
       const assignees = assigneeList.status === 'fulfilled' ? assigneeList.value : [];
-      const serviceSupervisors = supervisorServiceList.status === 'fulfilled' ? supervisorServiceList.value : [];
       
       // Extract supervisors from tasks (primary source)
       const taskSupervisors = extractSupervisorsFromTasks(tasks, assignees);
@@ -438,7 +484,7 @@ const Supervisors = () => {
         });
       
       // Merge all supervisor sources
-      const allSupervisors = [...serviceSupervisors, ...taskSupervisors, ...assigneeSupervisors];
+      const allSupervisors = [...taskSupervisors, ...assigneeSupervisors];
       
       // Remove duplicates by email (primary key)
       const uniqueSupervisors = Array.from(
@@ -476,17 +522,17 @@ const Supervisors = () => {
   };
 
   /* ------------------------------------------------------------------ */
-  /* FETCH SUPERVISORS - MAIN FUNCTION */
+  /* FETCH ALL DATA */
   /* ------------------------------------------------------------------ */
 
-  const fetchAllSupervisors = async () => {
+  const fetchAllData = async () => {
     try {
       setLoading(true);
       await combineSupervisorData();
+      await fetchManagedSupervisors();
     } catch (error: any) {
-      console.error("Error loading supervisors:", error);
-      toast.error("Could not load supervisors");
-      setSupervisors([]);
+      console.error("Error loading data:", error);
+      toast.error("Could not load data");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -515,12 +561,12 @@ const Supervisors = () => {
   }, [currentUser, role]);
 
   /* ------------------------------------------------------------------ */
-  /* FETCH SUPERVISORS WHEN SITE CHANGES */
+  /* FETCH DATA WHEN SITE CHANGES */
   /* ------------------------------------------------------------------ */
 
   useEffect(() => {
     if (selectedSiteId && currentUser) {
-      fetchAllSupervisors();
+      fetchAllData();
     }
   }, [selectedSiteId, selectedSiteName, currentUser]);
 
@@ -571,7 +617,7 @@ const Supervisors = () => {
   const handleRefresh = async () => {
     setRefreshing(true);
     await fetchSites();
-    await fetchAllSupervisors();
+    await fetchAllData();
     toast.success("Data refreshed");
   };
 
@@ -632,21 +678,6 @@ const Supervisors = () => {
   /* HELPER FUNCTIONS */
   /* ------------------------------------------------------------------ */
 
-  const getTaskStatusBadge = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'completed':
-        return <Badge variant="default" className="bg-green-100 text-green-800"><CheckCircle className="h-3 w-3 mr-1" />Completed</Badge>;
-      case 'in-progress':
-        return <Badge variant="default" className="bg-blue-100 text-blue-800"><Clock className="h-3 w-3 mr-1" />In Progress</Badge>;
-      case 'pending':
-        return <Badge variant="default" className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Pending</Badge>;
-      case 'cancelled':
-        return <Badge variant="default" className="bg-gray-100 text-gray-800"><XCircle className="h-3 w-3 mr-1" />Cancelled</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
   const getTaskCountBadge = (count: number, type: 'pending' | 'inProgress' | 'completed' | 'overdue') => {
     const colors = {
       pending: 'bg-yellow-50 text-yellow-700 border-yellow-200',
@@ -677,6 +708,14 @@ const Supervisors = () => {
       (s.department && s.department.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (s.site && s.site.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (s.primarySite && s.primarySite.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
+  const filteredManagedSupervisors = managedSupervisors.filter(
+    (s) =>
+      s.name.toLowerCase().includes(searchQueryManaged.toLowerCase()) ||
+      s.email.toLowerCase().includes(searchQueryManaged.toLowerCase()) ||
+      (s.department && s.department.toLowerCase().includes(searchQueryManaged.toLowerCase())) ||
+      (s.site && s.site.toLowerCase().includes(searchQueryManaged.toLowerCase()))
   );
 
   /* ------------------------------------------------------------------ */
@@ -718,20 +757,10 @@ const Supervisors = () => {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="flex items-center gap-2">
                 <Users className="h-5 w-5" />
-                <CardTitle>Supervisors (from Tasks & Assignees)</CardTitle>
+                <CardTitle>Supervisors Management</CardTitle>
                 <Badge variant="outline" className="ml-2">
-                  {filteredSupervisors.length} found
+                  {filteredSupervisors.length + filteredManagedSupervisors.length} total
                 </Badge>
-                <Badge variant="secondary" className="ml-2">
-                  <FileText className="h-3 w-3 mr-1" />
-                  {tasks.length} tasks analyzed
-                </Badge>
-                {loadingTasks && (
-                  <Badge variant="outline" className="ml-2 bg-yellow-50 text-yellow-700">
-                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                    Loading tasks
-                  </Badge>
-                )}
               </div>
               
               <div className="flex items-center gap-2">
@@ -786,18 +815,6 @@ const Supervisors = () => {
                   </Badge>
                 )}
               </div>
-              
-              {/* Search */}
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search supervisors by name, email, department, or site..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                  disabled={loading || loadingTasks}
-                />
-              </div>
             </div>
           </CardHeader>
 
@@ -807,9 +824,6 @@ const Supervisors = () => {
                 <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
                 <p className="mt-2 text-muted-foreground">
                   {loadingTasks ? "Analyzing tasks to find supervisors..." : "Loading supervisors..."}
-                </p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Found {tasks.length} tasks, extracting supervisor information...
                 </p>
               </div>
             ) : !selectedSiteId ? (
@@ -821,128 +835,313 @@ const Supervisors = () => {
                 </p>
               </div>
             ) : (
-              <>
-                {filteredSupervisors.length === 0 ? (
-                  <div className="text-center py-10">
-                    <UserCheck className="h-12 w-12 mx-auto text-muted-foreground" />
-                    <h3 className="mt-4 text-lg font-semibold">No Supervisors Found</h3>
-                    <p className="text-muted-foreground mt-1">
-                      {searchQuery
-                        ? "No supervisors match your search criteria"
-                        : selectedSiteId === "all"
-                        ? "No supervisors found in any site"
-                        : `No supervisors found at ${selectedSiteName}`
-                      }
-                    </p>
-                    
-                    <div className="mt-6 bg-blue-50 p-4 rounded-lg border border-blue-200 max-w-md mx-auto">
-                      <h4 className="font-medium text-blue-800 mb-2">Why no supervisors?</h4>
-                      <ul className="text-sm text-blue-700 text-left space-y-1">
-                        <li>• No tasks have been assigned to supervisors at this site</li>
-                        <li>• Tasks might not have the <code>assignedTo</code> field populated</li>
-                        <li>• Check if supervisors exist in the Assignees list</li>
-                        <li>• Verify that tasks have correct <code>assignedToName</code> values</li>
-                      </ul>
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+                <TabsList className="grid w-full md:w-auto grid-cols-2">
+                  <TabsTrigger value="task-supervisors" className="flex items-center gap-2">
+                    <Database className="h-4 w-4" />
+                    From Tasks & Assignees
+                    <Badge variant="secondary" className="ml-2">
+                      {filteredSupervisors.length}
+                    </Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="managed-supervisors" className="flex items-center gap-2">
+                    <UserPlus className="h-4 w-4" />
+                    Manager-Added Supervisors
+                    <Badge variant="secondary" className="ml-2">
+                      {filteredManagedSupervisors.length}
+                    </Badge>
+                  </TabsTrigger>
+                </TabsList>
+                
+                {/* Tab 1: Supervisors from Tasks & Assignees */}
+                <TabsContent value="task-supervisors" className="space-y-4">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                    <div className="flex items-center gap-2">
+                      <Shield className="h-4 w-4 text-blue-500" />
+                      <span className="text-sm text-muted-foreground">
+                        Supervisors discovered from task assignments and assignee lists
+                      </span>
                     </div>
-                    
-                    {canCreateSupervisor && !searchQuery && selectedSiteId !== "all" && (
-                      <Button className="mt-6" onClick={() => openDialog()}>
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add Your First Supervisor
-                      </Button>
-                    )}
+                    <div className="relative w-full sm:w-auto">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search supervisors from tasks..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-10 w-full sm:w-[300px]"
+                      />
+                    </div>
                   </div>
-                ) : (
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Supervisor</TableHead>
-                          <TableHead>Contact</TableHead>
-                          <TableHead>Task Statistics</TableHead>
-                          <TableHead>Site(s)</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredSupervisors.map((supervisor) => (
-                          <TableRow key={supervisor._id}>
-                            <TableCell className="font-medium">
-                              <div className="flex flex-col">
-                                <div className="flex items-center">
-                                  <Shield className="h-4 w-4 mr-2 text-blue-500" />
-                                  <span>{supervisor.name}</span>
+                  
+                  {filteredSupervisors.length === 0 ? (
+                    <div className="text-center py-10">
+                      <Database className="h-12 w-12 mx-auto text-muted-foreground" />
+                      <h3 className="mt-4 text-lg font-semibold">No Supervisors Found</h3>
+                      <p className="text-muted-foreground mt-1">
+                        {searchQuery
+                          ? "No supervisors match your search criteria"
+                          : selectedSiteId === "all"
+                          ? "No supervisors found in any site from tasks"
+                          : `No task supervisors found at ${selectedSiteName}`
+                        }
+                      </p>
+                      
+                      <div className="mt-6 bg-blue-50 p-4 rounded-lg border border-blue-200 max-w-md mx-auto">
+                        <h4 className="font-medium text-blue-800 mb-2">Why no supervisors?</h4>
+                        <ul className="text-sm text-blue-700 text-left space-y-1">
+                          <li>• No tasks have been assigned to supervisors at this site</li>
+                          <li>• Tasks might not have the <code>assignedTo</code> field populated</li>
+                          <li>• Check if supervisors exist in the Assignees list</li>
+                          <li>• Verify that tasks have correct <code>assignedToName</code> values</li>
+                        </ul>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Supervisor</TableHead>
+                            <TableHead>Contact</TableHead>
+                            <TableHead>Task Statistics</TableHead>
+                            <TableHead>Site(s)</TableHead>
+                            <TableHead>Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredSupervisors.map((supervisor) => (
+                            <TableRow key={supervisor._id}>
+                              <TableCell className="font-medium">
+                                <div className="flex flex-col">
+                                  <div className="flex items-center">
+                                    <Shield className="h-4 w-4 mr-2 text-blue-500" />
+                                    <span>{supervisor.name}</span>
+                                  </div>
+                                  <div className="text-xs text-muted-foreground mt-1">
+                                    ID: {supervisor._id?.slice(-8) || 'From Tasks'}
+                                    {supervisor._id?.includes('assignee') && ' (From Assignees)'}
+                                    {supervisor._id?.includes('task') && ' (From Tasks)'}
+                                  </div>
+                                  <div className="mt-2">
+                                    <Badge variant="outline" className="text-xs">
+                                      <FileText className="h-3 w-3 mr-1" />
+                                      {supervisor.tasks || 0} total tasks
+                                    </Badge>
+                                  </div>
                                 </div>
-                                <div className="text-xs text-muted-foreground mt-1">
-                                  ID: {supervisor._id?.slice(-8) || 'From Tasks'}
-                                  {supervisor._id?.includes('assignee') && ' (From Assignees)'}
-                                  {supervisor._id?.includes('task') && ' (From Tasks)'}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-col space-y-1">
+                                  <div className="flex items-center text-sm">
+                                    <Mail className="h-3 w-3 mr-2 flex-shrink-0" />
+                                    <span className="truncate">{supervisor.email}</span>
+                                  </div>
+                                  <div className="flex items-center text-sm text-muted-foreground">
+                                    <Phone className="h-3 w-3 mr-2 flex-shrink-0" />
+                                    <span>{supervisor.phone || "Not provided"}</span>
+                                  </div>
+                                  <div className="text-xs mt-2">
+                                    <Badge variant="outline">
+                                      {supervisor.department || "Operations"}
+                                    </Badge>
+                                  </div>
                                 </div>
-                                <div className="mt-2">
-                                  <Badge variant="outline" className="text-xs">
-                                    <FileText className="h-3 w-3 mr-1" />
-                                    {supervisor.tasks || 0} total tasks
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-col space-y-2">
+                                  <div className="flex flex-wrap gap-1">
+                                    {supervisor.pendingTasks && supervisor.pendingTasks > 0 && 
+                                      getTaskCountBadge(supervisor.pendingTasks, 'pending')}
+                                    {supervisor.inProgressTasks && supervisor.inProgressTasks > 0 && 
+                                      getTaskCountBadge(supervisor.inProgressTasks, 'inProgress')}
+                                    {supervisor.completedTasks && supervisor.completedTasks > 0 && 
+                                      getTaskCountBadge(supervisor.completedTasks, 'completed')}
+                                    {supervisor.overdueTasks && supervisor.overdueTasks > 0 && 
+                                      getTaskCountBadge(supervisor.overdueTasks, 'overdue')}
+                                  </div>
+                                  {supervisor.assignedTasks && supervisor.assignedTasks.length > 0 && (
+                                    <div className="text-xs text-muted-foreground">
+                                      Latest: {supervisor.assignedTasks[0]?.title?.substring(0, 30)}...
+                                    </div>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="space-y-2">
+                                  <div className="flex items-center">
+                                    <MapPin className="h-3 w-3 mr-2 flex-shrink-0" />
+                                    <span className="font-medium">{supervisor.primarySite || "Not assigned"}</span>
+                                  </div>
+                                  {supervisor.assignedSites && supervisor.assignedSites.length > 1 && (
+                                    <div className="text-xs text-muted-foreground">
+                                      Also at: {supervisor.assignedSites.slice(1).join(', ')}
+                                    </div>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="space-y-1">
+                                  <Badge
+                                    variant={supervisor.isActive ? "default" : "secondary"}
+                                    className={
+                                      supervisor.isActive
+                                        ? "bg-green-100 text-green-800 hover:bg-green-100"
+                                        : "bg-gray-100 text-gray-800 hover:bg-gray-100"
+                                    }
+                                  >
+                                    {supervisor.isActive ? "Active" : "Inactive"}
                                   </Badge>
+                                  {supervisor.assignedTasks && supervisor.assignedTasks.length > 0 && (
+                                    <div className="text-xs text-muted-foreground">
+                                      Last active: {new Date(supervisor.updatedAt).toLocaleDateString()}
+                                    </div>
+                                  )}
                                 </div>
-                                {supervisor.reportsTo === currentUser?.email && (
-                                  <Badge variant="secondary" className="mt-1 w-fit text-xs">
-                                    Reports to you
-                                  </Badge>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col space-y-1">
-                                <div className="flex items-center text-sm">
-                                  <Mail className="h-3 w-3 mr-2 flex-shrink-0" />
-                                  <span className="truncate">{supervisor.email}</span>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </TabsContent>
+                
+                {/* Tab 2: Manager-Added Supervisors */}
+                <TabsContent value="managed-supervisors" className="space-y-4">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                    <div className="flex items-center gap-2">
+                      <UserPlus className="h-4 w-4 text-green-500" />
+                      <span className="text-sm text-muted-foreground">
+                        Supervisors created by managers through the supervisor management system
+                      </span>
+                    </div>
+                    <div className="relative w-full sm:w-auto">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search managed supervisors..."
+                        value={searchQueryManaged}
+                        onChange={(e) => setSearchQueryManaged(e.target.value)}
+                        className="pl-10 w-full sm:w-[300px]"
+                      />
+                    </div>
+                  </div>
+                  
+                  {loadingManaged ? (
+                    <div className="text-center py-10">
+                      <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+                      <p className="mt-2 text-muted-foreground">Loading managed supervisors...</p>
+                    </div>
+                  ) : filteredManagedSupervisors.length === 0 ? (
+                    <div className="text-center py-10">
+                      <UserPlus className="h-12 w-12 mx-auto text-muted-foreground" />
+                      <h3 className="mt-4 text-lg font-semibold">No Managed Supervisors</h3>
+                      <p className="text-muted-foreground mt-1">
+                        {searchQueryManaged
+                          ? "No managed supervisors match your search"
+                          : selectedSiteId === "all"
+                          ? "No supervisors have been created by managers"
+                          : `No supervisors created by managers at ${selectedSiteName}`
+                        }
+                      </p>
+                      
+                      {canCreateSupervisor && !searchQueryManaged && selectedSiteId !== "all" && (
+                        <Button className="mt-6" onClick={() => openDialog()}>
+                          <Plus className="mr-2 h-4 w-4" />
+                          Create Your First Supervisor
+                        </Button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Supervisor</TableHead>
+                            <TableHead>Contact</TableHead>
+                            <TableHead>Department & Site</TableHead>
+                            <TableHead>Employees & Tasks</TableHead>
+                            <TableHead>Reports To</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredManagedSupervisors.map((supervisor) => (
+                            <TableRow key={supervisor._id}>
+                              <TableCell className="font-medium">
+                                <div className="flex flex-col">
+                                  <div className="flex items-center">
+                                    <UserPlus className="h-4 w-4 mr-2 text-green-500" />
+                                    <span>{supervisor.name}</span>
+                                  </div>
+                                  <div className="text-xs text-muted-foreground mt-1">
+                                    ID: {supervisor._id?.slice(-8)}
+                                  </div>
+                                  <div className="mt-2">
+                                    <Badge variant="outline" className="text-xs">
+                                      <Calendar className="h-3 w-3 mr-1" />
+                                      Joined {new Date(supervisor.joinDate).toLocaleDateString()}
+                                    </Badge>
+                                  </div>
                                 </div>
-                                <div className="flex items-center text-sm text-muted-foreground">
-                                  <Phone className="h-3 w-3 mr-2 flex-shrink-0" />
-                                  <span>{supervisor.phone || "Not provided"}</span>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-col space-y-1">
+                                  <div className="flex items-center text-sm">
+                                    <Mail className="h-3 w-3 mr-2 flex-shrink-0" />
+                                    <span className="truncate">{supervisor.email}</span>
+                                  </div>
+                                  <div className="flex items-center text-sm text-muted-foreground">
+                                    <Phone className="h-3 w-3 mr-2 flex-shrink-0" />
+                                    <span>{supervisor.phone}</span>
+                                  </div>
                                 </div>
-                                <div className="text-xs mt-2">
+                              </TableCell>
+                              <TableCell>
+                                <div className="space-y-2">
                                   <Badge variant="outline">
-                                    {supervisor.department || "Operations"}
+                                    {supervisor.department}
                                   </Badge>
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col space-y-2">
-                                <div className="flex flex-wrap gap-1">
-                                  {supervisor.pendingTasks && supervisor.pendingTasks > 0 && 
-                                    getTaskCountBadge(supervisor.pendingTasks, 'pending')}
-                                  {supervisor.inProgressTasks && supervisor.inProgressTasks > 0 && 
-                                    getTaskCountBadge(supervisor.inProgressTasks, 'inProgress')}
-                                  {supervisor.completedTasks && supervisor.completedTasks > 0 && 
-                                    getTaskCountBadge(supervisor.completedTasks, 'completed')}
-                                  {supervisor.overdueTasks && supervisor.overdueTasks > 0 && 
-                                    getTaskCountBadge(supervisor.overdueTasks, 'overdue')}
-                                </div>
-                                {supervisor.assignedTasks && supervisor.assignedTasks.length > 0 && (
-                                  <div className="text-xs text-muted-foreground">
-                                    Latest task: {supervisor.assignedTasks[0]?.title?.substring(0, 30)}...
+                                  <div className="flex items-center text-sm">
+                                    <Building className="h-3 w-3 mr-2" />
+                                    <span>{supervisor.site}</span>
                                   </div>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="space-y-2">
-                                <div className="flex items-center">
-                                  <MapPin className="h-3 w-3 mr-2 flex-shrink-0" />
-                                  <span className="font-medium">{supervisor.primarySite || "Not assigned"}</span>
                                 </div>
-                                {supervisor.assignedSites && supervisor.assignedSites.length > 1 && (
-                                  <div className="text-xs text-muted-foreground">
-                                    Also at: {supervisor.assignedSites.slice(1).join(', ')}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-col space-y-2">
+                                  <div className="flex items-center gap-2">
+                                    <Users className="h-3 w-3" />
+                                    <span className="text-sm">{supervisor.employees} employees</span>
                                   </div>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <FileText className="h-3 w-3" />
+                                    <span className="text-sm">{supervisor.tasks} tasks</span>
+                                  </div>
+                                  {supervisor.assignedProjects && supervisor.assignedProjects.length > 0 && (
+                                    <div className="text-xs text-muted-foreground">
+                                      Projects: {supervisor.assignedProjects.length}
+                                    </div>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="text-sm">
+                                  {supervisor.reportsTo ? (
+                                    <div className="flex items-center">
+                                      <Shield className="h-3 w-3 mr-2" />
+                                      {supervisor.reportsTo === currentUser?.email ? (
+                                        <Badge variant="secondary">You</Badge>
+                                      ) : (
+                                        supervisor.reportsTo
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="text-muted-foreground">Not assigned</span>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
                                 <Badge
                                   variant={supervisor.isActive ? "default" : "secondary"}
                                   className={
@@ -953,31 +1152,26 @@ const Supervisors = () => {
                                 >
                                   {supervisor.isActive ? "Active" : "Inactive"}
                                 </Badge>
-                                {supervisor.assignedTasks && supervisor.assignedTasks.length > 0 && (
-                                  <div className="text-xs text-muted-foreground">
-                                    Last active: {new Date(supervisor.updatedAt).toLocaleDateString()}
-                                  </div>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {canCreateSupervisor && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => openDialog(supervisor)}
+                                  >
+                                    <Edit className="h-3 w-3" />
+                                  </Button>
                                 )}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {canCreateSupervisor && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => openDialog(supervisor)}
-                                >
-                                  <Edit className="h-3 w-3" />
-                                </Button>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
             )}
           </CardContent>
         </Card>

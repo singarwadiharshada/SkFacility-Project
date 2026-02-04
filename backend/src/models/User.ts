@@ -10,7 +10,7 @@ export interface IUser extends Document {
   firstName: string;
   lastName: string;
   department: string;
-  site: string;
+  //site: string;
   phone: string;
   isActive: boolean;
   joinDate: Date;
@@ -81,12 +81,12 @@ const UserSchema = new Schema({
   department: {
     type: String,
     trim: true,
-    default: 'General'
+    default: ''
   },
-  site: {
-    type: String,
-    default: 'Mumbai Office'
-  },
+  // site: {
+  //   type: String,
+  //   default: 'Mumbai Office'
+  // },
   phone: {
     type: String,
     trim: true,

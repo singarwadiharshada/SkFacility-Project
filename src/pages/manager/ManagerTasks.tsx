@@ -101,7 +101,7 @@ const ManagerTasks = () => {
     priority: "medium" as "high" | "medium" | "low",
     deadline: "",
     dueDateTime: "",
-    taskType: "general"
+    taskType: "routine"
   });
 
   // Fetch all sites
@@ -564,7 +564,7 @@ const ManagerTasks = () => {
     }
   };
 
-  // Add new task
+  // Add new task - FIXED VERSION
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -583,24 +583,24 @@ const ManagerTasks = () => {
     console.log("Current user:", currentUser);
     
     try {
-      // Prepare task data
+      // Prepare task data - FIXED: Ensure all required fields are present and properly formatted
       const taskData = {
-        title: newTask.title,
-        description: newTask.description,
-        assignedTo: newTask.assignedTo,
-        assignedToName: newTask.assignedToName,
+        title: newTask.title.trim(),
+        description: newTask.description.trim(),
+        assignedTo: newTask.assignedTo.trim(),
+        assignedToName: newTask.assignedToName.trim(),
         priority: newTask.priority,
-        status: "pending" as const,
+        status: "pending",
         deadline: newTask.deadline,
-        dueDateTime: newTask.deadline ? `${newTask.deadline}T23:59:59` : "",
-        siteId: newTask.siteId,
-        siteName: newTask.siteName,
-        clientName: newTask.clientName,
-        taskType: newTask.taskType || "general",
-        createdBy: currentUser._id
+        dueDateTime: newTask.deadline ? `${newTask.deadline}T23:59:59` : new Date().toISOString(),
+        siteId: newTask.siteId.trim(),
+        siteName: newTask.siteName.trim(),
+        clientName: newTask.clientName.trim(),
+        taskType: newTask.taskType || "routine",
+        createdBy: currentUser._id.trim()
       };
       
-      console.log("Sending task data to API:", taskData);
+      console.log("Sending task data to API:", JSON.stringify(taskData, null, 2));
       
       // Create task using taskService
       const createdTask = await taskService.createTask(taskData);
@@ -630,7 +630,7 @@ const ManagerTasks = () => {
         priority: "medium", 
         deadline: "",
         dueDateTime: "",
-        taskType: "general"
+        taskType: "routine"
       });
       
       // Refresh tasks list
@@ -638,7 +638,16 @@ const ManagerTasks = () => {
       
     } catch (err: any) {
       console.error('Error creating task:', err);
-      toast.error(err.message || "Failed to assign task. Please try again.");
+      
+      // Try to get more specific error message
+      let errorMessage = "Failed to assign task. Please try again.";
+      if (err.message.includes("Validation error")) {
+        errorMessage = "Please check all required fields are filled correctly.";
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      toast.error(errorMessage);
       
       // Create demo task locally for testing
       const demoTask: Task = {
@@ -650,10 +659,11 @@ const ManagerTasks = () => {
         priority: newTask.priority,
         status: "pending",
         deadline: newTask.deadline,
+        dueDateTime: newTask.deadline ? `${newTask.deadline}T23:59:59` : new Date().toISOString(),
         siteId: newTask.siteId,
         siteName: newTask.siteName,
         clientName: newTask.clientName,
-        taskType: newTask.taskType || "general",
+        taskType: newTask.taskType || "routine",
         attachments: [],
         hourlyUpdates: [],
         createdAt: new Date().toISOString(),
@@ -679,7 +689,7 @@ const ManagerTasks = () => {
         priority: "medium", 
         deadline: "",
         dueDateTime: "",
-        taskType: "general"
+        taskType: "routine"
       });
     }
   };
@@ -1321,6 +1331,29 @@ const ManagerTasks = () => {
                     min={new Date().toISOString().split('T')[0]}
                   />
                 </div>
+              </div>
+              
+              <div>
+                <Label htmlFor="taskType">Task Type</Label>
+                <Select
+                  value={newTask.taskType}
+                  onValueChange={(value) => handleInputChange('taskType', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select task type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="routine">Routine</SelectItem>
+                    <SelectItem value="inspection">Inspection</SelectItem>
+                    <SelectItem value="maintenance">Maintenance</SelectItem>
+                    <SelectItem value="training">Training</SelectItem>
+                    <SelectItem value="audit">Audit</SelectItem>
+                    <SelectItem value="emergency">Emergency</SelectItem>
+                    <SelectItem value="safety">Safety</SelectItem>
+                    <SelectItem value="equipment">Equipment</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               
               <Button type="submit" className="w-full" disabled={loading.supervisors || loading.sites}>

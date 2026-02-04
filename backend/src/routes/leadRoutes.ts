@@ -2,6 +2,7 @@ import express from 'express';
 import {
   getLeads,
   createLead,
+  bulkCreateLeads,
   updateLead,
   deleteLead,
   updateLeadStatus
@@ -12,6 +13,9 @@ const router = express.Router();
 router.route('/')
   .get(getLeads)
   .post(createLead);
+
+router.route('/bulk')
+  .post(bulkCreateLeads);
 
 router.route('/:id')
   .put(updateLead)

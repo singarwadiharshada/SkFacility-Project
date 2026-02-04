@@ -351,7 +351,7 @@ const EmployeeSchema: Schema = new Schema(
     siteName: {
       type: String,
       trim: true,
-      default: 'Main Office'
+      default: ''
     },
     salary: {
       type: Number,

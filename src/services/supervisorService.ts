@@ -7,7 +7,7 @@ export interface Supervisor {
   email: string;
   phone: string;
   department: string;
-  site: string;
+  // site: string;
   employees: number;
   tasks: number;
   assignedProjects: string[];
@@ -26,7 +26,7 @@ export interface CreateSupervisorData {
   phone: string;
   password: string;
   department?: string;
-  site?: string;
+  // site?: string;
   reportsTo?: string;
   assignedManagers?: string[]; // ADD THIS LINE
 }
@@ -36,7 +36,7 @@ export interface UpdateSupervisorData {
   email?: string;
   phone?: string;
   department?: string;
-  site?: string;
+  // site?: string;
   reportsTo?: string;
   employees?: number;
   tasks?: number;

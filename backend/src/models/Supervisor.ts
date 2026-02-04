@@ -40,11 +40,11 @@ const supervisorSchema = new Schema<ISupervisor>(
       default: "Operations",
       trim: true
     },
-    site: {
-      type: String,
-      default: "Mumbai Office",
-      trim: true
-    },
+    // site: {
+    //   type: String,
+    //   default: "Mumbai Office",
+    //   trim: true
+    // },
     employees: {
       type: Number,
       default: 0

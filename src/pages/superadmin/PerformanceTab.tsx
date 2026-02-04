@@ -253,6 +253,7 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
       
       // Direct API call for employees - try multiple endpoints
       const endpoints = [
+        'http://localhost:5001/api/employees',
         'http://localhost:5001/api/employees?status=active&limit=1000',
         'http://localhost:5001/api/employees/get?status=active&limit=1000',
         'http://localhost:5001/api/employees/all?status=active&limit=1000'
@@ -932,7 +933,7 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
 
   return (
     <div className="space-y-6">
-      {/* Add/Edit Deduction Dialog */}
+      {/* Add/Edit Deduction Dialog - IMPROVED UI */}
       <Dialog
         open={isAddingDeduction || !!editingDeduction}
         onOpenChange={(open) => {
@@ -943,46 +944,63 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
           }
         }}
       >
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              {editingDeduction ? "Edit Deduction" : "Add New Deduction"}
+            <DialogTitle className="flex items-center gap-2">
+              {editingDeduction ? (
+                <>
+                  <Edit className="h-5 w-5 text-primary" />
+                  Edit Deduction
+                </>
+              ) : (
+                <>
+                  <Plus className="h-5 w-5 text-primary" />
+                  Add New Deduction
+                </>
+              )}
             </DialogTitle>
             <DialogDescription>
               {editingDeduction
-                ? "Update deduction information"
-                : "Add a new salary deduction or advance"}
+                ? "Update deduction information below"
+                : "Fill in the details to add a new salary deduction or advance"}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="employeeId">Employee *</Label>
+              <Label htmlFor="employeeId" className="flex items-center gap-1">
+                Employee <span className="text-red-500">*</span>
+              </Label>
               <Select
                 value={deductionForm.employeeId}
                 onValueChange={(value) => handleFormChange("employeeId", value)}
                 disabled={isLoadingEmployees}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   {isLoadingEmployees ? (
-                    <div className="flex items-center">
+                    <div className="flex items-center text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
                       Loading employees...
                     </div>
                   ) : (
-                    <SelectValue placeholder="Select employee" />
+                    <SelectValue placeholder="Select an employee" />
                   )}
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-60">
                   {(employees || []).map(
                     (employee) =>
                       employee && (
                         <SelectItem
                           key={employee.employeeId}
                           value={employee.employeeId}
+                          className="py-2"
                         >
-                          {employee.name} ({employee.employeeId}) -{" "}
-                          {employee.department}
+                          <div className="flex flex-col">
+                            <span className="font-medium">{employee.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {employee.employeeId} • {employee.department}
+                            </span>
+                          </div>
                         </SelectItem>
                       )
                   )}
@@ -991,7 +1009,9 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="type">Deduction Type *</Label>
+              <Label htmlFor="type" className="flex items-center gap-1">
+                Deduction Type <span className="text-red-500">*</span>
+              </Label>
               <Select
                 value={deductionForm.type}
                 onValueChange={(value) =>
@@ -1002,25 +1022,40 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="advance">Salary Advance</SelectItem>
-                  <SelectItem value="fine">Fine/Penalty</SelectItem>
-                  <SelectItem value="other">Other Deduction</SelectItem>
+                  <SelectItem value="advance" className="flex items-center">
+                    <div className="w-3 h-3 rounded-full bg-purple-500 mr-2"></div>
+                    Salary Advance
+                  </SelectItem>
+                  <SelectItem value="fine" className="flex items-center">
+                    <div className="w-3 h-3 rounded-full bg-orange-500 mr-2"></div>
+                    Fine/Penalty
+                  </SelectItem>
+                  <SelectItem value="other" className="flex items-center">
+                    <div className="w-3 h-3 rounded-full bg-gray-500 mr-2"></div>
+                    Other Deduction
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="amount">Amount (₹) *</Label>
-              <Input
-                id="amount"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="Enter amount"
-                value={deductionForm.amount}
-                onChange={(e) => handleFormChange("amount", e.target.value)}
-                required
-              />
+              <Label htmlFor="amount" className="flex items-center gap-1">
+                Amount (₹) <span className="text-red-500">*</span>
+              </Label>
+              <div className="relative">
+                <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={deductionForm.amount}
+                  onChange={(e) => handleFormChange("amount", e.target.value)}
+                  required
+                  className="pl-9"
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -1035,10 +1070,22 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="approved">Approved</SelectItem>
-                  <SelectItem value="rejected">Rejected</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="pending" className="flex items-center">
+                    <div className="w-2 h-2 rounded-full bg-yellow-500 mr-2"></div>
+                    Pending
+                  </SelectItem>
+                  <SelectItem value="approved" className="flex items-center">
+                    <div className="w-2 h-2 rounded-full bg-green-500 mr-2"></div>
+                    Approved
+                  </SelectItem>
+                  <SelectItem value="rejected" className="flex items-center">
+                    <div className="w-2 h-2 rounded-full bg-red-500 mr-2"></div>
+                    Rejected
+                  </SelectItem>
+                  <SelectItem value="completed" className="flex items-center">
+                    <div className="w-2 h-2 rounded-full bg-blue-500 mr-2"></div>
+                    Completed
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1052,6 +1099,7 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
                 onChange={(e) =>
                   handleFormChange("deductionDate", e.target.value)
                 }
+                className="w-full"
               />
             </div>
 
@@ -1064,6 +1112,7 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
                 onChange={(e) =>
                   handleFormChange("appliedMonth", e.target.value)
                 }
+                className="w-full"
               />
             </div>
 
@@ -1071,29 +1120,39 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
               <>
                 <div className="space-y-2">
                   <Label htmlFor="repaymentMonths">Repayment Months</Label>
-                  <Input
-                    id="repaymentMonths"
-                    type="number"
-                    min="0"
-                    placeholder="Number of months for repayment"
-                    value={deductionForm.repaymentMonths}
-                    onChange={(e) =>
-                      handleFormChange("repaymentMonths", e.target.value)
-                    }
-                  />
+                  <div className="flex items-center space-x-2">
+                    <Input
+                      id="repaymentMonths"
+                      type="number"
+                      min="0"
+                      placeholder="e.g., 3"
+                      value={deductionForm.repaymentMonths}
+                      onChange={(e) =>
+                        handleFormChange("repaymentMonths", e.target.value)
+                      }
+                      className="flex-1"
+                    />
+                    <span className="text-sm text-muted-foreground whitespace-nowrap">
+                      months
+                    </span>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="installmentAmount">
                     Monthly Installment (₹)
                   </Label>
-                  <Input
-                    id="installmentAmount"
-                    type="number"
-                    readOnly
-                    placeholder="Monthly installment amount"
-                    value={deductionForm.installmentAmount}
-                  />
+                  <div className="relative">
+                    <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="installmentAmount"
+                      type="number"
+                      readOnly
+                      placeholder="Auto-calculated"
+                      value={deductionForm.installmentAmount}
+                      className="pl-9 bg-muted"
+                    />
+                  </div>
                 </div>
               </>
             )}
@@ -1101,17 +1160,21 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
             {deductionForm.type === "fine" && (
               <div className="space-y-2">
                 <Label htmlFor="fineAmount">Fine Amount (₹)</Label>
-                <Input
-                  id="fineAmount"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="Fine amount"
-                  value={deductionForm.fineAmount}
-                  onChange={(e) =>
-                    handleFormChange("fineAmount", e.target.value)
-                  }
-                />
+                <div className="relative">
+                  <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="fineAmount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={deductionForm.fineAmount}
+                    onChange={(e) =>
+                      handleFormChange("fineAmount", e.target.value)
+                    }
+                    className="pl-9"
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -1120,13 +1183,14 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
             <Label htmlFor="description">Description</Label>
             <Input
               id="description"
-              placeholder="Enter description for the deduction"
+              placeholder="Enter description for the deduction..."
               value={deductionForm.description}
               onChange={(e) => handleFormChange("description", e.target.value)}
+              className="w-full"
             />
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button
               variant="outline"
               onClick={() => {
@@ -1135,6 +1199,7 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
                 resetDeductionForm();
               }}
               disabled={isSubmitting}
+              className="flex-1 sm:flex-none"
             >
               Cancel
             </Button>
@@ -1147,37 +1212,58 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
                 !deductionForm.employeeId ||
                 !deductionForm.amount
               }
+              className="flex-1 sm:flex-none"
             >
               {isSubmitting && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              {editingDeduction ? "Update Deduction" : "Add Deduction"}
+              {editingDeduction ? "Save Changes" : "Add Deduction"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Confirmation Dialog - IMPROVED UI */}
       <AlertDialog
         open={deleteDialog.open}
         onOpenChange={(open) => setDeleteDialog({ open, deduction: null })}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Deduction</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this deduction record? This action
-              cannot be undone.
+            <div className="flex items-center gap-2 text-red-600 mb-2">
+              <Trash2 className="h-5 w-5" />
+              <AlertDialogTitle>Delete Deduction</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription className="text-left">
+              <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-md">
+                {deleteDialog.deduction && (
+                  <>
+                    <p className="font-medium text-sm">
+                      Employee: {deleteDialog.deduction.employeeName}
+                    </p>
+                    <p className="text-sm">
+                      Amount: ₹{deductionService.formatCurrency(deleteDialog.deduction.amount)}
+                    </p>
+                    <p className="text-sm">
+                      Type: {deleteDialog.deduction.type}
+                    </p>
+                  </>
+                )}
+              </div>
+              <p className="text-sm">
+                Are you sure you want to delete this deduction record? This action
+                cannot be undone.
+              </p>
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel className="flex-1 sm:flex-none">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() =>
                 deleteDialog.deduction &&
                 handleDeleteDeduction(deleteDialog.deduction.id.toString())
               }
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-red-600 hover:bg-red-700 flex-1 sm:flex-none"
             >
               Delete
             </AlertDialogAction>
@@ -1185,35 +1271,36 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Header Section */}
+      {/* Header Section - IMPROVED UI */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold">Deduction Management</h2>
+          <h2 className="text-2xl font-bold tracking-tight">Deduction Management</h2>
           <p className="text-muted-foreground">
-            Manage salary advances, fines, and other deductions
+            Manage salary advances, fines, and other deductions for employees
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
             onClick={handleExportDeductions}
             disabled={deductions.length === 0}
+            className="gap-2"
           >
-            <Download className="mr-2 h-4 w-4" />
+            <Download className="h-4 w-4" />
             Export CSV
           </Button>
-          <Button onClick={() => setIsAddingDeduction(true)}>
-            <Plus className="mr-2 h-4 w-4" />
+          <Button onClick={() => setIsAddingDeduction(true)} className="gap-2">
+            <Plus className="h-4 w-4" />
             Add Deduction
           </Button>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
+      {/* Stats Cards - IMPROVED UI */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="border-l-4 border-l-primary">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
               Total Deductions
             </CardTitle>
           </CardHeader>
@@ -1223,13 +1310,13 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
               {deductionService.formatCurrency(deductionStats.totalDeductions)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {totalDeductionsCount} total records
+              Across {totalDeductionsCount} records
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-purple-500">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
               Salary Advances
             </CardTitle>
           </CardHeader>
@@ -1238,11 +1325,22 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
               <IndianRupee className="h-5 w-5 mr-1" />
               {deductionService.formatCurrency(deductionStats.totalAdvances)}
             </div>
+            <div className="flex items-center mt-1">
+              <div className="w-full bg-purple-100 rounded-full h-1.5">
+                <div 
+                  className="bg-purple-500 h-1.5 rounded-full" 
+                  style={{ 
+                    width: `${deductionStats.totalAdvances > 0 && deductionStats.totalDeductions > 0 ? 
+                      (deductionStats.totalAdvances / deductionStats.totalDeductions) * 100 : 0}%` 
+                  }}
+                ></div>
+              </div>
+            </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-orange-500">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
               Fines/Penalties
             </CardTitle>
           </CardHeader>
@@ -1251,11 +1349,22 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
               <IndianRupee className="h-5 w-5 mr-1" />
               {deductionService.formatCurrency(deductionStats.totalFines)}
             </div>
+            <div className="flex items-center mt-1">
+              <div className="w-full bg-orange-100 rounded-full h-1.5">
+                <div 
+                  className="bg-orange-500 h-1.5 rounded-full" 
+                  style={{ 
+                    width: `${deductionStats.totalFines > 0 && deductionStats.totalDeductions > 0 ? 
+                      (deductionStats.totalFines / deductionStats.totalDeductions) * 100 : 0}%` 
+                  }}
+                ></div>
+              </div>
+            </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-yellow-500">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
               Pending Approvals
             </CardTitle>
           </CardHeader>
@@ -1263,23 +1372,42 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
             <div className="text-2xl font-bold text-yellow-600">
               {deductionStats.pendingCount}
             </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Awaiting approval
+            </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Filters and Search */}
+      {/* Filters and Search - IMPROVED UI */}
       <Card>
-        <CardHeader>
-          <CardTitle>Deduction Records</CardTitle>
+        <CardHeader className="pb-3">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <CardTitle className="text-lg">Deduction Records</CardTitle>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                Approved: {deductionStats.approvedCount}
+              </span>
+              <span className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                Rejected: {deductionStats.rejectedCount}
+              </span>
+              <span className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                Completed: {deductionStats.completedCount}
+              </span>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col sm:flex-row gap-4 mb-6">
+          <div className="flex flex-col sm:flex-row gap-3 mb-6">
             <div className="flex-1">
               <div className="relative">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search by employee name, ID, or description..."
-                  className="pl-8"
+                  className="pl-10"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   onKeyDown={(e) => {
@@ -1290,42 +1418,92 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
                 />
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-[140px]">
-                  <Filter className="mr-2 h-4 w-4" />
-                  <SelectValue placeholder="Status" />
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-4 w-4" />
+                    <span>Status</span>
+                  </div>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="approved">Approved</SelectItem>
-                  <SelectItem value="rejected">Rejected</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="all">
+                    <div className="flex items-center">
+                      <div className="w-2 h-2 rounded-full bg-gray-300 mr-2"></div>
+                      All Status
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="pending">
+                    <div className="flex items-center">
+                      <div className="w-2 h-2 rounded-full bg-yellow-500 mr-2"></div>
+                      Pending
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="approved">
+                    <div className="flex items-center">
+                      <div className="w-2 h-2 rounded-full bg-green-500 mr-2"></div>
+                      Approved
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="rejected">
+                    <div className="flex items-center">
+                      <div className="w-2 h-2 rounded-full bg-red-500 mr-2"></div>
+                      Rejected
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="completed">
+                    <div className="flex items-center">
+                      <div className="w-2 h-2 rounded-full bg-blue-500 mr-2"></div>
+                      Completed
+                    </div>
+                  </SelectItem>
                 </SelectContent>
               </Select>
               <Select value={typeFilter} onValueChange={setTypeFilter}>
                 <SelectTrigger className="w-[160px]">
-                  <Filter className="mr-2 h-4 w-4" />
-                  <SelectValue placeholder="Type" />
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-4 w-4" />
+                    <span>Type</span>
+                  </div>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="advance">Salary Advance</SelectItem>
-                  <SelectItem value="fine">Fine/Penalty</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
+                  <SelectItem value="all">
+                    <div className="flex items-center">
+                      <div className="w-3 h-3 rounded-full bg-gray-300 mr-2"></div>
+                      All Types
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="advance">
+                    <div className="flex items-center">
+                      <div className="w-3 h-3 rounded-full bg-purple-500 mr-2"></div>
+                      Salary Advance
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="fine">
+                    <div className="flex items-center">
+                      <div className="w-3 h-3 rounded-full bg-orange-500 mr-2"></div>
+                      Fine/Penalty
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="other">
+                    <div className="flex items-center">
+                      <div className="w-3 h-3 rounded-full bg-gray-500 mr-2"></div>
+                      Other
+                    </div>
+                  </SelectItem>
                 </SelectContent>
               </Select>
               <Button
                 variant="outline"
                 onClick={handleManualRefresh}
                 disabled={isLoading}
+                className="gap-2"
               >
                 {isLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <>
-                    <RefreshCw className="mr-2 h-4 w-4" />
+                    <RefreshCw className="h-4 w-4" />
                     Refresh
                   </>
                 )}
@@ -1333,164 +1511,199 @@ const DeductionListTab = ({}: DeductionListTabProps) => {
             </div>
           </div>
 
-          {/* Deductions Table */}
-          <div className="rounded-md border">
+          {/* Deductions Table - IMPROVED UI */}
+          <div className="rounded-lg border overflow-hidden">
             {isLoading ? (
-              <div className="flex justify-center items-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <span className="ml-2">Loading deductions...</span>
+              <div className="flex flex-col justify-center items-center py-16">
+                <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+                <span className="text-muted-foreground">Loading deductions...</span>
               </div>
             ) : (
               <>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Employee</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Fine Amount</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Installment</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Applied Month</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {paginatedDeductions.length === 0 ? (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader className="bg-muted/50">
                       <TableRow>
-                        <TableCell
-                          colSpan={9}
-                          className="text-center py-8 text-muted-foreground"
-                        >
-                          {deductions && deductions.length === 0
-                            ? "No deductions added yet"
-                            : "No deductions match your filters"}
-                        </TableCell>
+                        <TableHead className="font-semibold">Employee</TableHead>
+                        <TableHead className="font-semibold">Type</TableHead>
+                        <TableHead className="font-semibold">Amount</TableHead>
+                        <TableHead className="font-semibold">Fine Amount</TableHead>
+                        <TableHead className="font-semibold">Description</TableHead>
+                        <TableHead className="font-semibold">Installment</TableHead>
+                        <TableHead className="font-semibold">Status</TableHead>
+                        <TableHead className="font-semibold">Month</TableHead>
+                        <TableHead className="font-semibold">Actions</TableHead>
                       </TableRow>
-                    ) : (
-                      paginatedDeductions.map((deduction) => {
-                        if (!deduction) return null;
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedDeductions.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={9} className="text-center py-12">
+                            <div className="flex flex-col items-center justify-center">
+                              <Search className="h-12 w-12 text-muted-foreground mb-4" />
+                              <h3 className="font-medium text-lg mb-1">
+                                {deductions && deductions.length === 0
+                                  ? "No deductions added yet"
+                                  : "No matching deductions found"}
+                              </h3>
+                              <p className="text-muted-foreground text-sm max-w-md text-center">
+                                {deductions && deductions.length === 0
+                                  ? "Get started by adding your first deduction"
+                                  : "Try adjusting your search or filters to find what you're looking for"}
+                              </p>
+                              {deductions && deductions.length === 0 && (
+                                <Button 
+                                  onClick={() => setIsAddingDeduction(true)} 
+                                  className="mt-4"
+                                >
+                                  <Plus className="mr-2 h-4 w-4" />
+                                  Add First Deduction
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        paginatedDeductions.map((deduction) => {
+                          if (!deduction) return null;
 
-                        const employee = (employees || []).find(
-                          (emp) =>
-                            emp && emp.employeeId === deduction.employeeId
-                        );
+                          const employee = (employees || []).find(
+                            (emp) =>
+                              emp && emp.employeeId === deduction.employeeId
+                          );
 
-                        return (
-                          <TableRow key={deduction.id}>
-                            <TableCell>
-                              <div>
-                                <div className="font-medium">
-                                  {employee?.name || "Unknown Employee"}
+                          return (
+                            <TableRow key={deduction.id} className="hover:bg-muted/50 transition-colors">
+                              <TableCell>
+                                <div className="space-y-1">
+                                  <div className="font-medium">
+                                    {employee?.name || "Unknown Employee"}
+                                  </div>
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <Badge variant="outline" className="text-xs font-normal">
+                                      {employee?.employeeId || "N/A"}
+                                    </Badge>
+                                    <span className="text-muted-foreground">
+                                      {employee?.department || "N/A"}
+                                    </span>
+                                  </div>
                                 </div>
-                                <div className="text-sm text-muted-foreground">
-                                  {employee?.employeeId || "N/A"}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  {getTypeBadge(deduction.type)}
                                 </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {employee?.department || "N/A"}
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              {getTypeBadge(deduction.type)}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center font-medium">
-                                <IndianRupee className="h-4 w-4 mr-1" />
-                                {deductionService.formatCurrency(
-                                  deduction.amount
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              {deduction.type === "fine" ? (
-                                <div className="flex items-center font-medium text-orange-600">
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center font-medium">
                                   <IndianRupee className="h-4 w-4 mr-1" />
                                   {deductionService.formatCurrency(
-                                    deduction.fineAmount ||
-                                      deduction.amount ||
-                                      0
+                                    deduction.amount
                                   )}
                                 </div>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
-                            </TableCell>
-                            <TableCell
-                              className="max-w-xs truncate"
-                              title={deduction.description || ""}
-                            >
-                              {deduction.description || "No description"}
-                            </TableCell>
-                            <TableCell>
-                              {deduction.type === "advance" &&
-                              (deduction.installmentAmount || 0) > 0 ? (
-                                <div className="flex items-center text-sm">
-                                  <IndianRupee className="h-3 w-3 mr-1" />
-                                  {deductionService.formatCurrency(
-                                    deduction.installmentAmount || 0
-                                  )}
-                                  /month
-                                  {deduction.repaymentMonths &&
-                                    deduction.repaymentMonths > 0 && (
-                                      <span className="text-xs text-muted-foreground ml-2">
-                                        ({deduction.repaymentMonths} months)
-                                      </span>
+                              </TableCell>
+                              <TableCell>
+                                {deduction.type === "fine" ? (
+                                  <div className="flex items-center font-medium text-orange-600">
+                                    <IndianRupee className="h-4 w-4 mr-1" />
+                                    {deductionService.formatCurrency(
+                                      deduction.fineAmount ||
+                                        deduction.amount ||
+                                        0
                                     )}
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground text-sm">—</span>
+                                )}
+                              </TableCell>
+                              <TableCell
+                                className="max-w-xs min-w-[200px]"
+                              >
+                                <div className="truncate" title={deduction.description || ""}>
+                                  {deduction.description || (
+                                    <span className="text-muted-foreground italic">No description</span>
+                                  )}
                                 </div>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {getStatusBadge(deduction.status)}
-                            </TableCell>
-                            <TableCell>
-                              {deduction.appliedMonth || "N/A"}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleEditDeduction(deduction)}
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                  onClick={() =>
-                                    setDeleteDialog({ open: true, deduction })
-                                  }
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })
-                    )}
-                  </TableBody>
-                </Table>
+                              </TableCell>
+                              <TableCell>
+                                {deduction.type === "advance" &&
+                                (deduction.installmentAmount || 0) > 0 ? (
+                                  <div className="space-y-1">
+                                    <div className="flex items-center text-sm font-medium">
+                                      <IndianRupee className="h-3 w-3 mr-1" />
+                                      {deductionService.formatCurrency(
+                                        deduction.installmentAmount || 0
+                                      )}
+                                      <span className="text-xs text-muted-foreground ml-1">
+                                        /month
+                                      </span>
+                                    </div>
+                                    {deduction.repaymentMonths &&
+                                      deduction.repaymentMonths > 0 && (
+                                        <Badge variant="outline" className="text-xs">
+                                          {deduction.repaymentMonths} months
+                                        </Badge>
+                                      )}
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground text-sm">—</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {getStatusBadge(deduction.status)}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className="font-normal">
+                                  {deduction.appliedMonth || "N/A"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleEditDeduction(deduction)}
+                                    title="Edit"
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    onClick={() =>
+                                      setDeleteDialog({ open: true, deduction })
+                                    }
+                                    title="Delete"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
 
                 {filteredDeductions.length > 0 && (
-                  <Pagination
-                    currentPage={deductionPage}
-                    totalPages={Math.ceil(
-                      totalDeductionsCount / deductionItemsPerPage
-                    )}
-                    totalItems={totalDeductionsCount}
-                    itemsPerPage={deductionItemsPerPage}
-                    onPageChange={setDeductionPage}
-                    onItemsPerPageChange={(value) => {
-                      setDeductionItemsPerPage(value);
-                      setDeductionPage(1); // Reset to first page when changing items per page
-                    }}
-                  />
+                  <div className="border-t">
+                    <Pagination
+                      currentPage={deductionPage}
+                      totalPages={Math.ceil(
+                        totalDeductionsCount / deductionItemsPerPage
+                      )}
+                      totalItems={totalDeductionsCount}
+                      itemsPerPage={deductionItemsPerPage}
+                      onPageChange={setDeductionPage}
+                      onItemsPerPageChange={(value) => {
+                        setDeductionItemsPerPage(value);
+                        setDeductionPage(1); // Reset to first page when changing items per page
+                      }}
+                    />
+                  </div>
                 )}
               </>
             )}

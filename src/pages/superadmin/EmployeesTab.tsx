@@ -80,7 +80,7 @@ const EmployeesTab = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [employeesPage, setEmployeesPage] = useState(1);
-  const [employeesItemsPerPage, setEmployeesItemsPerPage] = useState(5);
+  const [employeesItemsPerPage, setEmployeesItemsPerPage] = useState(100); // Changed from 5 to 100
   const [sortBy, setSortBy] = useState<string>("");
   const [selectedDepartment, setSelectedDepartment] = useState<string>("all");
   const [selectedSite, setSelectedSite] = useState<string>("all");
@@ -217,6 +217,7 @@ const EmployeesTab = ({
             status: emp.status || "active",
             documents: emp.documents || [],
             photo: emp.photo || null,
+            photoPublicId: emp.photoPublicId || null,
             fatherName: emp.fatherName || "",
             motherName: emp.motherName || "",
             spouseName: emp.spouseName || "",
@@ -235,13 +236,19 @@ const EmployeesTab = ({
         });
         
         setEmployees(transformedEmployees);
-        setTotalEmployees(response.data.pagination?.total || response.data.total || transformedEmployees.length);
+        
+        // Use the total count from API response for pagination
+        const totalFromAPI = response.data.pagination?.total || response.data.total || response.data.count || 0;
+        setTotalEmployees(totalFromAPI);
+        
         console.log("Transformed employees:", transformedEmployees); // Debug log
+        console.log("Total employees from API:", totalFromAPI); // Debug log
       } else {
         const errorMsg = response.data?.message || "Failed to fetch employees";
         setError(errorMsg);
         toast.error(errorMsg);
         setEmployees([]);
+        setTotalEmployees(0);
       }
     } catch (err: any) {
       console.error("Error fetching employees:", err);
@@ -249,6 +256,7 @@ const EmployeesTab = ({
       setError(errorMsg);
       toast.error("Error loading employees: " + errorMsg);
       setEmployees([]);
+      setTotalEmployees(0);
     } finally {
       setLoading(false);
     }
@@ -258,7 +266,7 @@ const EmployeesTab = ({
   const departments = Array.from(new Set(employees.map(emp => emp.department))).filter(Boolean);
   const sites = Array.from(new Set(employees.map(emp => emp.siteName))).filter(Boolean);
 
-  // Filter employees based on search term and selected filters (client-side as backup)
+  // Filter employees based on search term and selected filters (client-side for display)
   const filteredEmployees = employees.filter(emp => {
     const matchesSearch = 
       emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -273,7 +281,7 @@ const EmployeesTab = ({
     return matchesSearch && matchesDepartment && matchesSite && matchesJoinDate;
   });
 
-  // Sort employees based on selected criteria (client-side)
+  // Sort employees based on selected criteria (client-side for display)
   const sortedEmployees = [...filteredEmployees].sort((a, b) => {
     if (sortBy === "name") {
       return (a.name || "").localeCompare(b.name || "");
@@ -290,12 +298,7 @@ const EmployeesTab = ({
     return 0;
   });
 
-  const paginatedEmployees = sortedEmployees.slice(
-    (employeesPage - 1) * employeesItemsPerPage,
-    employeesPage * employeesItemsPerPage
-  );
-
-  // Statistics
+  // Statistics - using all employees from current page
   const activeEmployees = employees.filter(emp => emp.status === "active").length;
   const leftEmployeesCount = employees.filter(emp => emp.status === "left").length;
   const departmentsCount = new Set(employees.map(e => e.department)).size;
@@ -316,6 +319,7 @@ const EmployeesTab = ({
       
       if (response.data.success) {
         setEmployees(prev => prev.filter(emp => emp.id !== id));
+        setTotalEmployees(prev => prev - 1);
         toast.success("Employee deleted successfully!");
       } else {
         toast.error(response.data.message || "Failed to delete employee");
@@ -332,18 +336,14 @@ const EmployeesTab = ({
     try {
       setLoading(true);
       const response = await axios.patch(
-        `${API_URL}/employees/${employee.id}/status`,
+        `${API_URL}/employees/${employee.id}/status`, // Use MongoDB _id
         { status: "left" }
       );
       
       if (response.data.success) {
         setEmployees(prev => prev.map(emp => 
           emp.id === employee.id 
-            ? { 
-                ...emp, 
-                status: "left" as "active" | "inactive" | "left", 
-                exitDate: new Date().toISOString().split("T")[0] 
-              }
+            ? { ...emp, status: "left", exitDate: new Date().toISOString().split("T")[0] }
             : emp
         ));
         toast.success("Employee marked as left");
@@ -401,652 +401,639 @@ const EmployeesTab = ({
     }
   };
 
-// ==================== FIXED IMPORT FUNCTION ====================
-// ==================== FIXED IMPORT FUNCTION WITH PROPER DEFAULTS ====================
-// ==================== CORRECT IMPORT FUNCTION FOR YOUR EXCEL FORMAT ====================
-// ==================== COMPLETE FIXED IMPORT FUNCTION ====================
-const handleImportEmployees = async (file: File) => {
-  try {
-    setIsImporting(true);
-    setImportProgress({ current: 0, total: 0 });
-    
-    if (!file) {
-      toast.error("Please select a file to import");
-      return;
-    }
+  // ==================== COMPLETE IMPORT FUNCTION ====================
+  const handleImportEmployees = async (file: File) => {
+    try {
+      setIsImporting(true);
+      setImportProgress({ current: 0, total: 0 });
+      
+      if (!file) {
+        toast.error("Please select a file to import");
+        return;
+      }
 
-    const toastId = toast.loading(
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <Database className="h-4 w-4" />
-          <span className="font-medium">Reading Excel file...</span>
+      const toastId = toast.loading(
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Database className="h-4 w-4" />
+            <span className="font-medium">Reading Excel file...</span>
+          </div>
         </div>
-      </div>
-    );
+      );
 
-    // Read the Excel file WITH PROPER DATE HANDLING
-    const arrayBuffer = await file.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer, { 
-      type: 'array',
-      cellDates: true, // CRITICAL: Parse dates as Date objects
-      cellNF: false
-    });
-    
-    const firstSheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[firstSheetName];
-    
-    // Get ALL data including headers
-    const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
-      header: 1, 
-      defval: '',
-      raw: false, // Get formatted values for dates
-      dateNF: 'mm/dd/yyyy' // Tell ExcelJS the date format
-    });
-    
-    console.log('=== ANALYZING EXCEL DATA ===');
-    console.log('Total rows:', jsonData.length);
-    
-    // Get headers from first row
-    const headers = jsonData[0] as string[];
-    
-    // ==================== CORRECT COLUMN MAPPING ====================
-    const siteIndex = 0; // Site Name
-    const nameIndex = 1; // Employee Name
-    const dobIndex = 3; // Date of Birth
-    const dojIndex = 4; // Date of Joining
-    const contactIndex = 6; // Contact No
-    const bloodGroupIndex = 7; // Blood Group
-    const emailIndex = 8; // Email
-    const aadharIndex = 9; // Aadhar Number
-    const panIndex = 10; // PAN Number
-    const positionIndex = 36; // Position
-    const salaryIndex = 37; // Monthly Salary
-    const departmentIndex = 35; // Department
-    const accountNumberIndex = 18; // Account Number
-    const ifscIndex = 19; // IFSC Code
-    const bankNameIndex = 17; // Bank Name
-    const fatherNameIndex = 20; // Father's Name
-    const motherNameIndex = 21; // Mother's Name
-    const spouseNameIndex = 22; // Spouse Name
-    const emergencyContactNameIndex = 23; // Emergency Contact Name
-    const emergencyContactPhoneIndex = 24; // Emergency Contact Phone
-    const permanentAddressIndex = 13; // Permanent Address
-    
-    // ==================== PROCESS EMPLOYEES ====================
-    const employeesToImport = [];
-    let processedCount = 0;
-    let skippedCount = 0;
-    const skippedReasons: string[] = [];
-    
-    for (let i = 1; i < jsonData.length; i++) {
-      const row = jsonData[i] as any[];
-      if (!row || row.length === 0) continue;
-      
-      // Get values from correct columns
-      const siteName = row[siteIndex] ? String(row[siteIndex]).trim() : '';
-      const name = row[nameIndex] ? String(row[nameIndex]).trim() : '';
-      const aadhar = row[aadharIndex] ? String(row[aadharIndex]).trim().replace(/\s/g, '') : '';
-      
-      // ==================== FIXED DATE PARSING ====================
-      // Get raw date values - Excel might give us Date objects or serial numbers
-      const dobRaw = row[dobIndex];
-      const dojRaw = row[dojIndex];
-      
-      const contact = row[contactIndex] ? String(row[contactIndex]).trim() : '';
-      const bloodGroup = row[bloodGroupIndex] ? String(row[bloodGroupIndex]).trim() : '';
-      const email = row[emailIndex] ? String(row[emailIndex]).trim() : '';
-      const pan = row[panIndex] ? String(row[panIndex]).trim().toUpperCase() : '';
-      const position = row[positionIndex] ? String(row[positionIndex]).trim() : '';
-      const salaryStr = row[salaryIndex] ? String(row[salaryIndex]).trim() : '';
-      const department = row[departmentIndex] ? String(row[departmentIndex]).trim() : '';
-      const accountNumber = row[accountNumberIndex] ? String(row[accountNumberIndex]).trim() : '';
-      const ifscCode = row[ifscIndex] ? String(row[ifscIndex]).trim().toUpperCase() : '';
-      const bankName = row[bankNameIndex] ? String(row[bankNameIndex]).trim() : '';
-      const fatherName = row[fatherNameIndex] ? String(row[fatherNameIndex]).trim() : '';
-      const motherName = row[motherNameIndex] ? String(row[motherNameIndex]).trim() : '';
-      const spouseName = row[spouseNameIndex] ? String(row[spouseNameIndex]).trim() : '';
-      const emergencyContactName = row[emergencyContactNameIndex] ? String(row[emergencyContactNameIndex]).trim() : '';
-      const emergencyContactPhone = row[emergencyContactPhoneIndex] ? String(row[emergencyContactPhoneIndex]).trim() : '';
-      const permanentAddress = row[permanentAddressIndex] ? String(row[permanentAddressIndex]).trim() : '';
-      
-      // Skip if missing critical fields
-      if (!name || !aadhar) {
-        skippedCount++;
-        skippedReasons.push(`Row ${i}: Missing name or aadhar`);
-        continue;
-      }
-      
-      // Validate Aadhar (12 digits)
-      if (!/^\d{12}$/.test(aadhar)) {
-        skippedCount++;
-        skippedReasons.push(`Row ${i}: Invalid Aadhar format (${aadhar.length} digits)`);
-        continue;
-      }
-      
-      // ==================== IMPROVED DATE PARSING ====================
-      let dateOfBirth: Date | null = null;
-      let dateOfJoining: Date = new Date(); // Default to today
-      
-      // Debug log for dates
-      console.log(`Row ${i} - ${name}:`, {
-        dojRaw: dojRaw,
-        dojType: typeof dojRaw,
-        dojIsDate: dojRaw instanceof Date
+      // Read the Excel file WITH PROPER DATE HANDLING
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { 
+        type: 'array',
+        cellDates: true, // CRITICAL: Parse dates as Date objects
+        cellNF: false
       });
       
-      // Parse Date of Joining
-      if (dojRaw !== undefined && dojRaw !== null && dojRaw !== '') {
-        try {
-          if (dojRaw instanceof Date) {
-            // Excel gave us a Date object directly
-            dateOfJoining = dojRaw;
-          } else if (typeof dojRaw === 'number') {
-            // Excel serial number (like 45678.75)
-            dateOfJoining = excelSerialToDate(dojRaw);
-          } else if (typeof dojRaw === 'string') {
-            // String like "8/18/2025"
-            const parsed = parseDateString(dojRaw);
-            if (parsed) {
-              dateOfJoining = parsed;
-            } else {
-              // Try direct Date constructor
-              const testDate = new Date(dojRaw);
-              if (!isNaN(testDate.getTime())) {
-                dateOfJoining = testDate;
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      
+      // Get ALL data including headers
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
+        header: 1, 
+        defval: '',
+        raw: false, // Get formatted values for dates
+        dateNF: 'mm/dd/yyyy' // Tell ExcelJS the date format
+      });
+      
+      console.log('=== ANALYZING EXCEL DATA ===');
+      console.log('Total rows:', jsonData.length);
+      
+      // Get headers from first row
+      const headers = jsonData[0] as string[];
+      
+      // ==================== COLUMN MAPPING ====================
+      const siteIndex = 0; // Site Name
+      const nameIndex = 1; // Employee Name
+      const dobIndex = 3; // Date of Birth
+      const dojIndex = 4; // Date of Joining
+      const contactIndex = 6; // Contact No
+      const bloodGroupIndex = 7; // Blood Group
+      const emailIndex = 8; // Email
+      const aadharIndex = 9; // Aadhar Number
+      const panIndex = 10; // PAN Number
+      const positionIndex = 36; // Position
+      const salaryIndex = 37; // Monthly Salary
+      const departmentIndex = 35; // Department
+      const accountNumberIndex = 18; // Account Number
+      const ifscIndex = 19; // IFSC Code
+      const bankNameIndex = 17; // Bank Name
+      const fatherNameIndex = 20; // Father's Name
+      const motherNameIndex = 21; // Mother's Name
+      const spouseNameIndex = 22; // Spouse Name
+      const emergencyContactNameIndex = 23; // Emergency Contact Name
+      const emergencyContactPhoneIndex = 24; // Emergency Contact Phone
+      const permanentAddressIndex = 13; // Permanent Address
+      
+      // ==================== PROCESS EMPLOYEES ====================
+      const employeesToImport = [];
+      let processedCount = 0;
+      let skippedCount = 0;
+      const skippedReasons: string[] = [];
+      
+      for (let i = 1; i < jsonData.length; i++) {
+        const row = jsonData[i] as any[];
+        if (!row || row.length === 0) continue;
+        
+        // Get values from correct columns
+        const siteName = row[siteIndex] ? String(row[siteIndex]).trim() : '';
+        const name = row[nameIndex] ? String(row[nameIndex]).trim() : '';
+        const aadhar = row[aadharIndex] ? String(row[aadharIndex]).trim().replace(/\s/g, '') : '';
+        
+        // ==================== DATE PARSING ====================
+        // Get raw date values - Excel might give us Date objects or serial numbers
+        const dobRaw = row[dobIndex];
+        const dojRaw = row[dojIndex];
+        
+        const contact = row[contactIndex] ? String(row[contactIndex]).trim() : '';
+        const bloodGroup = row[bloodGroupIndex] ? String(row[bloodGroupIndex]).trim() : '';
+        const email = row[emailIndex] ? String(row[emailIndex]).trim() : '';
+        const pan = row[panIndex] ? String(row[panIndex]).trim().toUpperCase() : '';
+        const position = row[positionIndex] ? String(row[positionIndex]).trim() : '';
+        const salaryStr = row[salaryIndex] ? String(row[salaryIndex]).trim() : '';
+        const department = row[departmentIndex] ? String(row[departmentIndex]).trim() : '';
+        const accountNumber = row[accountNumberIndex] ? String(row[accountNumberIndex]).trim() : '';
+        const ifscCode = row[ifscIndex] ? String(row[ifscIndex]).trim().toUpperCase() : '';
+        const bankName = row[bankNameIndex] ? String(row[bankNameIndex]).trim() : '';
+        const fatherName = row[fatherNameIndex] ? String(row[fatherNameIndex]).trim() : '';
+        const motherName = row[motherNameIndex] ? String(row[motherNameIndex]).trim() : '';
+        const spouseName = row[spouseNameIndex] ? String(row[spouseNameIndex]).trim() : '';
+        const emergencyContactName = row[emergencyContactNameIndex] ? String(row[emergencyContactNameIndex]).trim() : '';
+        const emergencyContactPhone = row[emergencyContactPhoneIndex] ? String(row[emergencyContactPhoneIndex]).trim() : '';
+        const permanentAddress = row[permanentAddressIndex] ? String(row[permanentAddressIndex]).trim() : '';
+        
+        // Skip if missing critical fields
+        if (!name || !aadhar) {
+          skippedCount++;
+          skippedReasons.push(`Row ${i}: Missing name or aadhar`);
+          continue;
+        }
+        
+        // Validate Aadhar (12 digits)
+        if (!/^\d{12}$/.test(aadhar)) {
+          skippedCount++;
+          skippedReasons.push(`Row ${i}: Invalid Aadhar format (${aadhar.length} digits)`);
+          continue;
+        }
+        
+        // ==================== IMPROVED DATE PARSING ====================
+        let dateOfBirth: Date | null = null;
+        let dateOfJoining: Date = new Date(); // Default to today
+        
+        // Parse Date of Joining
+        if (dojRaw !== undefined && dojRaw !== null && dojRaw !== '') {
+          try {
+            if (dojRaw instanceof Date) {
+              // Excel gave us a Date object directly
+              dateOfJoining = dojRaw;
+            } else if (typeof dojRaw === 'number') {
+              // Excel serial number (like 45678.75)
+              dateOfJoining = excelSerialToDate(dojRaw);
+            } else if (typeof dojRaw === 'string') {
+              // String like "8/18/2025"
+              const parsed = parseDateString(dojRaw);
+              if (parsed) {
+                dateOfJoining = parsed;
+              } else {
+                // Try direct Date constructor
+                const testDate = new Date(dojRaw);
+                if (!isNaN(testDate.getTime())) {
+                  dateOfJoining = testDate;
+                }
               }
             }
-          }
-          
-          // Validate the parsed date
-          if (isNaN(dateOfJoining.getTime())) {
-            console.warn(`Row ${i}: Invalid DOJ date, using today`);
+            
+            // Validate the parsed date
+            if (isNaN(dateOfJoining.getTime())) {
+              console.warn(`Row ${i}: Invalid DOJ date, using today`);
+              dateOfJoining = new Date();
+            }
+          } catch (error) {
+            console.warn(`Row ${i}: Error parsing DOJ, using today:`, error);
             dateOfJoining = new Date();
           }
-        } catch (error) {
-          console.warn(`Row ${i}: Error parsing DOJ, using today:`, error);
-          dateOfJoining = new Date();
         }
-      }
-      
-      // Parse Date of Birth (same logic)
-      if (dobRaw !== undefined && dobRaw !== null && dobRaw !== '') {
-        try {
-          if (dobRaw instanceof Date) {
-            dateOfBirth = dobRaw;
-          } else if (typeof dobRaw === 'number') {
-            dateOfBirth = excelSerialToDate(dobRaw);
-          } else if (typeof dobRaw === 'string') {
-            const parsed = parseDateString(dobRaw);
-            if (parsed) dateOfBirth = parsed;
+        
+        // Parse Date of Birth (same logic)
+        if (dobRaw !== undefined && dobRaw !== null && dobRaw !== '') {
+          try {
+            if (dobRaw instanceof Date) {
+              dateOfBirth = dobRaw;
+            } else if (typeof dobRaw === 'number') {
+              dateOfBirth = excelSerialToDate(dobRaw);
+            } else if (typeof dobRaw === 'string') {
+              const parsed = parseDateString(dobRaw);
+              if (parsed) dateOfBirth = parsed;
+            }
+          } catch (error) {
+            console.warn(`Row ${i}: Error parsing DOB:`, error);
           }
-        } catch (error) {
-          console.warn(`Row ${i}: Error parsing DOB:`, error);
         }
-      }
-      
-      // Log successful date parsing
-      console.log(`Row ${i}: ${name} - DOJ: ${dateOfJoining.toISOString().split('T')[0]}`);
-      
-      // ==================== DATA PROCESSING ====================
-      
-      // Department mapping
-      let finalDepartment = department || 'General Staff';
-      if (position) {
-        const posUpper = position.toUpperCase();
-        if (positionToDepartmentMap[posUpper]) {
-          finalDepartment = positionToDepartmentMap[posUpper];
+        
+        // ==================== DATA PROCESSING ====================
+        
+        // Department mapping
+        const positionToDepartmentMap: Record<string, string> = {
+          'ACCOUNTANT': 'Finance',
+          'OWC OPERATOR': 'Operations',
+          'Security Guard': 'Security',
+          'HK STAFF': 'Housekeeping',
+          'HK Supervisor': 'Housekeeping',
+          'Supervisor': 'Supervisor',
+          'Driver': 'Driver',
+          'DRIVER': 'Driver',
+          'Parking Attendent': 'Parking Management',
+          'GATE ATTENDANT': 'Security',
+          'PARKING': 'Parking Management',
+          'MANAGER': 'Administration',
+          'RECEPTIONIST': 'Administration',
+          'Bouncer': 'Security',
+          'Security SUP': 'Security',
+          'Manager': 'Administration',
+          'OFFICE STAFF': 'Administration',
+          'Admin': 'Administration',
+          'HR': 'HR',
+          'ACCOUNDEND': 'Finance',
+          'OWC Opreter': 'Operations',
+          'HK SUPERVISOR': 'Housekeeping',
+          'CLEANER': 'Housekeeping',
+          'HOUSEKEEPING': 'Housekeeping',
+          'SECURITY': 'Security',
+          'MAINTENANCE': 'Maintenance',
+          'IT STAFF': 'IT',
+          'SALES': 'Sales'
+        };
+        
+        let finalDepartment = department || 'General Staff';
+        if (position) {
+          const posUpper = position.toUpperCase();
+          if (positionToDepartmentMap[posUpper]) {
+            finalDepartment = positionToDepartmentMap[posUpper];
+          }
         }
-      }
-      
-      // Email generation
-      let finalEmail = email;
-      if (!email && name) {
-        const nameParts = name.toLowerCase().split(' ');
-        const firstName = nameParts[0]?.replace(/[^a-z]/g, '') || 'employee';
-        const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1].replace(/[^a-z]/g, '') : '';
-        const randomNum = Math.floor(100 + Math.random() * 900);
-        finalEmail = `${firstName}${lastName ? '.' + lastName : ''}${randomNum}@skenterprises.com`.toLowerCase();
-      }
-      
-      // Phone validation
-      let finalPhone = contact;
-      if (finalPhone) {
-        const digits = finalPhone.replace(/\D/g, '');
-        if (digits.length === 10) {
-          finalPhone = digits;
-        } else if (digits.length > 10) {
-          finalPhone = digits.slice(-10);
+        
+        // Email generation
+        let finalEmail = email;
+        if (!email && name) {
+          const nameParts = name.toLowerCase().split(' ');
+          const firstName = nameParts[0]?.replace(/[^a-z]/g, '') || 'employee';
+          const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1].replace(/[^a-z]/g, '') : '';
+          const randomNum = Math.floor(100 + Math.random() * 900);
+          finalEmail = `${firstName}${lastName ? '.' + lastName : ''}${randomNum}@skenterprises.com`.toLowerCase();
+        }
+        
+        // Phone validation
+        let finalPhone = contact;
+        if (finalPhone) {
+          const digits = finalPhone.replace(/\D/g, '');
+          if (digits.length === 10) {
+            finalPhone = digits;
+          } else if (digits.length > 10) {
+            finalPhone = digits.slice(-10);
+          } else {
+            finalPhone = '98' + Math.floor(10000000 + Math.random() * 90000000).toString();
+          }
         } else {
           finalPhone = '98' + Math.floor(10000000 + Math.random() * 90000000).toString();
         }
-      } else {
-        finalPhone = '98' + Math.floor(10000000 + Math.random() * 90000000).toString();
-      }
-      
-      // Salary parsing
-      let salary = 15000;
-      if (salaryStr) {
-        const cleaned = salaryStr.replace(/[^0-9.]/g, '');
-        const parsed = parseFloat(cleaned);
-        if (!isNaN(parsed) && parsed > 0) {
-          salary = parsed;
+        
+        // Salary parsing
+        let salary = 15000;
+        if (salaryStr) {
+          const cleaned = salaryStr.replace(/[^0-9.]/g, '');
+          const parsed = parseFloat(cleaned);
+          if (!isNaN(parsed) && parsed > 0) {
+            salary = parsed;
+          }
+        }
+        
+        // Blood group validation
+        let finalBloodGroup = null;
+        if (bloodGroup) {
+          const validBloodGroups = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
+          const bgUpper = bloodGroup.trim().toUpperCase();
+          if (validBloodGroups.includes(bgUpper)) {
+            finalBloodGroup = bgUpper;
+          }
+        }
+        
+        // Build employee object
+        const employeeData = {
+          // Required fields
+          name: name,
+          email: finalEmail,
+          phone: finalPhone,
+          aadharNumber: aadhar,
+          dateOfJoining: dateOfJoining,
+          department: finalDepartment,
+          position: position || 'Employee',
+          salary: salary,
+          status: 'active',
+          role: 'employee',
+          
+          // Site information
+          siteName: siteName || 'Main Office',
+          
+          // Personal details
+          dateOfBirth: dateOfBirth,
+          bloodGroup: finalBloodGroup,
+          panNumber: pan || null,
+          gender: null,
+          maritalStatus: null,
+          
+          // Bank details
+          bankName: bankName || null,
+          accountNumber: accountNumber || null,
+          ifscCode: ifscCode || null,
+          branchName: null,
+          bankBranch: null,
+          
+          // Address
+          permanentAddress: permanentAddress || null,
+          permanentPincode: null,
+          localAddress: null,
+          localPincode: null,
+          
+          // Family details
+          fatherName: fatherName || null,
+          motherName: motherName || null,
+          spouseName: spouseName || null,
+          numberOfChildren: 0,
+          
+          // Emergency contact
+          emergencyContactName: emergencyContactName || null,
+          emergencyContactPhone: emergencyContactPhone || null,
+          emergencyContactRelation: null,
+          
+          // Nominee details
+          nomineeName: null,
+          nomineeRelation: null,
+          
+          // Other fields
+          esicNumber: null,
+          uanNumber: null,
+          dateOfExit: null,
+          pantSize: null,
+          shirtSize: null,
+          capSize: null,
+          idCardIssued: false,
+          westcoatIssued: false,
+          apronIssued: false,
+          photo: null,
+          photoPublicId: null,
+          employeeSignature: null,
+          employeeSignaturePublicId: null,
+          authorizedSignature: null,
+          authorizedSignaturePublicId: null
+        };
+        
+        employeesToImport.push(employeeData);
+        processedCount++;
+        
+        // Update progress
+        setImportProgress({ current: i, total: jsonData.length - 1 });
+        
+        // Log every 50th employee for debugging
+        if (i % 50 === 0) {
+          console.log(`Processed ${i}/${jsonData.length - 1} rows...`);
         }
       }
       
-      // Blood group validation
-      let finalBloodGroup = null;
-      if (bloodGroup) {
-        const validBloodGroups = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
-        const bgUpper = bloodGroup.trim().toUpperCase();
-        if (validBloodGroups.includes(bgUpper)) {
-          finalBloodGroup = bgUpper;
-        }
+      console.log(`Final: ${processedCount} employees to import, ${skippedCount} skipped`);
+      
+      if (employeesToImport.length === 0) {
+        toast.error(
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <XCircle className="h-4 w-4 text-red-500" />
+              <span className="font-medium">No valid employees found</span>
+            </div>
+            <div className="text-sm text-red-600">
+              Skipped {skippedCount} rows. Please check your Excel data.
+            </div>
+          </div>,
+          { id: toastId, duration: 10000 }
+        );
+        return;
       }
       
-      // Build employee object
-      const employeeData = {
-        // Required fields
-        name: name,
-        email: finalEmail,
-        phone: finalPhone,
-        aadharNumber: aadhar,
-        dateOfJoining: dateOfJoining,
-        department: finalDepartment,
-        position: position || 'Employee',
-        salary: salary,
-        status: 'active',
-        role: 'employee',
-        
-        // Site information
-        siteName: siteName || 'Main Office',
-        
-        // Personal details
-        dateOfBirth: dateOfBirth,
-        bloodGroup: finalBloodGroup,
-        panNumber: pan || null,
-        gender: null,
-        maritalStatus: null,
-        
-        // Bank details
-        bankName: bankName || null,
-        accountNumber: accountNumber || null,
-        ifscCode: ifscCode || null,
-        branchName: null,
-        bankBranch: null,
-        
-        // Address
-        permanentAddress: permanentAddress || null,
-        permanentPincode: null,
-        localAddress: null,
-        localPincode: null,
-        
-        // Family details
-        fatherName: fatherName || null,
-        motherName: motherName || null,
-        spouseName: spouseName || null,
-        numberOfChildren: 0,
-        
-        // Emergency contact
-        emergencyContactName: emergencyContactName || null,
-        emergencyContactPhone: emergencyContactPhone || null,
-        emergencyContactRelation: null,
-        
-        // Nominee details
-        nomineeName: null,
-        nomineeRelation: null,
-        
-        // Other fields
-        esicNumber: null,
-        uanNumber: null,
-        dateOfExit: null,
-        pantSize: null,
-        shirtSize: null,
-        capSize: null,
-        idCardIssued: false,
-        westcoatIssued: false,
-        apronIssued: false,
-        photo: null,
-        photoPublicId: null,
-        employeeSignature: null,
-        employeeSignaturePublicId: null,
-        authorizedSignature: null,
-        authorizedSignaturePublicId: null
-      };
-      
-      employeesToImport.push(employeeData);
-      processedCount++;
-      
-      // Update progress
-      setImportProgress({ current: i, total: jsonData.length - 1 });
-      
-      // Log every 50th employee for debugging
-      if (i % 50 === 0) {
-        console.log(`Processed ${i}/${jsonData.length - 1} rows...`);
-      }
-    }
-    
-    console.log(`Final: ${processedCount} employees to import, ${skippedCount} skipped`);
-    
-    if (employeesToImport.length === 0) {
-      toast.error(
+      // ==================== IMPORT WITH BATCH PROCESSING ====================
+      toast.loading(
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <XCircle className="h-4 w-4 text-red-500" />
-            <span className="font-medium">No valid employees found</span>
+            <Cloud className="h-4 w-4" />
+            <span className="font-medium">Importing {employeesToImport.length} employees...</span>
           </div>
-          <div className="text-sm text-red-600">
-            Skipped {skippedCount} rows. Please check your Excel data.
+          <div className="text-xs text-muted-foreground">
+            This may take a few moments...
           </div>
         </div>,
-        { id: toastId, duration: 10000 }
+        { id: toastId }
       );
-      return;
-    }
-    
-    // ==================== IMPORT WITH BATCH PROCESSING ====================
-    toast.loading(
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <Cloud className="h-4 w-4" />
-          <span className="font-medium">Importing {employeesToImport.length} employees...</span>
-        </div>
-        <div className="text-xs text-muted-foreground">
-          This may take a few moments...
-        </div>
-      </div>,
-      { id: toastId }
-    );
-    
-    let successCount = 0;
-    let duplicateCount = 0;
-    let errorCount = 0;
-    const errorMessages: string[] = [];
-    
-    // Import in batches to avoid overwhelming the server
-    const batchSize = 20;
-    for (let batchStart = 0; batchStart < employeesToImport.length; batchStart += batchSize) {
-      const batch = employeesToImport.slice(batchStart, batchStart + batchSize);
       
-      // Process each employee in the batch
-      for (let i = 0; i < batch.length; i++) {
-        const employee = batch[i];
-        const globalIndex = batchStart + i + 1;
+      let successCount = 0;
+      let duplicateCount = 0;
+      let errorCount = 0;
+      const errorMessages: string[] = [];
+      
+      // Import in batches to avoid overwhelming the server
+      const batchSize = 20;
+      for (let batchStart = 0; batchStart < employeesToImport.length; batchStart += batchSize) {
+        const batch = employeesToImport.slice(batchStart, batchStart + batchSize);
         
-        try {
-          console.log(`Importing ${globalIndex}/${employeesToImport.length}: ${employee.name}`);
+        // Process each employee in the batch
+        for (let i = 0; i < batch.length; i++) {
+          const employee = batch[i];
+          const globalIndex = batchStart + i + 1;
           
-          const response = await axios.post(`${API_URL}/employees`, employee, {
-            timeout: 15000
-          });
-          
-          if (response.data.success) {
-            successCount++;
-            console.log(`✅ Success: ${employee.name} (DOJ: ${employee.dateOfJoining.toISOString().split('T')[0]})`);
-          } else {
+          try {
+            console.log(`Importing ${globalIndex}/${employeesToImport.length}: ${employee.name}`);
+            
+            const response = await axios.post(`${API_URL}/employees`, employee, {
+              timeout: 15000
+            });
+            
+            if (response.data.success) {
+              successCount++;
+              console.log(`✅ Success: ${employee.name} (DOJ: ${employee.dateOfJoining.toISOString().split('T')[0]})`);
+            } else {
+              errorCount++;
+              const errorMsg = response.data.message || 'Unknown error';
+              errorMessages.push(`${employee.name}: ${errorMsg}`);
+              
+              // Check if it's a duplicate error
+              if (errorMsg.includes('already exists') || errorMsg.includes('duplicate')) {
+                duplicateCount++;
+              }
+            }
+          } catch (error: any) {
             errorCount++;
-            const errorMsg = response.data.message || 'Unknown error';
+            const errorMsg = error.response?.data?.error || error.response?.data?.message || error.message || 'Unknown error';
             errorMessages.push(`${employee.name}: ${errorMsg}`);
             
-            // Check if it's a duplicate error
+            // Check if duplicate
             if (errorMsg.includes('already exists') || errorMsg.includes('duplicate')) {
               duplicateCount++;
             }
           }
-        } catch (error: any) {
-          errorCount++;
-          const errorMsg = error.response?.data?.error || error.response?.data?.message || error.message || 'Unknown error';
-          errorMessages.push(`${employee.name}: ${errorMsg}`);
           
-          // Check if duplicate
-          if (errorMsg.includes('already exists') || errorMsg.includes('duplicate')) {
-            duplicateCount++;
-          }
+          // Update progress
+          setImportProgress({ 
+            current: batchStart + i + 1, 
+            total: employeesToImport.length 
+          });
         }
         
-        // Update progress
-        setImportProgress({ 
-          current: batchStart + i + 1, 
-          total: employeesToImport.length 
-        });
+        // Small delay between batches to prevent server overload
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
       
-      // Small delay between batches to prevent server overload
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-    
-    // Calculate actual new imports (excluding duplicates)
-    const actualNewImports = successCount;
-    
-    // Show results
-    let resultMessage = '';
-    if (actualNewImports > 0) {
-      resultMessage = `✅ ${actualNewImports} employees imported successfully`;
-      if (duplicateCount > 0) {
-        resultMessage += `, ⚠️ ${duplicateCount} already existed (skipped)`;
+      // Calculate actual new imports (excluding duplicates)
+      const actualNewImports = successCount;
+      
+      // Show results
+      let resultMessage = '';
+      if (actualNewImports > 0) {
+        resultMessage = `✅ ${actualNewImports} employees imported successfully`;
+        if (duplicateCount > 0) {
+          resultMessage += `, ⚠️ ${duplicateCount} already existed (skipped)`;
+        }
+        if (errorCount > duplicateCount) {
+          const otherErrors = errorCount - duplicateCount;
+          resultMessage += `, ❌ ${otherErrors} failed`;
+        }
+      } else {
+        resultMessage = `❌ No new employees imported. ${duplicateCount} already exist, ${errorCount - duplicateCount} failed.`;
       }
-      if (errorCount > duplicateCount) {
-        const otherErrors = errorCount - duplicateCount;
-        resultMessage += `, ❌ ${otherErrors} failed`;
-      }
-    } else {
-      resultMessage = `❌ No new employees imported. ${duplicateCount} already exist, ${errorCount - duplicateCount} failed.`;
-    }
-    
-    toast.success(
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <CheckCircle className="h-4 w-4 text-green-500" />
-          <span className="font-medium">Import Complete</span>
-        </div>
-        <div className="text-sm">
-          {resultMessage}
-        </div>
-        {skippedCount > 0 && (
-          <div className="text-xs text-muted-foreground">
-            {skippedCount} rows were skipped due to invalid data
+      
+      toast.success(
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="h-4 w-4 text-green-500" />
+            <span className="font-medium">Import Complete</span>
           </div>
-        )}
-        {errorMessages.length > 0 && errorMessages.length <= 10 && (
-          <details className="text-xs">
-            <summary className="cursor-pointer text-muted-foreground">
-              View error details ({errorMessages.length})
-            </summary>
-            <div className="mt-2 p-2 bg-red-50 rounded max-h-32 overflow-y-auto">
-              {errorMessages.map((msg, idx) => (
-                <div key={idx} className="text-red-600 truncate">{msg}</div>
-              ))}
+          <div className="text-sm">
+            {resultMessage}
+          </div>
+          {skippedCount > 0 && (
+            <div className="text-xs text-muted-foreground">
+              {skippedCount} rows were skipped due to invalid data
             </div>
-          </details>
-        )}
-      </div>,
-      { id: toastId, duration: 10000 }
-    );
-    
-    // Refresh employee list
-    setTimeout(() => fetchEmployees(), 2000);
-    
-    setImportDialogOpen(false);
-    
-  } catch (error: any) {
-    console.error("Import process failed:", error);
-    toast.error(
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <XCircle className="h-4 w-4 text-red-500" />
-          <span className="font-medium">Import Failed</span>
+          )}
+          {errorMessages.length > 0 && errorMessages.length <= 10 && (
+            <details className="text-xs">
+              <summary className="cursor-pointer text-muted-foreground">
+                View error details ({errorMessages.length})
+              </summary>
+              <div className="mt-2 p-2 bg-red-50 rounded max-h-32 overflow-y-auto">
+                {errorMessages.map((msg, idx) => (
+                  <div key={idx} className="text-red-600 truncate">{msg}</div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>,
+        { id: toastId, duration: 10000 }
+      );
+      
+      // Refresh employee list
+      setTimeout(() => fetchEmployees(), 2000);
+      
+      setImportDialogOpen(false);
+      
+    } catch (error: any) {
+      console.error("Import process failed:", error);
+      toast.error(
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <XCircle className="h-4 w-4 text-red-500" />
+            <span className="font-medium">Import Failed</span>
+          </div>
+          <div className="text-sm text-red-600">
+            {error.message || "Error processing the file"}
+          </div>
         </div>
-        <div className="text-sm text-red-600">
-          {error.message || "Error processing the file"}
-        </div>
-      </div>
-    );
-  } finally {
-    setIsImporting(false);
-    setImportProgress({ current: 0, total: 0 });
-  }
-};
+      );
+    } finally {
+      setIsImporting(false);
+      setImportProgress({ current: 0, total: 0 });
+    }
+  };
 
-// ==================== DATE HELPER FUNCTIONS ====================
+  // ==================== DATE HELPER FUNCTIONS ====================
 
-// Convert Excel serial number to Date
-const excelSerialToDate = (serial: number): Date => {
-  try {
-    // Excel date system: days since 1900-01-00 (with leap year bug)
-    // 25569 = days from 1900-01-01 to 1970-01-01
-    
-    // Handle Excel's 1900 leap year bug
-    const adjustedSerial = serial > 60 ? serial - 1 : serial;
-    
-    const utcDays = Math.floor(adjustedSerial - 25569);
-    const utcValue = utcDays * 86400 * 1000;
-    
-    // Add time portion if present (Excel stores time as fraction)
-    const date = new Date(utcValue);
-    
-    // Add time if present (fractional part of serial)
-    if (serial % 1 !== 0) {
-      const fraction = serial % 1;
-      const hours = Math.floor(fraction * 24);
-      const minutes = Math.floor((fraction * 24 * 60) % 60);
-      const seconds = Math.floor((fraction * 24 * 60 * 60) % 60);
-      date.setHours(hours, minutes, seconds);
-    }
-    
-    return date;
-  } catch (error) {
-    console.error('Error converting Excel date:', serial, error);
-    return new Date();
-  }
-};
-
-// Parse date string in various formats
-const parseDateString = (dateStr: string): Date | null => {
-  if (!dateStr || typeof dateStr !== 'string') return null;
-  
-  try {
-    // Clean the string
-    const cleanStr = dateStr.trim();
-    
-    // Try MM/DD/YYYY format (common in US Excel)
-    const usFormat = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
-    const usMatch = cleanStr.match(usFormat);
-    if (usMatch) {
-      const month = parseInt(usMatch[1]) - 1; // JavaScript months are 0-based
-      const day = parseInt(usMatch[2]);
-      const year = parseInt(usMatch[3]);
-      const date = new Date(year, month, day);
-      if (!isNaN(date.getTime())) {
-        return date;
+  // Convert Excel serial number to Date
+  const excelSerialToDate = (serial: number): Date => {
+    try {
+      // Excel date system: days since 1900-01-00 (with leap year bug)
+      // 25569 = days from 1900-01-01 to 1970-01-01
+      
+      // Handle Excel's 1900 leap year bug
+      const adjustedSerial = serial > 60 ? serial - 1 : serial;
+      
+      const utcDays = Math.floor(adjustedSerial - 25569);
+      const utcValue = utcDays * 86400 * 1000;
+      
+      // Add time portion if present (Excel stores time as fraction)
+      const date = new Date(utcValue);
+      
+      // Add time if present (fractional part of serial)
+      if (serial % 1 !== 0) {
+        const fraction = serial % 1;
+        const hours = Math.floor(fraction * 24);
+        const minutes = Math.floor((fraction * 24 * 60) % 60);
+        const seconds = Math.floor((fraction * 24 * 60 * 60) % 60);
+        date.setHours(hours, minutes, seconds);
       }
-    }
-    
-    // Try DD/MM/YYYY format
-    const euFormat = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
-    const euMatch = cleanStr.match(euFormat);
-    if (euMatch) {
-      const day = parseInt(euMatch[1]);
-      const month = parseInt(euMatch[2]) - 1;
-      const year = parseInt(euMatch[3]);
-      const date = new Date(year, month, day);
-      if (!isNaN(date.getTime())) {
-        return date;
-      }
-    }
-    
-    // Try YYYY-MM-DD format
-    const isoFormat = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
-    const isoMatch = cleanStr.match(isoFormat);
-    if (isoMatch) {
-      const year = parseInt(isoMatch[1]);
-      const month = parseInt(isoMatch[2]) - 1;
-      const day = parseInt(isoMatch[3]);
-      const date = new Date(year, month, day);
-      if (!isNaN(date.getTime())) {
-        return date;
-      }
-    }
-    
-    // Try native Date parsing as last resort
-    const date = new Date(cleanStr);
-    if (!isNaN(date.getTime())) {
+      
       return date;
+    } catch (error) {
+      console.error('Error converting Excel date:', serial, error);
+      return new Date();
     }
+  };
+
+  // Parse date string in various formats
+  const parseDateString = (dateStr: string): Date | null => {
+    if (!dateStr || typeof dateStr !== 'string') return null;
     
-    console.warn(`Could not parse date string: "${dateStr}"`);
-    return null;
-  } catch (error) {
-    console.error('Error parsing date string:', dateStr, error);
-    return null;
-  }
-};
-// Helper function to parse Excel dates
-const parseExcelDate = (dateStr: string): Date | null => {
-  if (!dateStr) return null;
-  
-  try {
-    // Try to parse as ISO date
-    if (dateStr.includes('/') || dateStr.includes('-')) {
-      // Handle DD/MM/YYYY or DD-MM-YYYY
-      const parts = dateStr.split(/[/-]/);
-      if (parts.length === 3) {
-        const day = parseInt(parts[0]);
-        const month = parseInt(parts[1]) - 1; // JavaScript months are 0-based
-        const year = parseInt(parts[2]);
-        
-        // Handle 2-digit years
-        const fullYear = year < 100 ? 2000 + year : year;
-        
-        const date = new Date(fullYear, month, day);
+    try {
+      // Clean the string
+      const cleanStr = dateStr.trim();
+      
+      // Try MM/DD/YYYY format (common in US Excel)
+      const usFormat = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+      const usMatch = cleanStr.match(usFormat);
+      if (usMatch) {
+        const month = parseInt(usMatch[1]) - 1; // JavaScript months are 0-based
+        const day = parseInt(usMatch[2]);
+        const year = parseInt(usMatch[3]);
+        const date = new Date(year, month, day);
         if (!isNaN(date.getTime())) {
           return date;
         }
       }
+      
+      // Try DD/MM/YYYY format
+      const euFormat = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+      const euMatch = cleanStr.match(euFormat);
+      if (euMatch) {
+        const day = parseInt(euMatch[1]);
+        const month = parseInt(euMatch[2]) - 1;
+        const year = parseInt(euMatch[3]);
+        const date = new Date(year, month, day);
+        if (!isNaN(date.getTime())) {
+          return date;
+        }
+      }
+      
+      // Try YYYY-MM-DD format
+      const isoFormat = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
+      const isoMatch = cleanStr.match(isoFormat);
+      if (isoMatch) {
+        const year = parseInt(isoMatch[1]);
+        const month = parseInt(isoMatch[2]) - 1;
+        const day = parseInt(isoMatch[3]);
+        const date = new Date(year, month, day);
+        if (!isNaN(date.getTime())) {
+          return date;
+        }
+      }
+      
+      // Try native Date parsing as last resort
+      const date = new Date(cleanStr);
+      if (!isNaN(date.getTime())) {
+        return date;
+      }
+      
+      console.warn(`Could not parse date string: "${dateStr}"`);
+      return null;
+    } catch (error) {
+      console.error('Error parsing date string:', dateStr, error);
+      return null;
     }
-    
-    // Try to parse as JavaScript Date
-    const date = new Date(dateStr);
-    if (!isNaN(date.getTime())) {
-      return date;
-    }
-    
-    return null;
-  } catch (error) {
-    console.error('Error parsing date:', dateStr, error);
-    return null;
-  }
-};
+  };
 
-// Add this positionToDepartmentMap (make sure it's in your component)
-const positionToDepartmentMap: Record<string, string> = {
-  'ACCOUNTANT': 'Finance',
-  'OWC OPERATOR': 'Operations',
-  'Security Guard': 'Security',
-  'HK STAFF': 'Housekeeping',
-  'HK Supervisor': 'Housekeeping',
-  'Supervisor': 'Supervisor',
-  'Driver': 'Driver',
-  'DRIVER': 'Driver',
-  'Parking Attendent': 'Parking Management',
-  'GATE ATTENDANT': 'Security',
-  'PARKING': 'Parking Management',
-  'MANAGER': 'Administration',
-  'RECEPTIONIST': 'Administration',
-  'Bouncer': 'Security',
-  'Security SUP': 'Security',
-  'Manager': 'Administration',
-  'OFFICE STAFF': 'Administration',
-  'Admin': 'Administration',
-  'HR': 'HR',
-  'ACCOUNDEND': 'Finance',
-  'OWC Opreter': 'Operations',
-  'HK SUPERVISOR': 'Housekeeping',
-  'CLEANER': 'Housekeeping',
-  'HOUSEKEEPING': 'Housekeeping',
-  'SECURITY': 'Security',
-  'MAINTENANCE': 'Maintenance',
-  'IT STAFF': 'IT',
-  'SALES': 'Sales'
-};
+  // Helper function to parse Excel dates
+  const parseExcelDate = (dateStr: string): Date | null => {
+    if (!dateStr) return null;
+    
+    try {
+      // Try to parse as ISO date
+      if (dateStr.includes('/') || dateStr.includes('-')) {
+        // Handle DD/MM/YYYY or DD-MM-YYYY
+        const parts = dateStr.split(/[/-]/);
+        if (parts.length === 3) {
+          const day = parseInt(parts[0]);
+          const month = parseInt(parts[1]) - 1; // JavaScript months are 0-based
+          const year = parseInt(parts[2]);
+          
+          // Handle 2-digit years
+          const fullYear = year < 100 ? 2000 + year : year;
+          
+          const date = new Date(fullYear, month, day);
+          if (!isNaN(date.getTime())) {
+            return date;
+          }
+        }
+      }
+      
+      // Try to parse as JavaScript Date
+      const date = new Date(dateStr);
+      if (!isNaN(date.getTime())) {
+        return date;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error parsing date:', dateStr, error);
+      return null;
+    }
+  };
 
   const handleSortChange = (value: string) => {
     setSortBy(value);
@@ -1610,8 +1597,9 @@ const positionToDepartmentMap: Record<string, string> = {
     printWindow.document.close();
   };
 
+  // ==================== FIXED PHOTO HANDLING FUNCTION ====================
   // Helper function to get photo URL with fallback
-  const getPhotoUrl = (employee: Employee): string => {
+ const getPhotoUrl = (employee: Employee): string => {
     if (!employee.photo) {
       return "";
     }
@@ -2264,7 +2252,7 @@ const positionToDepartmentMap: Record<string, string> = {
         loading={isImporting}
       />
 
-      {/* EPF Form 11 Dialog */}
+      {/* EPF Form 11 Dialog - Updated to match OnboardingTab */}
       <Dialog open={epfForm11DialogOpen} onOpenChange={setEpfForm11DialogOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -2291,7 +2279,7 @@ const positionToDepartmentMap: Record<string, string> = {
               <div className="flex items-center">
                 <div className="flex-shrink-0">
                   <svg className="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 a1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                   </svg>
                 </div>
                 <div className="ml-3">
@@ -2896,7 +2884,7 @@ const positionToDepartmentMap: Record<string, string> = {
               <div className="section-title">DECLARATION BY PRESENT EMPLOYER</div>
               
               <div className="space-y-2">
-                <Label>A. The member Mr./Ms./Mrs. ${epfFormData.memberName} has joined on ${epfFormData.enrolledDate} and has been allotted PF Number ${selectedEmployeeForEPF?.uan || epfFormData.pfNumber || "Pending"}</Label>
+                <Label>A. The member Mr./Ms./Mrs. {epfFormData.memberName} has joined on {epfFormData.enrolledDate} and has been allotted PF Number {selectedEmployeeForEPF?.uan || epfFormData.pfNumber || "Pending"}</Label>
               </div>
 
               <div className="space-y-2">
@@ -2991,9 +2979,9 @@ const positionToDepartmentMap: Record<string, string> = {
       </Dialog>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <StatCard title="Total Employees" value={employees.length} />
+        <StatCard title="Total Employees" value={totalEmployees} />
         <StatCard 
-          title="Active Employees" 
+          title="Active Employees/Page" 
           value={activeEmployees} 
           className="text-green-600" 
         />
@@ -3154,7 +3142,7 @@ const positionToDepartmentMap: Record<string, string> = {
               </div>
 
               {/* Employee Photo */}
-              {selectedEmployeeForDocuments.photo && (
+              {(selectedEmployeeForDocuments.photo || selectedEmployeeForDocuments.photoPublicId) && (
                 <div>
                   <h4 className="font-semibold text-lg mb-4">Employee Photo</h4>
                   <div className="border rounded-lg p-4 text-center">
@@ -3200,11 +3188,11 @@ const positionToDepartmentMap: Record<string, string> = {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {paginatedEmployees.map((employee) => (
+            {sortedEmployees.map((employee) => (
               <div key={employee.id} className="border rounded-lg p-4">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
-                    {employee.photo ? (
+                    {employee.photo || employee.photoPublicId ? (
                       <img 
                         src={getPhotoUrl(employee)} 
                         alt={employee.name}
@@ -3243,8 +3231,11 @@ const positionToDepartmentMap: Record<string, string> = {
                         {employee.esicNumber && (
                           <Badge variant="secondary" className="text-xs">ESIC</Badge>
                         )}
-                        {employee.photo && (
-                          <Badge variant="secondary" className="text-xs">Photo</Badge>
+                        {(employee.photo || employee.photoPublicId) && (
+                          <Badge variant="secondary" className="text-xs">
+                            <Camera className="h-3 w-3 mr-1" />
+                            Photo
+                          </Badge>
                         )}
                       </div>
                     </div>
@@ -3292,7 +3283,7 @@ const positionToDepartmentMap: Record<string, string> = {
                               </Badge>
                             </div>
                           </div>
-                          {employee.photo && (
+                          {(employee.photo || employee.photoPublicId) && (
                             <div>
                               <strong>Employee Photo:</strong>
                               <div className="mt-2">
@@ -3400,8 +3391,8 @@ const positionToDepartmentMap: Record<string, string> = {
             {sortedEmployees.length > 0 && (
               <Pagination
                 currentPage={employeesPage}
-                totalPages={Math.ceil(sortedEmployees.length / employeesItemsPerPage)}
-                totalItems={sortedEmployees.length}
+                totalPages={Math.ceil(totalEmployees / employeesItemsPerPage)} 
+                totalItems={totalEmployees} 
                 itemsPerPage={employeesItemsPerPage}
                 onPageChange={setEmployeesPage}
                 onItemsPerPageChange={setEmployeesItemsPerPage}

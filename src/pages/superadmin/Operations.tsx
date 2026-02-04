@@ -26,8 +26,6 @@ const Operations = () => {
         animate={{ opacity: 1, y: 0 }}
         className="p-6 space-y-6"
       >
-        <StatsCards tasks={tasks} sites={initialSites} />
-        
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-2 lg:grid-cols-6">
             <TabsTrigger value="tasks">Tasks</TabsTrigger>
@@ -41,7 +39,9 @@ const Operations = () => {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="tasks">
+          {/* Tasks Tab - Now includes StatsCards */}
+          <TabsContent value="tasks" className="space-y-6">
+            <StatsCards tasks={tasks} sites={initialSites} />
             <TasksSection />
           </TabsContent>
 

@@ -7,29 +7,71 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Alert } from "@/types/alert";
 import { alertService } from "@/services/alertService";
-import { Plus, Eye, Camera, X, Image as ImageIcon, Calendar, Clock, Loader2, Wifi, WifiOff, RefreshCw } from "lucide-react";
+import { workQueryApi } from "../../../services/workQueryApi"; // Assuming you have workQueryApi
+import { Plus, Eye, Camera, X, Image as ImageIcon, Calendar, Clock, Loader2, Wifi, WifiOff, RefreshCw, MessageCircle, AlertCircle, CheckCircle, FileText, User, Filter } from "lucide-react";
+import { useRole } from "@/context/RoleContext";
+
+// Types for Work Queries
+interface WorkQuery {
+  _id: string;
+  queryId: string;
+  title: string;
+  description: string;
+  serviceId?: string;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  status: 'pending' | 'in-progress' | 'resolved' | 'rejected';
+  category: string;
+  proofFiles: Array<{
+    name: string;
+    type: string;
+    url: string;
+    size: string;
+  }>;
+  reportedBy: {
+    userId: string;
+    name: string;
+    role: string;
+  };
+  supervisorId: string;
+  supervisorName: string;
+  superadminResponse?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 const AlertsSection = () => {
+  const [activeTab, setActiveTab] = useState<string>("alerts");
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [workQueries, setWorkQueries] = useState<WorkQuery[]>([]);
+  const [loading, setLoading] = useState({ alerts: false, queries: false });
   const [submitting, setSubmitting] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
   const [selectedAlertForEdit, setSelectedAlertForEdit] = useState<Alert & { date: string; time: string } | null>(null);
+  const [selectedWorkQuery, setSelectedWorkQuery] = useState<WorkQuery | null>(null);
+  const [workQueryDialogOpen, setWorkQueryDialogOpen] = useState(false);
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [editPhotoFiles, setEditPhotoFiles] = useState<File[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<"checking" | "connected" | "disconnected">("checking");
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
+  const { user: authUser } = useRole();
 
   useEffect(() => {
     checkConnectionAndFetch();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === "work-queries" && authUser?.id) {
+      fetchWorkQueries();
+    }
+  }, [activeTab, authUser?.id]);
 
   const checkConnectionAndFetch = async () => {
     try {
@@ -45,19 +87,114 @@ const AlertsSection = () => {
 
   const fetchAlerts = async () => {
     try {
-      setLoading(true);
+      setLoading(prev => ({ ...prev, alerts: true }));
       console.log('Fetching alerts...');
       const response = await alertService.getAlerts();
       setAlerts(response.data);
-      toast.success(`Loaded ${response.total} alerts`);
+      if (response.total > 0) {
+        toast.success(`Loaded ${response.total} alerts`);
+      }
     } catch (error: any) {
       console.error('Error fetching alerts:', error);
       toast.error('Failed to load alerts. Please check API connection.');
       setAlerts([]);
     } finally {
-      setLoading(false);
+      setLoading(prev => ({ ...prev, alerts: false }));
     }
   };
+
+// Replace the entire fetchWorkQueries function in your AlertsSection.tsx:
+
+const fetchWorkQueries = async () => {
+  if (!authUser?.id) {
+    console.log('⚠️ No authenticated user found. Trying to fetch all queries...');
+  }
+
+  try {
+    setLoading(prev => ({ ...prev, queries: true }));
+    
+    console.group('🔍 WORK QUERIES FETCH DEBUG');
+    console.log('Current auth user:', authUser);
+    console.log('User ID:', authUser?.id);
+    console.log('User role:', authUser?.role);
+    console.groupEnd();
+
+    // STRATEGY: Try multiple approaches
+    let response;
+    
+    // Approach 1: Try with current user's ID (for supervisor)
+    if (authUser?.id) {
+      console.log(`🔄 Attempt 1: Fetching for supervisorId: ${authUser.id}`);
+      response = await workQueryApi.getAllWorkQueries({
+        supervisorId: authUser.id,
+        limit: 100
+      });
+    }
+    
+    // Approach 2: If empty, try without supervisor filter
+    if (!response || response.data?.length === 0) {
+      console.log('🔄 Attempt 2: Fetching ALL work queries (no filter)');
+      response = await workQueryApi.getAllWorkQueries({
+        limit: 100
+      });
+    }
+    
+    // Approach 3: Try with a fallback supervisor ID
+    if (!response || response.data?.length === 0) {
+      const fallbackIds = ['SUP001', 'SUP002', 'supervisor1', 'supervisor'];
+      for (const id of fallbackIds) {
+        console.log(`🔄 Attempt 3: Trying fallback supervisorId: ${id}`);
+        try {
+          response = await workQueryApi.getAllWorkQueries({
+            supervisorId: id,
+            limit: 50
+          });
+          if (response.data?.length > 0) {
+            console.log(`✅ Found ${response.data.length} queries with ID: ${id}`);
+            break;
+          }
+        } catch (e) {
+          continue; // Try next ID
+        }
+      }
+    }
+
+    console.log('📊 Final API Response:', response);
+    
+    if (response && response.success) {
+      const queryCount = response.data?.length || 0;
+      setWorkQueries(response.data || []);
+      
+      if (queryCount > 0) {
+        toast.success(`Loaded ${queryCount} work queries`);
+      } else {
+        toast.info('No work queries found in the system');
+        console.log('💡 Tip: Create some test work queries first');
+      }
+    } else {
+      toast.error("Failed to load work queries");
+      setWorkQueries([]);
+    }
+  } catch (error: any) {
+    console.error('❌ Error fetching work queries:', error);
+    console.error('Error details:', error.response?.data || error.message);
+    
+    // User-friendly error messages
+    if (error.response?.status === 401) {
+      toast.error('Authentication failed. Please log in again.');
+    } else if (error.response?.status === 404) {
+      toast.error('API endpoint not found. Check backend server.');
+    } else if (error.code === 'NETWORK_ERROR') {
+      toast.error('Network error. Check if backend is running.');
+    } else {
+      toast.error('Failed to load work queries. Please check API connection.');
+    }
+    
+    setWorkQueries([]);
+  } finally {
+    setLoading(prev => ({ ...prev, queries: false }));
+  }
+};
 
   const handleUpdateStatus = async (alertId: string, status: Alert["status"]) => {
     try {
@@ -81,6 +218,11 @@ const AlertsSection = () => {
       time: time || "00:00"
     });
     setViewDialogOpen(true);
+  };
+
+  const handleViewWorkQuery = (query: WorkQuery) => {
+    setSelectedWorkQuery(query);
+    setWorkQueryDialogOpen(true);
   };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -256,6 +398,52 @@ const AlertsSection = () => {
     return colors[severity];
   };
 
+  const getPriorityBadge = (priority: WorkQuery["priority"]) => {
+    const styles = {
+      low: "bg-green-100 text-green-800 border-green-200",
+      medium: "bg-yellow-100 text-yellow-800 border-yellow-200",
+      high: "bg-orange-100 text-orange-800 border-orange-200",
+      critical: "bg-red-100 text-red-800 border-red-200"
+    };
+
+    const icons = {
+      low: <CheckCircle className="h-3 w-3" />,
+      medium: <Clock className="h-3 w-3" />,
+      high: <AlertCircle className="h-3 w-3" />,
+      critical: <AlertCircle className="h-3 w-3" />
+    };
+
+    return (
+      <Badge variant="outline" className={`${styles[priority]} flex items-center gap-1`}>
+        {icons[priority]}
+        {priority.charAt(0).toUpperCase() + priority.slice(1)}
+      </Badge>
+    );
+  };
+
+  const getStatusBadge = (status: WorkQuery["status"]) => {
+    const styles = {
+      pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
+      "in-progress": "bg-blue-100 text-blue-800 border-blue-200",
+      resolved: "bg-green-100 text-green-800 border-green-200",
+      rejected: "bg-red-100 text-red-800 border-red-200"
+    };
+
+    const icons = {
+      pending: <Clock className="h-3 w-3" />,
+      "in-progress": <AlertCircle className="h-3 w-3" />,
+      resolved: <CheckCircle className="h-3 w-3" />,
+      rejected: <X className="h-3 w-3" />
+    };
+
+    return (
+      <Badge variant="outline" className={`${styles[status]} flex items-center gap-1`}>
+        {icons[status]}
+        {status.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+      </Badge>
+    );
+  };
+
   const formatDateTime = (dateTimeString: string) => {
     const [date, time] = dateTimeString.split(' ');
     return (
@@ -264,6 +452,20 @@ const AlertsSection = () => {
         <div className="text-xs text-muted-foreground">{time || 'No time specified'}</div>
       </div>
     );
+  };
+
+  const formatDate = (dateString: string) => {
+    try {
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return dateString;
+    }
   };
 
   const handleTestConnection = async () => {
@@ -278,7 +480,260 @@ const AlertsSection = () => {
     }
   };
 
-  if (loading && alerts.length === 0) {
+  const handleRefresh = () => {
+    if (activeTab === "alerts") {
+      fetchAlerts();
+      toast.info("Refreshing alerts...");
+    } else if (activeTab === "work-queries") {
+      fetchWorkQueries();
+      toast.info("Refreshing work queries...");
+    }
+  };
+
+  const renderAlertsTab = () => (
+    <>
+      {alerts.length === 0 ? (
+        <div className="text-center py-12 border rounded-lg">
+          <div className="text-muted-foreground mb-4">
+            <ImageIcon className="h-16 w-16 mx-auto opacity-20" />
+          </div>
+          <h3 className="text-lg font-semibold mb-2">No alerts found</h3>
+          <p className="text-muted-foreground mb-4">
+            {connectionStatus === "disconnected" 
+              ? "Cannot connect to server. Please check if backend is running."
+              : "Create your first alert to get started"}
+          </p>
+          <div className="flex gap-2 justify-center">
+            <Button
+              variant="outline"
+              onClick={handleTestConnection}
+              disabled={connectionStatus === "checking"}
+            >
+              {connectionStatus === "checking" ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Wifi className="mr-2 h-4 w-4" />
+              )}
+              Test Connection
+            </Button>
+            
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+              <DialogTrigger asChild>
+                <Button disabled={connectionStatus === "disconnected"}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create First Alert
+                </Button>
+              </DialogTrigger>
+            </Dialog>
+          </div>
+        </div>
+      ) : (
+        <div className="border rounded-lg overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[300px]">Alert Title</TableHead>
+                <TableHead className="w-[100px]">Severity</TableHead>
+                <TableHead className="w-[120px]">Status</TableHead>
+                <TableHead className="w-[150px]">Date & Time</TableHead>
+                <TableHead className="w-[120px]">Photos</TableHead>
+                <TableHead className="w-[200px] text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {alerts.map((alert) => (
+                <TableRow key={alert.id} className="hover:bg-muted/50">
+                  <TableCell className="font-medium">
+                    <div className="space-y-1">
+                      <div className="font-semibold">{alert.title}</div>
+                      <div className="text-sm text-muted-foreground">
+                        <span className="inline-flex items-center gap-1">
+                          <span className="font-medium">Site:</span> {alert.site}
+                        </span>
+                        <span className="mx-2">•</span>
+                        <span className="inline-flex items-center gap-1">
+                          <span className="font-medium">By:</span> {alert.reportedBy}
+                        </span>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={`${getSeverityColor(alert.severity)} capitalize`}>
+                      {alert.severity}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={
+                      alert.status === "resolved" ? "default" : 
+                      alert.status === "in-progress" ? "secondary" : "outline"
+                    } className="capitalize">
+                      {alert.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{formatDateTime(alert.date)}</TableCell>
+                  <TableCell>
+                    {alert.photos && alert.photos.length > 0 ? (
+                      <div className="flex items-center gap-1">
+                        <ImageIcon className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-medium">{alert.photos.length}</span>
+                        <span className="text-xs text-muted-foreground">photo{alert.photos.length !== 1 ? 's' : ''}</span>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">No photos</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex justify-end gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleViewAlert(alert)}
+                        disabled={submitting}
+                      >
+                        <Eye className="h-4 w-4 mr-1" />
+                        View
+                      </Button>
+                      
+                      {alert.status !== "open" && (
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleUpdateStatus(alert.id, "open")}
+                          disabled={submitting}
+                        >
+                          Reopen
+                        </Button>
+                      )}
+                      {alert.status !== "in-progress" && (
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleUpdateStatus(alert.id, "in-progress")}
+                          disabled={submitting}
+                        >
+                          In Progress
+                        </Button>
+                      )}
+                      {alert.status !== "resolved" && (
+                        <Button 
+                          variant="default" 
+                          size="sm"
+                          onClick={() => handleUpdateStatus(alert.id, "resolved")}
+                          disabled={submitting}
+                        >
+                          Resolve
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </>
+  );
+
+  const renderWorkQueriesTab = () => (
+    <>
+      {workQueries.length === 0 ? (
+        <div className="text-center py-12 border rounded-lg">
+          <div className="text-muted-foreground mb-4">
+            <MessageCircle className="h-16 w-16 mx-auto opacity-20" />
+          </div>
+          <h3 className="text-lg font-semibold mb-2">No work queries found</h3>
+          <p className="text-muted-foreground mb-4">
+            {loading.queries 
+              ? "Loading work queries..." 
+              : "No work queries have been created yet"}
+          </p>
+          {!loading.queries && (
+            <Button onClick={fetchWorkQueries}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Retry
+            </Button>
+          )}
+        </div>
+      ) : (
+        <div className="border rounded-lg overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[120px]">Query ID</TableHead>
+                <TableHead className="w-[250px]">Title</TableHead>
+                <TableHead className="w-[150px]">Service</TableHead>
+                <TableHead className="w-[100px]">Priority</TableHead>
+                <TableHead className="w-[120px]">Status</TableHead>
+                <TableHead className="w-[150px]">Reported By</TableHead>
+                <TableHead className="w-[150px]">Created</TableHead>
+                <TableHead className="w-[100px] text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {workQueries.map((query) => (
+                <TableRow key={query._id} className="hover:bg-muted/50">
+                  <TableCell className="font-mono text-sm font-medium">
+                    {query.queryId}
+                  </TableCell>
+                  <TableCell>
+                    <div className="space-y-1">
+                      <div className="font-semibold">{query.title}</div>
+                      <div className="text-sm text-muted-foreground truncate max-w-[240px]">
+                        {query.description.substring(0, 60)}...
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="font-medium">{query.serviceId || "N/A"}</div>
+                    {query.serviceId && (
+                      <div className="text-xs text-muted-foreground">
+                        {query.category}
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {getPriorityBadge(query.priority)}
+                  </TableCell>
+                  <TableCell>
+                    {getStatusBadge(query.status)}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <User className="h-3 w-3 text-muted-foreground" />
+                      <div>
+                        <div className="font-medium text-sm">{query.reportedBy?.name}</div>
+                        <div className="text-xs text-muted-foreground capitalize">{query.reportedBy?.role}</div>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="space-y-1">
+                      <div className="font-medium text-sm">{formatDate(query.createdAt)}</div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex justify-end gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleViewWorkQuery(query)}
+                      >
+                        <Eye className="h-3 w-3 mr-1" />
+                        View
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </>
+  );
+
+  if (loading.alerts && alerts.length === 0 && activeTab === "alerts") {
     return (
       <div className="space-y-6">
         <Card>
@@ -326,7 +781,10 @@ const AlertsSection = () => {
                 )}
               </div>
               <span className="text-sm text-muted-foreground">
-                {alerts.length} alert{alerts.length !== 1 ? 's' : ''}
+                {activeTab === "alerts" 
+                  ? `${alerts.length} alert${alerts.length !== 1 ? 's' : ''}`
+                  : `${workQueries.length} work quer${workQueries.length !== 1 ? 'ies' : 'y'}`
+                }
               </span>
             </div>
           </div>
@@ -336,7 +794,7 @@ const AlertsSection = () => {
               variant="outline"
               size="sm"
               onClick={handleTestConnection}
-              disabled={loading || connectionStatus === "checking"}
+              disabled={loading.alerts || connectionStatus === "checking"}
               className="gap-1"
             >
               {connectionStatus === "checking" ? (
@@ -347,371 +805,83 @@ const AlertsSection = () => {
               Test Connection
             </Button>
             
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Alert
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Create New Alert</DialogTitle>
-                </DialogHeader>
-
-                <form onSubmit={handleAddAlert} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="title">
-                        Alert Title <span className="text-red-500">*</span>
-                      </Label>
-                      <Input 
-                        id="title" 
-                        name="title" 
-                        placeholder="Enter alert title" 
-                        required 
-                        disabled={submitting}
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="severity">
-                        Severity <span className="text-red-500">*</span>
-                      </Label>
-                      <select
-                        id="severity"
-                        name="severity"
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        required
-                        disabled={submitting}
-                        defaultValue="medium"
-                      >
-                        <option value="">Select severity</option>
-                        <option value="low">Low</option>
-                        <option value="medium">Medium</option>
-                        <option value="high">High</option>
-                        <option value="critical">Critical</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="site">
-                        Site <span className="text-red-500">*</span>
-                      </Label>
-                      <Input 
-                        id="site" 
-                        name="site" 
-                        placeholder="Enter site name" 
-                        required 
-                        disabled={submitting}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="reportedBy">
-                        Reported By <span className="text-red-500">*</span>
-                      </Label>
-                      <Input 
-                        id="reportedBy" 
-                        name="reportedBy" 
-                        placeholder="Enter reporter name" 
-                        required 
-                        disabled={submitting}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="assignedTo">Assigned To</Label>
-                      <Input 
-                        id="assignedTo" 
-                        name="assignedTo" 
-                        placeholder="Assign to staff" 
-                        disabled={submitting}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="date">
-                        Date <span className="text-red-500">*</span>
-                      </Label>
-                      <Input 
-                        id="date" 
-                        name="date" 
-                        type="date" 
-                        defaultValue={new Date().toISOString().split('T')[0]}
-                        required 
-                        disabled={submitting}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="time">
-                        Time <span className="text-red-500">*</span>
-                      </Label>
-                      <Input 
-                        id="time" 
-                        name="time" 
-                        type="time" 
-                        defaultValue={new Date().toTimeString().slice(0, 5)}
-                        required 
-                        disabled={submitting}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="description">
-                      Description <span className="text-red-500">*</span>
-                    </Label>
-                    <Textarea 
-                      id="description" 
-                      name="description" 
-                      placeholder="Describe the issue in detail..."
-                      rows={4}
-                      required 
-                      disabled={submitting}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Upload Photos (Max 5)</Label>
-                    <div className="border-2 border-dashed rounded-lg p-4 text-center">
-                      <Input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handlePhotoUpload}
-                        accept="image/*"
-                        multiple
-                        className="hidden"
-                        disabled={submitting || photoFiles.length >= 5}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="w-full"
-                        disabled={submitting || photoFiles.length >= 5}
-                      >
-                        <Camera className="mr-2 h-4 w-4" />
-                        Click to upload photos
-                        {photoFiles.length > 0 && ` (${photoFiles.length}/5)`}
-                      </Button>
-                      <p className="text-sm text-muted-foreground mt-2">
-                        Supports JPG, PNG up to 5MB each
-                      </p>
-                    </div>
-
-                    {photoFiles.length > 0 && (
-                      <div className="mt-4">
-                        <p className="text-sm font-medium mb-2">Uploaded Photos:</p>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                          {photoFiles.map((file, index) => (
-                            <div key={index} className="relative group">
-                              <div className="aspect-square border rounded-md overflow-hidden">
-                                <img
-                                  src={URL.createObjectURL(file)}
-                                  alt={`Upload ${index + 1}`}
-                                  className="w-full h-full object-cover"
-                                />
-                              </div>
-                              <Button
-                                type="button"
-                                variant="destructive"
-                                size="sm"
-                                className="absolute -top-2 -right-2 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                                onClick={() => handleRemovePhoto(index)}
-                                disabled={submitting}
-                              >
-                                <X className="h-3 w-3" />
-                              </Button>
-                              <p className="text-xs truncate mt-1">{file.name}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex gap-2 pt-2">
-                    <Button 
-                      type="button" 
-                      variant="outline" 
-                      className="flex-1"
-                      onClick={() => setDialogOpen(false)}
-                      disabled={submitting}
-                    >
-                      Cancel
-                    </Button>
-                    <Button type="submit" className="flex-1" disabled={submitting}>
-                      {submitting ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Creating...
-                        </>
-                      ) : (
-                        'Create Alert'
-                      )}
-                    </Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
+            {activeTab === "alerts" && (
+              <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create Alert
+                  </Button>
+                </DialogTrigger>
+              </Dialog>
+            )}
+            
+            {activeTab === "work-queries" && authUser?.id && (
+              <Button 
+                variant="outline"
+                onClick={() => window.open('/work-queries', '_blank')}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                New Work Query
+              </Button>
+            )}
 
             <Button 
               variant="outline" 
-              onClick={() => {
-                fetchAlerts();
-                toast.info("Refreshing alerts...");
-              }}
-              disabled={loading || connectionStatus === "checking"}
+              onClick={handleRefresh}
+              disabled={loading.alerts || loading.queries || connectionStatus === "checking"}
             >
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading.alerts || loading.queries ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
           </div>
         </CardHeader>
         
         <CardContent>
-          {alerts.length === 0 ? (
-            <div className="text-center py-12 border rounded-lg">
-              <div className="text-muted-foreground mb-4">
-                <ImageIcon className="h-16 w-16 mx-auto opacity-20" />
-              </div>
-              <h3 className="text-lg font-semibold mb-2">No alerts found</h3>
-              <p className="text-muted-foreground mb-4">
-                {connectionStatus === "disconnected" 
-                  ? "Cannot connect to server. Please check if backend is running."
-                  : "Create your first alert to get started"}
-              </p>
-              <div className="flex gap-2 justify-center">
-                <Button
-                  variant="outline"
-                  onClick={handleTestConnection}
-                  disabled={connectionStatus === "checking"}
-                >
-                  {connectionStatus === "checking" ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Wifi className="mr-2 h-4 w-4" />
-                  )}
-                  Test Connection
-                </Button>
-                
-                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button disabled={connectionStatus === "disconnected"}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Create First Alert
-                    </Button>
-                  </DialogTrigger>
-                </Dialog>
-              </div>
-            </div>
-          ) : (
-            <div className="border rounded-lg overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[300px]">Alert Title</TableHead>
-                    <TableHead className="w-[100px]">Severity</TableHead>
-                    <TableHead className="w-[120px]">Status</TableHead>
-                    <TableHead className="w-[150px]">Date & Time</TableHead>
-                    <TableHead className="w-[120px]">Photos</TableHead>
-                    <TableHead className="w-[200px] text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {alerts.map((alert) => (
-                    <TableRow key={alert.id} className="hover:bg-muted/50">
-                      <TableCell className="font-medium">
-                        <div className="space-y-1">
-                          <div className="font-semibold">{alert.title}</div>
-                          <div className="text-sm text-muted-foreground">
-                            <span className="inline-flex items-center gap-1">
-                              <span className="font-medium">Site:</span> {alert.site}
-                            </span>
-                            <span className="mx-2">•</span>
-                            <span className="inline-flex items-center gap-1">
-                              <span className="font-medium">By:</span> {alert.reportedBy}
-                            </span>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={`${getSeverityColor(alert.severity)} capitalize`}>
-                          {alert.severity}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={
-                          alert.status === "resolved" ? "default" : 
-                          alert.status === "in-progress" ? "secondary" : "outline"
-                        } className="capitalize">
-                          {alert.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{formatDateTime(alert.date)}</TableCell>
-                      <TableCell>
-                        {alert.photos && alert.photos.length > 0 ? (
-                          <div className="flex items-center gap-1">
-                            <ImageIcon className="h-4 w-4 text-primary" />
-                            <span className="text-sm font-medium">{alert.photos.length}</span>
-                            <span className="text-xs text-muted-foreground">photo{alert.photos.length !== 1 ? 's' : ''}</span>
-                          </div>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">No photos</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-end gap-2">
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => handleViewAlert(alert)}
-                            disabled={submitting}
-                          >
-                            <Eye className="h-4 w-4 mr-1" />
-                            View
-                          </Button>
-                          
-                          {alert.status !== "open" && (
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => handleUpdateStatus(alert.id, "open")}
-                              disabled={submitting}
-                            >
-                              Reopen
-                            </Button>
-                          )}
-                          {alert.status !== "in-progress" && (
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => handleUpdateStatus(alert.id, "in-progress")}
-                              disabled={submitting}
-                            >
-                              In Progress
-                            </Button>
-                          )}
-                          {alert.status !== "resolved" && (
-                            <Button 
-                              variant="default" 
-                              size="sm"
-                              onClick={() => handleUpdateStatus(alert.id, "resolved")}
-                              disabled={submitting}
-                            >
-                              Resolve
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="alerts" className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4" />
+                Alerts
+                {alerts.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1 flex items-center justify-center">
+                    {alerts.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="work-queries" className="flex items-center gap-2">
+                <MessageCircle className="h-4 w-4" />
+                Work Queries
+                {workQueries.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1 flex items-center justify-center">
+                    {workQueries.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="alerts" className="space-y-4">
+              {loading.alerts ? (
+                <div className="flex justify-center items-center h-64">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <span className="ml-2">Loading alerts...</span>
+                </div>
+              ) : (
+                renderAlertsTab()
+              )}
+            </TabsContent>
+            
+            <TabsContent value="work-queries" className="space-y-4">
+              {loading.queries ? (
+                <div className="flex justify-center items-center h-64">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <span className="ml-2">Loading work queries...</span>
+                </div>
+              ) : (
+                renderWorkQueriesTab()
+              )}
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 
@@ -1009,6 +1179,338 @@ const AlertsSection = () => {
               </div>
             </form>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* View Work Query Dialog */}
+      <Dialog open={workQueryDialogOpen} onOpenChange={setWorkQueryDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedWorkQuery ? `Work Query: ${selectedWorkQuery.queryId}` : 'Work Query Details'}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedWorkQuery && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="font-semibold">Query ID</Label>
+                  <p className="mt-1 font-mono">{selectedWorkQuery.queryId}</p>
+                </div>
+                <div>
+                  <Label className="font-semibold">Status</Label>
+                  <div className="mt-1">
+                    {getStatusBadge(selectedWorkQuery.status)}
+                  </div>
+                </div>
+                <div>
+                  <Label className="font-semibold">Priority</Label>
+                  <div className="mt-1">
+                    {getPriorityBadge(selectedWorkQuery.priority)}
+                  </div>
+                </div>
+                <div>
+                  <Label className="font-semibold">Category</Label>
+                  <p className="mt-1 capitalize">{selectedWorkQuery.category.replace('-', ' ')}</p>
+                </div>
+                <div>
+                  <Label className="font-semibold">Service ID</Label>
+                  <p className="mt-1">{selectedWorkQuery.serviceId || "N/A"}</p>
+                </div>
+                <div>
+                  <Label className="font-semibold">Created</Label>
+                  <p className="mt-1">{formatDate(selectedWorkQuery.createdAt)}</p>
+                </div>
+              </div>
+
+              <div>
+                <Label className="font-semibold">Title</Label>
+                <p className="mt-1 font-medium">{selectedWorkQuery.title}</p>
+              </div>
+
+              <div>
+                <Label className="font-semibold">Description</Label>
+                <div className="mt-1 p-3 bg-gray-50 rounded-lg border">
+                  <p className="text-sm whitespace-pre-wrap">{selectedWorkQuery.description}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <Label className="font-semibold text-blue-900">Reported By</Label>
+                  <div className="mt-2 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-blue-600" />
+                      <div>
+                        <div className="font-medium">{selectedWorkQuery.reportedBy?.name}</div>
+                        <div className="text-sm text-blue-700 capitalize">{selectedWorkQuery.reportedBy?.role}</div>
+                      </div>
+                    </div>
+                    <div className="text-sm text-blue-600">
+                      Supervisor: {selectedWorkQuery.supervisorName}
+                    </div>
+                  </div>
+                </div>
+
+                {selectedWorkQuery.proofFiles && selectedWorkQuery.proofFiles.length > 0 && (
+                  <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+                    <Label className="font-semibold text-green-900">Supporting Evidence</Label>
+                    <div className="mt-2">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-green-600" />
+                        <span className="font-medium">{selectedWorkQuery.proofFiles.length} file(s)</span>
+                      </div>
+                      <div className="mt-2 space-y-1">
+                        {selectedWorkQuery.proofFiles.slice(0, 3).map((file, index) => (
+                          <div key={index} className="text-sm text-green-700 truncate">
+                            • {file.name} ({file.size})
+                          </div>
+                        ))}
+                        {selectedWorkQuery.proofFiles.length > 3 && (
+                          <div className="text-sm text-green-600">
+                            + {selectedWorkQuery.proofFiles.length - 3} more files
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {selectedWorkQuery.superadminResponse && (
+                <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                  <Label className="font-semibold text-yellow-900">Superadmin Response</Label>
+                  <div className="mt-1 p-2 bg-white rounded border">
+                    <p className="text-sm whitespace-pre-wrap">{selectedWorkQuery.superadminResponse}</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                <Button 
+                  type="button" 
+                  variant="outline"
+                  onClick={() => setWorkQueryDialogOpen(false)}
+                >
+                  Close
+                </Button>
+                <Button 
+                  type="button"
+                  variant="default"
+                  onClick={() => window.open(`/work-queries/${selectedWorkQuery._id}`, '_blank')}
+                >
+                  <Eye className="mr-2 h-4 w-4" />
+                  Open Full Details
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Alert Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create New Alert</DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleAddAlert} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="title">
+                  Alert Title <span className="text-red-500">*</span>
+                </Label>
+                <Input 
+                  id="title" 
+                  name="title" 
+                  placeholder="Enter alert title" 
+                  required 
+                  disabled={submitting}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="severity">
+                  Severity <span className="text-red-500">*</span>
+                </Label>
+                <select
+                  id="severity"
+                  name="severity"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  required
+                  disabled={submitting}
+                  defaultValue="medium"
+                >
+                  <option value="">Select severity</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="site">
+                  Site <span className="text-red-500">*</span>
+                </Label>
+                <Input 
+                  id="site" 
+                  name="site" 
+                  placeholder="Enter site name" 
+                  required 
+                  disabled={submitting}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="reportedBy">
+                  Reported By <span className="text-red-500">*</span>
+                </Label>
+                <Input 
+                  id="reportedBy" 
+                  name="reportedBy" 
+                  placeholder="Enter reporter name" 
+                  required 
+                  disabled={submitting}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="assignedTo">Assigned To</Label>
+                <Input 
+                  id="assignedTo" 
+                  name="assignedTo" 
+                  placeholder="Assign to staff" 
+                  disabled={submitting}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="date">
+                  Date <span className="text-red-500">*</span>
+                </Label>
+                <Input 
+                  id="date" 
+                  name="date" 
+                  type="date" 
+                  defaultValue={new Date().toISOString().split('T')[0]}
+                  required 
+                  disabled={submitting}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="time">
+                  Time <span className="text-red-500">*</span>
+                </Label>
+                <Input 
+                  id="time" 
+                  name="time" 
+                  type="time" 
+                  defaultValue={new Date().toTimeString().slice(0, 5)}
+                  required 
+                  disabled={submitting}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="description">
+                Description <span className="text-red-500">*</span>
+              </Label>
+              <Textarea 
+                id="description" 
+                name="description" 
+                placeholder="Describe the issue in detail..."
+                rows={4}
+                required 
+                disabled={submitting}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Upload Photos (Max 5)</Label>
+              <div className="border-2 border-dashed rounded-lg p-4 text-center">
+                <Input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handlePhotoUpload}
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  disabled={submitting || photoFiles.length >= 5}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full"
+                  disabled={submitting || photoFiles.length >= 5}
+                >
+                  <Camera className="mr-2 h-4 w-4" />
+                  Click to upload photos
+                  {photoFiles.length > 0 && ` (${photoFiles.length}/5)`}
+                </Button>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Supports JPG, PNG up to 5MB each
+                </p>
+              </div>
+
+              {photoFiles.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-sm font-medium mb-2">Uploaded Photos:</p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {photoFiles.map((file, index) => (
+                      <div key={index} className="relative group">
+                        <div className="aspect-square border rounded-md overflow-hidden">
+                          <img
+                            src={URL.createObjectURL(file)}
+                            alt={`Upload ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          className="absolute -top-2 -right-2 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => handleRemovePhoto(index)}
+                          disabled={submitting}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                        <p className="text-xs truncate mt-1">{file.name}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button 
+                type="button" 
+                variant="outline" 
+                className="flex-1"
+                onClick={() => setDialogOpen(false)}
+                disabled={submitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" className="flex-1" disabled={submitting}>
+                {submitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  'Create Alert'
+                )}
+              </Button>
+            </div>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

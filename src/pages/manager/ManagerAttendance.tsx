@@ -5,10 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Calendar, CheckCircle, XCircle, Clock, Download, Filter, BarChart3, TrendingUp, AlertCircle, Wifi, WifiOff, User, Lock } from "lucide-react";
+import { Calendar, CheckCircle, XCircle, Clock, Download, Filter, BarChart3, TrendingUp, AlertCircle, User, Loader2, Coffee, Timer } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import userService from "@/services/userService";
+import { useRole } from "@/context/RoleContext";
 
 interface AttendanceRecord {
   id: string;
@@ -16,21 +17,14 @@ interface AttendanceRecord {
   day: string;
   checkIn: string;
   checkOut: string;
-  status: "Present" | "Absent" | "Half Day" | "Late";
+  status: "Present" | "Absent" | "Half Day" | "Late" | "Checked In";
   totalHours: string;
-  breaks: number;
+  breakTime: string;
   breakDuration: string;
+  breaks: number;
   overtime: string;
-  managerId: string;
-  managerName: string;
-  checkInTime: string | null;
-  checkOutTime: string | null;
-  breakStartTime: string | null;
-  breakEndTime: string | null;
-  breakTime: number;
-  lastCheckInDate: string | null;
-  isCheckedIn: boolean;
-  isOnBreak: boolean;
+  isOnBreak?: boolean;
+  hasCheckedOutToday?: boolean;
 }
 
 interface AttendanceStats {
@@ -39,168 +33,150 @@ interface AttendanceStats {
   absentDays: number;
   lateDays: number;
   halfDays: number;
+  checkedInDays: number;
   averageHours: string;
   totalOvertime: string;
+  totalBreakTime: string;
   attendanceRate: number;
-}
-
-interface ApiAttendanceRecord {
-  _id: string;
-  managerId: string;
-  managerName: string;
-  checkInTime: string | null;
-  checkOutTime: string | null;
-  breakStartTime: string | null;
-  breakEndTime: string | null;
-  totalHours: number;
-  breakTime: number;
-  lastCheckInDate: string | null;
-  isCheckedIn: boolean;
-  isOnBreak: boolean;
-  dailyActivities: any[];
-  createdAt: string;
-  updatedAt: string;
 }
 
 const ManagerAttendance = () => {
   const { onMenuClick } = useOutletContext<{ onMenuClick: () => void }>();
+  const { user: authUser } = useRole();
   
   // API Base URL
-  const API_URL = `http://${window.location.hostname}:5001/api`;
+  const API_URL = import.meta.env.VITE_API_URL || `http://localhost:5001/api`;
   
-  // Manager ID and Name - Get from localStorage
+  // Current user state
   const [managerId, setManagerId] = useState<string>('');
   const [managerName, setManagerName] = useState<string>('');
   
-  // State for API connection status
-  const [isBackendConnected, setIsBackendConnected] = useState(false);
-  const [isCheckingConnection, setIsCheckingConnection] = useState(false);
-  
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [allRecords, setAllRecords] = useState<AttendanceRecord[]>([]);
   const [stats, setStats] = useState<AttendanceStats>({
     totalDays: 0,
     presentDays: 0,
     absentDays: 0,
     lateDays: 0,
     halfDays: 0,
+    checkedInDays: 0,
     averageHours: "0.0",
     totalOvertime: "0.0",
+    totalBreakTime: "0.0",
     attendanceRate: 0
   });
   
   const [filter, setFilter] = useState<string>("all");
   const [isLoading, setIsLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7));
-  const [isFetchingFromAPI, setIsFetchingFromAPI] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<string>("");
+  const [currentStatus, setCurrentStatus] = useState<any>(null);
+  const [isTodayCheckedIn, setIsTodayCheckedIn] = useState(false);
+  const [isTodayOnBreak, setIsTodayOnBreak] = useState(false);
 
-  // Initialize manager info from localStorage
+  // Initialize current user info
   useEffect(() => {
-    const storedUser = localStorage.getItem("sk_user");
-    if (storedUser) {
+    const fetchCurrentUser = async () => {
       try {
-        const user = JSON.parse(storedUser);
-        const id = user._id || user.id || `manager-${Date.now()}`;
-        const name = user.name || user.firstName || 'Manager';
-        setManagerId(id);
-        setManagerName(name);
-        console.log('Current Manager for Attendance:', { id, name });
-      } catch (e) {
-        console.error('Error parsing user:', e);
-        setManagerId(`manager-${Date.now()}`);
-        setManagerName('Manager');
+        if (authUser) {
+          const userId = authUser._id || authUser.id;
+          
+          if (userId) {
+            const allUsersResponse = await userService.getAllUsers();
+            const foundUser = allUsersResponse.allUsers.find(user => 
+              user._id === userId || user.id === userId
+            );
+            
+            if (foundUser) {
+              setManagerId(foundUser._id);
+              setManagerName(foundUser.name || foundUser.firstName || 'Manager');
+            } else {
+              // Fallback to localStorage
+              const storedUser = localStorage.getItem("sk_user");
+              if (storedUser) {
+                const user = JSON.parse(storedUser);
+                setManagerId(user._id || user.id);
+                setManagerName(user.name || user.firstName || 'Manager');
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching current user:', error);
       }
-    } else {
-      // Fallback for development
-      const randomId = `manager-${Date.now()}`;
-      setManagerId(randomId);
-      setManagerName('Demo Manager');
-      console.log('No user found, using demo manager ID:', randomId);
-    }
-  }, []);
+    };
 
-  // Load data when managerId is available or selectedMonth changes
+    fetchCurrentUser();
+  }, [authUser]);
+
+  // Load data when managerId is available or month changes
   useEffect(() => {
     if (managerId) {
-      checkBackendConnection();
       fetchAttendanceData();
+      fetchCurrentStatus();
     }
-  }, [selectedMonth, managerId]);
+  }, [managerId, selectedMonth]);
 
-  // Check backend connection
-  const checkBackendConnection = async () => {
+  // Fetch current attendance status
+  const fetchCurrentStatus = async () => {
     try {
-      setIsCheckingConnection(true);
-      console.log('Checking backend connection at:', `${API_URL}/health`);
-      
-      const response = await fetch(`${API_URL}/health`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
-      
+      const response = await fetch(`${API_URL}/manager-attendance/today/${managerId}`);
       if (response.ok) {
         const data = await response.json();
-        console.log('Health check response:', data);
-        
-        if (data.status === 'OK') {
-          setIsBackendConnected(true);
-          console.log('✅ Backend connected successfully for attendance');
-        } else {
-          setIsBackendConnected(false);
-          console.warn('⚠️ Backend health check failed');
+        if (data.success) {
+          setCurrentStatus(data.data);
+          setIsTodayCheckedIn(data.data?.isCheckedIn || false);
+          setIsTodayOnBreak(data.data?.isOnBreak || false);
         }
-      } else {
-        setIsBackendConnected(false);
-        console.warn('⚠️ Backend health check failed with status:', response.status);
       }
     } catch (error) {
-      console.error('❌ Backend connection error:', error);
-      setIsBackendConnected(false);
-    } finally {
-      setIsCheckingConnection(false);
+      console.error('Error fetching current status:', error);
     }
   };
 
-  // Fetch attendance data from MongoDB API - Only for current manager
+  // Get today's date in YYYY-MM-DD format
+  const getTodayDateString = (): string => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Format date for display
+  const formatDisplayDate = (dateStr: string): string => {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  // Get day of week from date string
+  const getDayOfWeek = (dateStr: string): string => {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    return date.toLocaleDateString('en-US', { weekday: 'short' });
+  };
+
+  // Fetch attendance data from API
   const fetchAttendanceData = async () => {
     setIsLoading(true);
-    setIsFetchingFromAPI(false);
     
-    try {
-      // Try to fetch from API first if connected
-      if (isBackendConnected && managerId) {
-        setIsFetchingFromAPI(true);
-        await fetchAttendanceFromAPI();
-      } else {
-        // Fallback to local storage
-        await fetchAttendanceFromLocalStorage();
-      }
-    } catch (error) {
-      console.error('Error fetching attendance data:', error);
-      // Fallback to generating sample data
-      generateSampleData();
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Fetch attendance data from MongoDB API - Only for current manager
-  const fetchAttendanceFromAPI = async () => {
     try {
       // Parse selected month to get date range
       const [year, month] = selectedMonth.split('-').map(Number);
-      const startDate = new Date(year, month - 1, 1);
-      const endDate = new Date(year, month, 0); // Last day of the month
       
-      // Format dates for API
-      const startDateStr = startDate.toISOString().split('T')[0];
-      const endDateStr = endDate.toISOString().split('T')[0];
-      
-      console.log('Fetching attendance from API for manager:', managerId);
+      console.log('Fetching attendance data for:', { 
+        managerId, 
+        month: `${year}-${month}`,
+        today: getTodayDateString()
+      });
       
       const response = await fetch(
-        `${API_URL}/api/manager-attendance/history/${managerId}?startDate=${startDateStr}&endDate=${endDateStr}`,
+        `${API_URL}/manager-attendance/summary/${managerId}?year=${year}&month=${month}`,
         {
           method: 'GET',
           headers: {
@@ -211,151 +187,71 @@ const ManagerAttendance = () => {
       
       if (response.ok) {
         const data = await response.json();
-        console.log('API response for manager attendance:', data);
+        console.log('API response:', data);
         
         if (data.success && data.data) {
-          // Transform API data to match our UI format
-          const apiRecords: ApiAttendanceRecord[] = data.data.history || data.data;
-          const formattedRecords = transformApiDataToRecords(apiRecords, year, month);
+          const { dailyRecords, stats, currentStatus } = data.data;
           
-          setAttendanceRecords(formattedRecords);
-          calculateStats(formattedRecords);
-          toast.success(`Attendance data loaded for ${managerName}`);
-          return;
+          // Update current status
+          setCurrentStatus(currentStatus);
+          setIsTodayCheckedIn(currentStatus?.isCheckedIn || false);
+          setIsTodayOnBreak(currentStatus?.isOnBreak || false);
+          
+          // Process daily records
+          const processedRecords: AttendanceRecord[] = dailyRecords.map((record: any) => ({
+            id: `record-${record.date}`,
+            date: record.date,
+            day: record.day,
+            checkIn: record.checkIn || "-",
+            checkOut: record.checkOut || "-",
+            status: record.status,
+            totalHours: record.totalHours || "0.0",
+            breakTime: record.breakTime || "0.0",
+            breakDuration: record.breakDuration || "0m",
+            breaks: record.breaks || 0,
+            overtime: record.overtime || "0.0",
+            isOnBreak: record.isOnBreak || false,
+            hasCheckedOutToday: record.hasCheckedOutToday || false
+          }));
+          
+          setAllRecords(processedRecords);
+          setAttendanceRecords(processedRecords);
+          
+          // Update stats
+          setStats({
+            totalDays: stats.totalDays || 0,
+            presentDays: stats.presentDays || 0,
+            absentDays: stats.absentDays || 0,
+            lateDays: stats.lateDays || 0,
+            halfDays: stats.halfDays || 0,
+            checkedInDays: stats.checkedInDays || 0,
+            averageHours: stats.averageHours || "0.0",
+            totalOvertime: stats.totalOvertime || "0.0",
+            totalBreakTime: stats.totalBreakTime || "0.0",
+            attendanceRate: stats.attendanceRate || 0
+          });
+          
+          toast.success(`Attendance data loaded for ${getCurrentMonthName()}`);
+        } else {
+          throw new Error(data.message || 'Failed to load data');
         }
-      }
-      
-      // If API returns no data or fails, fall back to local storage
-      console.warn('No valid data from API, falling back to local storage');
-      throw new Error('No data from API');
-      
-    } catch (error) {
-      console.error('Error fetching from API:', error);
-      // Fallback to local storage
-      await fetchAttendanceFromLocalStorage();
-    }
-  };
-
-  // Transform API data to UI format - Only current manager's data
-  const transformApiDataToRecords = (apiRecords: ApiAttendanceRecord[], year: number, month: number): AttendanceRecord[] => {
-    // Get all days in the month
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const records: AttendanceRecord[] = [];
-    
-    // Create a map of existing records by date - ONLY for current manager
-    const recordsByDate = new Map<string, ApiAttendanceRecord>();
-    apiRecords.forEach(record => {
-      // IMPORTANT: Only include records for the current manager
-      if (record.managerId === managerId) {
-        if (record.lastCheckInDate) {
-          const recordDate = new Date(record.lastCheckInDate).toISOString().split('T')[0];
-          recordsByDate.set(recordDate, record);
-        } else if (record.createdAt) {
-          const recordDate = new Date(record.createdAt).toISOString().split('T')[0];
-          recordsByDate.set(recordDate, record);
-        }
-      }
-    });
-    
-    // Generate records for each day of the month
-    for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(year, month - 1, day);
-      const dateString = date.toISOString().split('T')[0];
-      const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'short' });
-      
-      const existingRecord = recordsByDate.get(dateString);
-      
-      if (existingRecord) {
-        // Convert API record to UI format
-        const status = determineStatus(existingRecord);
-        const totalHours = existingRecord.totalHours || 0;
-        const breakTime = existingRecord.breakTime || 0;
-        const overtime = Math.max(0, totalHours - 8);
-        
-        records.push({
-          id: existingRecord._id || `api-${dateString}`,
-          date: dateString,
-          day: dayOfWeek,
-          checkIn: existingRecord.checkInTime ? formatTimeForDisplay(existingRecord.checkInTime) : "-",
-          checkOut: existingRecord.checkOutTime ? formatTimeForDisplay(existingRecord.checkOutTime) : "-",
-          status: status,
-          totalHours: totalHours.toFixed(1),
-          breaks: existingRecord.breakStartTime && existingRecord.breakEndTime ? 1 : 0,
-          breakDuration: formatDuration(breakTime),
-          overtime: overtime.toFixed(1),
-          managerId: existingRecord.managerId,
-          managerName: existingRecord.managerName,
-          checkInTime: existingRecord.checkInTime,
-          checkOutTime: existingRecord.checkOutTime,
-          breakStartTime: existingRecord.breakStartTime,
-          breakEndTime: existingRecord.breakEndTime,
-          breakTime: existingRecord.breakTime,
-          lastCheckInDate: existingRecord.lastCheckInDate,
-          isCheckedIn: existingRecord.isCheckedIn,
-          isOnBreak: existingRecord.isOnBreak
-        });
       } else {
-        // No record for this day - mark as absent (only for this manager)
-        records.push({
-          id: `gen-${dateString}`,
-          date: dateString,
-          day: dayOfWeek,
-          checkIn: "-",
-          checkOut: "-",
-          status: "Absent",
-          totalHours: "0.0",
-          breaks: 0,
-          breakDuration: "0m",
-          overtime: "0.0",
-          managerId: managerId,
-          managerName: managerName,
-          checkInTime: null,
-          checkOutTime: null,
-          breakStartTime: null,
-          breakEndTime: null,
-          breakTime: 0,
-          lastCheckInDate: null,
-          isCheckedIn: false,
-          isOnBreak: false
-        });
+        throw new Error('Failed to fetch attendance data');
       }
+    } catch (error: any) {
+      console.error('Error fetching attendance data:', error);
+      toast.error('Failed to load attendance data');
+      // Generate empty records for the month
+      generateEmptyMonthRecords();
+    } finally {
+      setIsLoading(false);
     }
-    
-    return records;
   };
 
-  // Determine status based on record data
-  const determineStatus = (record: ApiAttendanceRecord): "Present" | "Absent" | "Half Day" | "Late" => {
-    if (!record.checkInTime) return "Absent";
-    
-    const checkInTime = new Date(record.checkInTime);
-    const expectedStart = new Date(checkInTime);
-    expectedStart.setHours(9, 0, 0, 0); // Expected check-in at 9:00 AM
-    
-    // Check if late (after 9:30 AM)
-    const lateThreshold = new Date(checkInTime);
-    lateThreshold.setHours(9, 30, 0, 0);
-    
-    if (checkInTime > lateThreshold) {
-      return "Late";
-    }
-    
-    // Check if half day (less than 4 hours)
-    if (record.totalHours < 4) {
-      return "Half Day";
-    }
-    
-    return "Present";
-  };
-
-  // Format time for display
-  const formatTimeForDisplay = (timestamp: string): string => {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  // Format duration in hours to Xh Ym format
+  // Format duration for display
   const formatDuration = (hours: number): string => {
+    if (!hours || hours === 0) return "0m";
+    
     const totalMinutes = Math.round(hours * 60);
     const hoursPart = Math.floor(totalMinutes / 60);
     const minutesPart = totalMinutes % 60;
@@ -369,298 +265,97 @@ const ManagerAttendance = () => {
     }
   };
 
-  // Fetch attendance from localStorage - Only current manager's data
-  const fetchAttendanceFromLocalStorage = async () => {
-    try {
-      // Try to get from localStorage with manager-specific key
-      const savedAttendance = localStorage.getItem(`managerAttendance_${managerId}`);
+  // Generate empty records for the month
+  const generateEmptyMonthRecords = () => {
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const endDate = new Date(year, month, 0);
+    const daysInMonth = endDate.getDate();
+    
+    const emptyRecords: AttendanceRecord[] = [];
+    
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const dayOfWeek = getDayOfWeek(dateStr);
       
-      if (savedAttendance) {
-        const attendanceData = JSON.parse(savedAttendance);
-        
-        if (attendanceData.lastCheckInDate) {
-          // Create a record from localStorage data
-          const date = new Date(attendanceData.lastCheckInDate);
-          const dateString = date.toISOString().split('T')[0];
-          const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'short' });
-          const status = determineStatusFromLocalStorage(attendanceData);
-          const totalHours = attendanceData.totalHours || 0;
-          const breakTime = attendanceData.breakTime || 0;
-          const overtime = Math.max(0, totalHours - 8);
-          
-          const record: AttendanceRecord = {
-            id: `local-${dateString}`,
-            date: dateString,
-            day: dayOfWeek,
-            checkIn: attendanceData.checkInTime ? formatTimeForDisplay(attendanceData.checkInTime) : "-",
-            checkOut: attendanceData.checkOutTime ? formatTimeForDisplay(attendanceData.checkOutTime) : "-",
-            status: status,
-            totalHours: totalHours.toFixed(1),
-            breaks: attendanceData.breakStartTime && attendanceData.breakEndTime ? 1 : 0,
-            breakDuration: formatDuration(breakTime),
-            overtime: overtime.toFixed(1),
-            managerId: managerId,
-            managerName: managerName,
-            checkInTime: attendanceData.checkInTime,
-            checkOutTime: attendanceData.checkOutTime,
-            breakStartTime: attendanceData.breakStartTime,
-            breakEndTime: attendanceData.breakEndTime,
-            breakTime: attendanceData.breakTime,
-            lastCheckInDate: attendanceData.lastCheckInDate,
-            isCheckedIn: attendanceData.isCheckedIn,
-            isOnBreak: attendanceData.isOnBreak
-          };
-          
-          setAttendanceRecords([record]);
-          calculateStats([record]);
-          toast.info(`Using local attendance data for ${managerName}`);
-          return;
-        }
-      }
-      
-      // If no localStorage data, generate sample data for this manager
-      generateSampleData();
-      
-    } catch (error) {
-      console.error('Error fetching from localStorage:', error);
-      generateSampleData();
-    }
-  };
-
-  // Determine status from localStorage data
-  const determineStatusFromLocalStorage = (data: any): "Present" | "Absent" | "Half Day" | "Late" => {
-    if (!data.checkInTime) return "Absent";
-    
-    const checkInTime = new Date(data.checkInTime);
-    const expectedStart = new Date(checkInTime);
-    expectedStart.setHours(9, 0, 0, 0);
-    
-    const lateThreshold = new Date(checkInTime);
-    lateThreshold.setHours(9, 30, 0, 0);
-    
-    if (checkInTime > lateThreshold) {
-      return "Late";
-    }
-    
-    if (data.totalHours < 4) {
-      return "Half Day";
-    }
-    
-    return "Present";
-  };
-
-  // Generate sample data (fallback) - Only for current manager
-  const generateSampleData = () => {
-    if (!managerId) return;
-    
-    setIsLoading(true);
-    
-    setTimeout(() => {
-      const records: AttendanceRecord[] = [];
-      const currentDate = new Date(selectedMonth + "-01");
-      const year = currentDate.getFullYear();
-      const month = currentDate.getMonth();
-      
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
-      let presentCount = 0;
-      let lateCount = 0;
-      let halfDayCount = 0;
-      let totalHours = 0;
-      let totalOvertime = 0;
-
-      for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month, day);
-        
-        // Skip weekends randomly (approx 20% chance)
-        if (date.getDay() === 0 || date.getDay() === 6 || Math.random() < 0.2) {
-          if (Math.random() < 0.3) { // 30% chance of working on weekend
-            const status = Math.random() < 0.7 ? "Present" : "Late";
-            const hours = status === "Present" ? 8.0 + (Math.random() * 0.5) : 7.5 + (Math.random() * 0.5);
-            const overtime = Math.max(0, hours - 8.0);
-            
-            records.push({
-              id: `sample-${managerId}-${day}`,
-              date: date.toISOString().split('T')[0],
-              day: date.toLocaleDateString('en-US', { weekday: 'short' }),
-              checkIn: generateTime(8, 30, 9, 30),
-              checkOut: generateTime(16, 30, 18, 0),
-              status: status as any,
-              totalHours: hours.toFixed(1),
-              breaks: Math.floor(Math.random() * 2) + 1,
-              breakDuration: "45m",
-              overtime: overtime.toFixed(1),
-              managerId: managerId,
-              managerName: managerName,
-              checkInTime: null,
-              checkOutTime: null,
-              breakStartTime: null,
-              breakEndTime: null,
-              breakTime: 0,
-              lastCheckInDate: date.toISOString().split('T')[0],
-              isCheckedIn: false,
-              isOnBreak: false
-            });
-
-            if (status === "Present") presentCount++;
-            if (status === "Late") lateCount++;
-            totalHours += hours;
-            totalOvertime += overtime;
-          } else {
-            records.push({
-              id: `sample-${managerId}-${day}`,
-              date: date.toISOString().split('T')[0],
-              day: date.toLocaleDateString('en-US', { weekday: 'short' }),
-              checkIn: "-",
-              checkOut: "-",
-              status: "Absent",
-              totalHours: "0.0",
-              breaks: 0,
-              breakDuration: "0m",
-              overtime: "0.0",
-              managerId: managerId,
-              managerName: managerName,
-              checkInTime: null,
-              checkOutTime: null,
-              breakStartTime: null,
-              breakEndTime: null,
-              breakTime: 0,
-              lastCheckInDate: null,
-              isCheckedIn: false,
-              isOnBreak: false
-            });
-          }
-        } else {
-          // Weekday logic
-          const rand = Math.random();
-          let status: string;
-          let hours: number;
-
-          if (rand < 0.7) {
-            status = "Present";
-            hours = 8.0 + (Math.random() * 0.5);
-            presentCount++;
-          } else if (rand < 0.85) {
-            status = "Late";
-            hours = 7.5 + (Math.random() * 0.5);
-            lateCount++;
-          } else if (rand < 0.95) {
-            status = "Half Day";
-            hours = 4.0 + (Math.random() * 1.0);
-            halfDayCount++;
-          } else {
-            status = "Absent";
-            hours = 0;
-          }
-
-          const overtime = Math.max(0, hours - 8.0);
-          
-          records.push({
-            id: `sample-${managerId}-${day}`,
-            date: date.toISOString().split('T')[0],
-            day: date.toLocaleDateString('en-US', { weekday: 'short' }),
-            checkIn: status !== "Absent" ? generateTime(8, 30, 9, 30) : "-",
-            checkOut: status !== "Absent" ? generateTime(16, 30, 18, 0) : "-",
-            status: status as any,
-            totalHours: hours.toFixed(1),
-            breaks: status !== "Absent" ? Math.floor(Math.random() * 2) + 1 : 0,
-            breakDuration: status !== "Absent" ? "45m" : "0m",
-            overtime: overtime.toFixed(1),
-            managerId: managerId,
-            managerName: managerName,
-            checkInTime: null,
-            checkOutTime: null,
-            breakStartTime: null,
-            breakEndTime: null,
-            breakTime: 0,
-            lastCheckInDate: status !== "Absent" ? date.toISOString().split('T')[0] : null,
-            isCheckedIn: false,
-            isOnBreak: false
-          });
-
-          totalHours += hours;
-          totalOvertime += overtime;
-        }
-      }
-
-      const totalDays = records.length;
-      const absentCount = records.filter(r => r.status === "Absent").length;
-      const attendanceRate = ((presentCount + lateCount * 0.8 + halfDayCount * 0.5) / totalDays) * 100;
-
-      setAttendanceRecords(records);
-      setStats({
-        totalDays,
-        presentDays: presentCount,
-        absentDays: absentCount,
-        lateDays: lateCount,
-        halfDays: halfDayCount,
-        averageHours: (totalHours / (presentCount + lateCount + halfDayCount) || 0).toFixed(1),
-        totalOvertime: totalOvertime.toFixed(1),
-        attendanceRate: Math.round(attendanceRate)
+      emptyRecords.push({
+        id: `empty-${dateStr}`,
+        date: dateStr,
+        day: dayOfWeek,
+        checkIn: "-",
+        checkOut: "-",
+        status: "Absent",
+        totalHours: "0.0",
+        breakTime: "0.0",
+        breakDuration: "0m",
+        breaks: 0,
+        overtime: "0.0",
+        isOnBreak: false,
+        hasCheckedOutToday: false
       });
-      setIsLoading(false);
-    }, 1000);
-  };
-
-  const generateTime = (startHour: number, startMin: number, endHour: number, endMin: number) => {
-    const hour = Math.floor(Math.random() * (endHour - startHour)) + startHour;
-    const minute = Math.floor(Math.random() * (endMin - startMin)) + startMin;
-    const period = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour > 12 ? hour - 12 : hour;
-    return `${displayHour}:${minute.toString().padStart(2, '0')} ${period}`;
-  };
-
-  // Calculate statistics from records
-  const calculateStats = (records: AttendanceRecord[]) => {
-    const totalDays = records.length;
-    const presentDays = records.filter(r => r.status === "Present").length;
-    const absentDays = records.filter(r => r.status === "Absent").length;
-    const lateDays = records.filter(r => r.status === "Late").length;
-    const halfDays = records.filter(r => r.status === "Half Day").length;
+    }
     
-    const totalHours = records.reduce((sum, record) => sum + parseFloat(record.totalHours || "0"), 0);
-    const totalOvertime = records.reduce((sum, record) => sum + parseFloat(record.overtime || "0"), 0);
+    setAllRecords(emptyRecords);
+    setAttendanceRecords(emptyRecords);
     
-    const workingDays = presentDays + lateDays + halfDays;
-    const averageHours = workingDays > 0 ? totalHours / workingDays : 0;
-    const attendanceRate = totalDays > 0 ? ((presentDays + lateDays * 0.8 + halfDays * 0.5) / totalDays) * 100 : 0;
-
+    const daysInMonthNum = daysInMonth;
     setStats({
-      totalDays,
-      presentDays,
-      absentDays,
-      lateDays,
-      halfDays,
-      averageHours: averageHours.toFixed(1),
-      totalOvertime: totalOvertime.toFixed(1),
-      attendanceRate: Math.round(attendanceRate)
+      totalDays: daysInMonthNum,
+      presentDays: 0,
+      absentDays: daysInMonthNum,
+      lateDays: 0,
+      halfDays: 0,
+      checkedInDays: 0,
+      averageHours: "0.0",
+      totalOvertime: "0.0",
+      totalBreakTime: "0.0",
+      attendanceRate: 0
     });
   };
 
-  const filteredRecords = attendanceRecords.filter(record => {
-    if (filter === "all") return true;
-    if (filter === "present") return record.status === "Present";
-    if (filter === "absent") return record.status === "Absent";
-    if (filter === "late") return record.status === "Late";
-    if (filter === "halfday") return record.status === "Half Day";
-    return true;
-  });
+  // Apply filters
+  useEffect(() => {
+    let filtered = [...allRecords];
+    
+    // Apply date filter if selected
+    if (selectedDate) {
+      filtered = filtered.filter(record => record.date === selectedDate);
+    }
+    
+    // Apply status filter
+    if (filter === "present") {
+      filtered = filtered.filter(record => record.status === "Present");
+    } else if (filter === "present_half") {
+      filtered = filtered.filter(record => record.status === "Present" || record.status === "Half Day");
+    } else if (filter === "absent") {
+      filtered = filtered.filter(record => record.status === "Absent");
+    } else if (filter === "late") {
+      filtered = filtered.filter(record => record.status === "Late");
+    } else if (filter === "halfday") {
+      filtered = filtered.filter(record => record.status === "Half Day");
+    } else if (filter === "checkedin") {
+      filtered = filtered.filter(record => record.status === "Checked In");
+    }
+    // "all" shows all records
+    
+    setAttendanceRecords(filtered);
+  }, [allRecords, selectedDate, filter]);
 
   const handleExportData = () => {
     // Create CSV content
-    const headers = ["Date", "Day", "Check In", "Check Out", "Status", "Total Hours", "Breaks", "Break Duration", "Overtime", "Manager"];
+    const headers = ["Date", "Day", "Check In", "Check Out", "Status", "Total Hours", "Break Time", "Break Duration", "Breaks", "Overtime"];
     const csvContent = [
       headers.join(","),
-      ...filteredRecords.map(record => [
+      ...attendanceRecords.map(record => [
         record.date,
         record.day,
         record.checkIn,
         record.checkOut,
         record.status,
         record.totalHours,
-        record.breaks,
+        record.breakTime,
         record.breakDuration,
-        record.overtime,
-        record.managerName
+        record.breaks,
+        record.overtime
       ].join(","))
     ].join("\n");
     
@@ -672,36 +367,24 @@ const ManagerAttendance = () => {
     a.download = `attendance-${managerName}-${selectedMonth}.csv`;
     a.click();
     
-    toast.success("Attendance data exported successfully!", {
-      action: {
-        label: "Open File",
-        onClick: () => {
-          toast.info("File downloaded to your device");
-        }
-      }
-    });
+    toast.success("Attendance data exported successfully!");
   };
 
   const handleRequestCorrection = (record: AttendanceRecord) => {
     toast.info(`Correction requested for ${record.date}`, {
-      description: "Your request has been submitted for review",
-      action: {
-        label: "View Status",
-        onClick: () => {
-          toast.success("Opening correction requests...");
-        }
-      }
+      description: "Your request has been submitted for review"
     });
   };
 
   const getStatusBadge = (status: string) => {
     const styles = {
-      Present: "bg-green-100 text-green-800 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800",
-      Absent: "bg-red-100 text-red-800 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800",
-      Late: "bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-400 dark:border-yellow-800",
-      "Half Day": "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800"
+      Present: "bg-green-100 text-green-800 border-green-200",
+      Absent: "bg-red-100 text-red-800 border-red-200",
+      Late: "bg-yellow-100 text-yellow-800 border-yellow-200",
+      "Half Day": "bg-blue-100 text-blue-800 border-blue-200",
+      "Checked In": "bg-purple-100 text-purple-800 border-purple-200"
     };
-    return styles[status as keyof typeof styles] || "bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-800 dark:text-gray-400";
+    return styles[status as keyof typeof styles] || "bg-gray-100 text-gray-800 border-gray-200";
   };
 
   const getStatusIcon = (status: string) => {
@@ -709,13 +392,19 @@ const ManagerAttendance = () => {
       Present: <CheckCircle className="h-4 w-4" />,
       Absent: <XCircle className="h-4 w-4" />,
       Late: <Clock className="h-4 w-4" />,
-      "Half Day": <AlertCircle className="h-4 w-4" />
+      "Half Day": <AlertCircle className="h-4 w-4" />,
+      "Checked In": <Clock className="h-4 w-4" />
     };
-    return icons[status as keyof typeof icons];
+    return icons[status as keyof typeof icons] || <Clock className="h-4 w-4" />;
   };
 
   const handleMonthChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSelectedMonth(event.target.value);
+    setSelectedDate("");
+  };
+
+  const handleDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setSelectedDate(event.target.value);
   };
 
   const getCurrentMonthName = () => {
@@ -725,13 +414,130 @@ const ManagerAttendance = () => {
     });
   };
 
-  // Handle retry connection
-  const handleRetryConnection = () => {
-    checkBackendConnection().then(() => {
-      if (isBackendConnected) {
-        fetchAttendanceData();
+  const clearDateFilter = () => {
+    setSelectedDate("");
+  };
+
+  // Handle break actions
+  const handleBreakIn = async () => {
+    try {
+      const response = await fetch(`${API_URL}/manager-attendance/breakin`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ managerId })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        toast.success("Break started!");
+        fetchCurrentStatus(); // Refresh current status
+        fetchAttendanceData(); // Refresh all data
+      } else {
+        toast.error(data.message || "Failed to start break");
       }
-    });
+    } catch (error) {
+      console.error('Error starting break:', error);
+      toast.error("Failed to start break. Please try again.");
+    }
+  };
+
+  const handleBreakOut = async () => {
+    try {
+      const response = await fetch(`${API_URL}/manager-attendance/breakout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ managerId })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        toast.success("Break ended!");
+        fetchCurrentStatus(); // Refresh current status
+        fetchAttendanceData(); // Refresh all data
+      } else {
+        toast.error(data.message || "Failed to end break");
+      }
+    } catch (error) {
+      console.error('Error ending break:', error);
+      toast.error("Failed to end break. Please try again.");
+    }
+  };
+
+  // Handle check in/out
+  const handleCheckIn = async () => {
+    try {
+      const response = await fetch(`${API_URL}/manager-attendance/checkin`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          managerId, 
+          managerName 
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        toast.success("Successfully checked in!");
+        fetchCurrentStatus(); // Refresh current status
+        fetchAttendanceData(); // Refresh all data
+      } else {
+        toast.error(data.message || "Failed to check in");
+      }
+    } catch (error) {
+      console.error('Error checking in:', error);
+      toast.error("Failed to check in. Please try again.");
+    }
+  };
+
+  const handleCheckOut = async () => {
+    try {
+      const response = await fetch(`${API_URL}/manager-attendance/checkout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ managerId })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        toast.success("Successfully checked out!");
+        fetchCurrentStatus(); // Refresh current status
+        fetchAttendanceData(); // Refresh all data
+      } else {
+        toast.error(data.message || "Failed to check out");
+      }
+    } catch (error) {
+      console.error('Error checking out:', error);
+      toast.error("Failed to check out. Please try again.");
+    }
+  };
+
+  // Refresh data
+  const handleRefresh = () => {
+    fetchAttendanceData();
+    fetchCurrentStatus();
+    toast.info("Refreshing attendance data...");
+  };
+
+  // Check if today's date is in the selected month
+  const isTodayInSelectedMonth = () => {
+    const today = new Date();
+    const todayMonth = today.getMonth() + 1;
+    const todayYear = today.getFullYear();
+    const [selectedYear, selectedMonthNum] = selectedMonth.split('-').map(Number);
+    
+    return todayYear === selectedYear && todayMonth === selectedMonthNum;
   };
 
   return (
@@ -747,61 +553,99 @@ const ManagerAttendance = () => {
         animate={{ opacity: 1, y: 0 }}
         className="p-6 space-y-6"
       >
-        {/* Connection Status Banner */}
-        {!isBackendConnected && (
-          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-            <div className="flex items-center gap-3">
-              <WifiOff className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300">
-                  Backend Server Not Connected
-                </p>
-                <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
-                  Showing sample attendance data. To view real attendance records, please connect to the backend server.
-                </p>
-                <div className="mt-2 space-y-1 text-xs">
-                  <code className="bg-yellow-100 dark:bg-yellow-900/30 px-2 py-1 rounded">
-                    cd backend && npm run dev
-                  </code>
-                  <p className="text-yellow-600 dark:text-yellow-400">
-                    Server should be running at: {API_URL}
-                  </p>
+        {/* Current Status Card */}
+        {currentStatus && isTodayInSelectedMonth() && (
+          <Card className="border-l-4 border-l-blue-500">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Timer className="h-5 w-5 text-blue-600" />
+                Today's Status - {managerName}
+              </CardTitle>
+              <CardDescription>
+                {currentStatus.isCheckedIn ? (
+                  currentStatus.isOnBreak ? (
+                    "Currently on break"
+                  ) : (
+                    "Currently checked in"
+                  )
+                ) : (
+                  currentStatus.hasCheckedOutToday ? "Checked out for today" : "Not checked in today"
+                )}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Status</div>
+                  <Badge className={
+                    currentStatus.isCheckedIn ? 
+                      (currentStatus.isOnBreak ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800') 
+                      : (currentStatus.hasCheckedOutToday ? 'bg-gray-100 text-gray-800' : 'bg-red-100 text-red-800')
+                  }>
+                    {currentStatus.isCheckedIn ? 
+                      (currentStatus.isOnBreak ? 'On Break' : 'Checked In') 
+                      : (currentStatus.hasCheckedOutToday ? 'Checked Out' : 'Not Checked In')}
+                  </Badge>
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Check In Time</div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-gray-500" />
+                    <span className="font-medium">
+                      {currentStatus.checkInTime ? 
+                        new Date(currentStatus.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+                        : '--:--'}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Break Time</div>
+                  <div className="flex items-center gap-2">
+                    <Coffee className="h-4 w-4 text-gray-500" />
+                    <span className="font-medium">
+                      {formatDuration(currentStatus.breakTime || 0)}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Actions</div>
+                  <div className="flex gap-2">
+                    {currentStatus.isCheckedIn ? (
+                      <>
+                        {!currentStatus.isOnBreak ? (
+                          <Button size="sm" onClick={handleBreakIn} className="flex-1">
+                            <Coffee className="h-3 w-3 mr-1" />
+                            Break In
+                          </Button>
+                        ) : (
+                          <Button size="sm" onClick={handleBreakOut} className="flex-1">
+                            <Timer className="h-3 w-3 mr-1" />
+                            Break Out
+                          </Button>
+                        )}
+                        <Button size="sm" onClick={handleCheckOut} className="flex-1" variant="outline">
+                          <Clock className="h-3 w-3 mr-1" />
+                          Check Out
+                        </Button>
+                      </>
+                    ) : !currentStatus.hasCheckedOutToday ? (
+                      <Button size="sm" onClick={handleCheckIn} className="flex-1">
+                        <Clock className="h-3 w-3 mr-1" />
+                        Check In
+                      </Button>
+                    ) : (
+                      <Button size="sm" disabled className="flex-1" variant="outline">
+                        Already Checked Out
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRetryConnection}
-                disabled={isCheckingConnection}
-                className="border-yellow-300 text-yellow-700 hover:bg-yellow-100 dark:border-yellow-700 dark:text-yellow-300 dark:hover:bg-yellow-900/30"
-              >
-                {isCheckingConnection ? "Checking..." : "Retry Connection"}
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Connected Status Banner */}
-        {isBackendConnected && isFetchingFromAPI && (
-          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-            <div className="flex items-center gap-3">
-              <Wifi className="h-5 w-5 text-green-600 dark:text-green-400" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-green-800 dark:text-green-300">
-                  ✅ Connected to Database
-                </p>
-                <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                  Showing real attendance data from MongoDB database.
-                </p>
-                <p className="text-xs text-green-600 dark:text-green-400">
-                  Manager: {managerName} | Month: {getCurrentMonthName()}
-                </p>
-              </div>
-              <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300">
-                Live Data
-              </Badge>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* Statistics Cards */}
@@ -854,42 +698,6 @@ const ManagerAttendance = () => {
           </Card>
         </div>
 
-        {/* Additional Stats */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Average Hours/Day</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.averageHours}h</div>
-              <p className="text-xs text-muted-foreground">Daily average</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Overtime</CardTitle>
-              <BarChart3 className="h-4 w-4 text-orange-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-orange-600">{stats.totalOvertime}h</div>
-              <p className="text-xs text-muted-foreground">This month</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Late Arrivals</CardTitle>
-              <AlertCircle className="h-4 w-4 text-yellow-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-yellow-600">{stats.lateDays}</div>
-              <p className="text-xs text-muted-foreground">
-                {Math.round((stats.lateDays / stats.totalDays) * 100)}% of days
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
         {/* Controls and Filters */}
         <Card>
           <CardHeader>
@@ -897,13 +705,20 @@ const ManagerAttendance = () => {
               <div>
                 <CardTitle>Attendance Records - {managerName}</CardTitle>
                 <CardDescription>
-                  {isBackendConnected && isFetchingFromAPI 
-                    ? "Real attendance data from database (Private to you)" 
-                    : "Sample attendance data (connect to backend for real data)"}
-                  <span className="block mt-1">Showing records for {getCurrentMonthName()}</span>
-                  <span className="block text-xs text-green-600 dark:text-green-400 mt-1">
-                    🔒 Your attendance data is private and not visible to other managers
-                  </span>
+                  Showing records for {getCurrentMonthName()}
+                  {selectedDate && (
+                    <span className="ml-2">
+                      | Filtered: {formatDisplayDate(selectedDate)}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="ml-2 h-6 px-2"
+                        onClick={clearDateFilter}
+                      >
+                        Clear
+                      </Button>
+                    </span>
+                  )}
                 </CardDescription>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -913,144 +728,167 @@ const ManagerAttendance = () => {
                     type="month"
                     value={selectedMonth}
                     onChange={handleMonthChange}
-                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={handleDateChange}
+                    className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm"
+                    placeholder="Select Date"
                   />
                 </div>
                 <select
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm"
                 >
                   <option value="all">All Status</option>
-                  <option value="present">Present</option>
+                  <option value="present">Present Only</option>
+                  <option value="present_half">Present & Half Day</option>
+                  <option value="absent">Absent</option>
                   <option value="late">Late</option>
                   <option value="halfday">Half Day</option>
-                  <option value="absent">Absent</option>
+                  <option value="checkedin">Checked In</option>
                 </select>
                 <Button variant="outline" size="sm" onClick={handleExportData}>
                   <Download className="h-4 w-4 mr-2" />
                   Export
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleRefresh}>
+                  <Loader2 className="h-4 w-4 mr-2" />
+                  Refresh
                 </Button>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              // Loading skeleton
-              <div className="space-y-3">
-                {Array.from({ length: 5 }).map((_, index) => (
-                  <div key={index} className="flex items-center gap-4 p-4 border rounded-lg">
-                    <div className="h-10 w-10 bg-muted rounded animate-pulse" />
-                    <div className="flex-1 space-y-2">
-                      <div className="h-4 bg-muted rounded animate-pulse w-1/4" />
-                      <div className="h-3 bg-muted rounded animate-pulse w-3/4" />
-                    </div>
-                    <div className="h-6 bg-muted rounded animate-pulse w-20" />
-                  </div>
-                ))}
+              <div className="flex items-center justify-center h-64">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="ml-3 text-muted-foreground">Loading attendance data...</p>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Day</TableHead>
-                    <TableHead>Check In</TableHead>
-                    <TableHead>Check Out</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Total Hours</TableHead>
-                    <TableHead>Breaks</TableHead>
-                    <TableHead>Overtime</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredRecords.map((record) => (
-                    <TableRow key={record.id}>
-                      <TableCell className="font-medium">
-                        {new Date(record.date).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric'
-                        })}
-                      </TableCell>
-                      <TableCell>
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${
-                          record.day === 'Sat' || record.day === 'Sun' 
-                            ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' 
-                            : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
-                        }`}>
-                          {record.day}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4 text-muted-foreground" />
-                          {record.checkIn}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4 text-muted-foreground" />
-                          {record.checkOut}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={getStatusBadge(record.status)}>
-                          <span className="flex items-center gap-1">
-                            {getStatusIcon(record.status)}
-                            {record.status}
-                          </span>
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
-                          <span>{record.totalHours}h</span>
-                          {parseFloat(record.totalHours) >= 8 && (
-                            <CheckCircle className="h-4 w-4 text-green-500" />
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-center">
-                          <span className="font-medium">{record.breaks}</span>
-                          <div className="text-xs text-muted-foreground">{record.breakDuration}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge 
-                          variant="outline" 
-                          className={
-                            parseFloat(record.overtime) > 0 
-                              ? "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800" 
-                              : "bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-800 dark:text-gray-400"
-                          }
-                        >
-                          {record.overtime}h
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleRequestCorrection(record)}
-                          disabled={record.status === "Absent"}
-                        >
-                          Request Correction
-                        </Button>
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Day</TableHead>
+                      <TableHead>Check In</TableHead>
+                      <TableHead>Check Out</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Total Hours</TableHead>
+                      <TableHead>Break Time</TableHead>
+                      <TableHead>Breaks</TableHead>
+                      <TableHead>Overtime</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-
-            {!isLoading && filteredRecords.length === 0 && (
-              <div className="text-center py-8">
-                <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-medium">No records found</h3>
-                <p className="text-muted-foreground mt-2">
-                  No attendance records match your current filters.
-                </p>
+                  </TableHeader>
+                  <TableBody>
+                    {attendanceRecords.length > 0 ? (
+                      attendanceRecords.map((record) => (
+                        <TableRow key={record.id} className={
+                          record.date === getTodayDateString() ? 'bg-blue-50' : ''
+                        }>
+                          <TableCell className="font-medium">
+                            {formatDisplayDate(record.date)}
+                            {record.date === getTodayDateString() && (
+                              <Badge variant="outline" className="ml-2 text-xs">
+                                Today
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${
+                              record.day === 'Sat' || record.day === 'Sun' 
+                                ? 'bg-blue-100 text-blue-600' 
+                                : 'bg-gray-100 text-gray-600'
+                            }`}>
+                              {record.day}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Clock className="h-4 w-4 text-muted-foreground" />
+                              {record.checkIn}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Clock className="h-4 w-4 text-muted-foreground" />
+                              {record.checkOut}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={getStatusBadge(record.status)}>
+                              <span className="flex items-center gap-1">
+                                {getStatusIcon(record.status)}
+                                {record.status}
+                              </span>
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              <span>{record.totalHours}h</span>
+                              {parseFloat(record.totalHours) >= 8 && (
+                                <CheckCircle className="h-4 w-4 text-green-500" />
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Coffee className="h-4 w-4 text-muted-foreground" />
+                              <div className="text-center">
+                                <span className="font-medium">{record.breakTime}h</span>
+                                <div className="text-xs text-muted-foreground">{record.breakDuration}</div>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-center">
+                              <span className="font-medium">{record.breaks}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge 
+                              variant="outline" 
+                              className={
+                                parseFloat(record.overtime) > 0 
+                                  ? "bg-orange-100 text-orange-800 border-orange-200" 
+                                  : "bg-gray-100 text-gray-800 border-gray-200"
+                              }
+                            >
+                              {record.overtime}h
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRequestCorrection(record)}
+                              disabled={record.status === "Absent"}
+                            >
+                              Request Correction
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={10} className="text-center py-8">
+                          <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                          <h3 className="text-lg font-medium">No records found</h3>
+                          <p className="text-muted-foreground mt-2">
+                            No attendance records match your current filters.
+                          </p>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
               </div>
             )}
           </CardContent>
@@ -1074,7 +912,7 @@ const ManagerAttendance = () => {
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Total Hours Worked</span>
                   <span className="font-medium">
-                    {((parseFloat(stats.averageHours) * (stats.presentDays + stats.lateDays + stats.halfDays)) || 0).toFixed(1)}h
+                    {((parseFloat(stats.averageHours) * stats.presentDays) || 0).toFixed(1)}h
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
@@ -1082,9 +920,13 @@ const ManagerAttendance = () => {
                   <span className="font-medium">{stats.averageHours}h</span>
                 </div>
                 <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Total Break Time</span>
+                  <span className="font-medium text-blue-600">{stats.totalBreakTime}h</span>
+                </div>
+                <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Overtime Rate</span>
                   <span className="font-medium text-orange-600">
-                    {((parseFloat(stats.totalOvertime) / (stats.presentDays + stats.lateDays + stats.halfDays)) || 0).toFixed(1)}h/day
+                    {((parseFloat(stats.totalOvertime) / stats.presentDays) || 0).toFixed(1)}h/day
                   </span>
                 </div>
               </div>

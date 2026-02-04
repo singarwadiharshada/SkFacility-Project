@@ -1136,34 +1136,6 @@ const Billing = () => {
           </Card>
         </div>
 
-        {/* Pending Bills Flash Section */}
-        {pendingBills.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-yellow-50 border border-yellow-200 rounded-lg p-4"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <AlertTriangle className="h-6 w-6 text-yellow-600" />
-                <div>
-                  <h3 className="font-semibold text-yellow-800">Pending Bills Alert</h3>
-                  <p className="text-yellow-700 text-sm">
-                    You have {pendingBills.length} pending bills totaling {formatCurrency(pendingAmount + overdueAmount)}
-                  </p>
-                </div>
-              </div>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => setActiveTab("invoices")}
-                className="border-yellow-300 text-yellow-700 hover:bg-yellow-100">
-              
-                View All 
-              </Button>
-            </div>
-          </motion.div>
-        )}
 
         {/* Main Tabs - Reduced from 5 to 4 tabs ..*/}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

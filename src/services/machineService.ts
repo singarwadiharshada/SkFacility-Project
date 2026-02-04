@@ -1,3 +1,4 @@
+// src/services/machineService.ts
 import axios from 'axios';
 
 const API_URL = `http://${window.location.hostname}:5001/api`;
@@ -130,14 +131,20 @@ const api = axios.create({
 // Request interceptor for logging
 api.interceptors.request.use(
   (config) => {
-    console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`);
-    if (config.data) {
-      console.log('[API Request Data]', config.data);
+    // Only log in development mode
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Machine API Request] ${config.method?.toUpperCase()} ${config.url}`);
+      if (config.params) {
+        console.log('[Machine API Request Params]', config.params);
+      }
+      if (config.data) {
+        console.log('[Machine API Request Data]', config.data);
+      }
     }
     return config;
   },
   (error) => {
-    console.error('[API Request Error]', error);
+    console.error('[Machine API Request Error]', error);
     return Promise.reject(error);
   }
 );
@@ -145,25 +152,36 @@ api.interceptors.request.use(
 // Response interceptor for error handling
 api.interceptors.response.use(
   (response) => {
-    console.log(`[API Response] ${response.status} ${response.config.url}`);
+    // Only log in development mode
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Machine API Response] ${response.status} ${response.config.url}`);
+      if (response.data && Array.isArray(response.data)) {
+        console.log(`[Machine API Response Data Count] ${response.data.length} items`);
+      }
+    }
     return response;
   },
   (error) => {
+    // Skip logging for stats endpoint errors
+    if (error.config?.url?.includes('/machines/stats')) {
+      return Promise.reject(error);
+    }
+    
     const errorDetails = {
       url: error.config?.url,
       method: error.config?.method,
       status: error.response?.status,
       statusText: error.response?.statusText,
-      data: error.response?.data,
       message: error.message,
       code: error.code
     };
     
-    console.error('[API Response Error]', errorDetails);
-    
-    // Provide more specific error messages
-    if (error.response?.status === 500) {
-      console.error('Server 500 Error Details:', error.response?.data);
+    if (error.response?.status >= 500) {
+      console.error('[Machine API Server Error]', errorDetails);
+    } else if (error.response?.status >= 400) {
+      console.warn('[Machine API Client Error]', errorDetails);
+    } else {
+      console.error('[Machine API Network Error]', errorDetails);
     }
     
     return Promise.reject(error);
@@ -171,7 +189,7 @@ api.interceptors.response.use(
 );
 
 export const machineService = {
-  // Get all machines
+  // Get all machines with filters - ✅ FIXED with params option
   async getMachines(filters?: {
     search?: string;
     status?: string;
@@ -179,21 +197,30 @@ export const machineService = {
     location?: string;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
+    assignedTo?: string;
+    [key: string]: any;
   }): Promise<FrontendMachine[]> {
     try {
-      const params = new URLSearchParams();
+      // Build query params
+      const params: Record<string, any> = {};
       
-      if (filters?.search) params.append('search', filters.search);
-      if (filters?.status) params.append('status', filters.status);
-      if (filters?.department) params.append('department', filters.department);
-      if (filters?.location) params.append('location', filters.location);
-      if (filters?.sortBy) params.append('sortBy', filters.sortBy);
-      if (filters?.sortOrder) params.append('sortOrder', filters.sortOrder);
-
-      const url = `/machines${params.toString() ? `?${params.toString()}` : ''}`;
-      console.log('Fetching machines from:', url);
+      // Add all filters to params
+      if (filters) {
+        Object.entries(filters).forEach(([key, value]) => {
+          if (value !== undefined && value !== null && value !== '' && value !== 'all') {
+            params[key] = value;
+          }
+        });
+      }
       
-      const response = await api.get<FrontendMachine[]>(url);
+      // Add debug logging
+      console.log('Fetching machines with filters:', filters);
+      console.log('Request params:', params);
+      
+      // ✅ FIXED: Pass params in the config object
+      const response = await api.get<FrontendMachine[]>('/machines', { 
+        params 
+      });
       
       // Normalize the response - ensure all machines have an id field
       const machines = response.data.map(machine => ({
@@ -202,6 +229,15 @@ export const machineService = {
       }));
       
       console.log(`Fetched ${machines.length} machines`);
+      
+      // Debug: Check if machines belong to the filtered assignedTo
+      if (filters?.assignedTo && machines.length > 0) {
+        const wrongMachines = machines.filter(machine => machine.assignedTo !== filters.assignedTo);
+        if (wrongMachines.length > 0) {
+          console.warn(`WARNING: Found ${wrongMachines.length} machines not assigned to ${filters.assignedTo}!`);
+        }
+      }
+      
       return machines;
     } catch (error: any) {
       console.error('Error fetching machines:', error);
@@ -216,14 +252,12 @@ export const machineService = {
     }
   },
 
-  // Get machine by ID - FIXED VERSION
+  // Get machine by ID
   async getMachineById(id: string): Promise<FrontendMachine> {
     try {
       if (!id || id === 'undefined') {
         throw new Error('Invalid machine ID');
       }
-      
-      console.log(`Fetching machine with ID: ${id}`);
       
       // Try different ID formats if needed
       let response;
@@ -232,7 +266,6 @@ export const machineService = {
       } catch (error: any) {
         // If 404 or 500, try with _id parameter
         if (error.response?.status === 404 || error.response?.status === 500) {
-          console.log(`Trying alternative fetch for machine ID: ${id}`);
           const allMachines = await this.getMachines();
           const foundMachine = allMachines.find(m => 
             m.id === id || 
@@ -241,7 +274,6 @@ export const machineService = {
           );
           
           if (foundMachine) {
-            console.log('Found machine in local cache');
             return foundMachine;
           }
           throw new Error(`Machine not found with ID: ${id}`);
@@ -256,7 +288,6 @@ export const machineService = {
         machine.id = machine._id || id;
       }
       
-      console.log('Fetched machine:', machine);
       return machine;
     } catch (error: any) {
       console.error(`Error fetching machine ${id}:`, error);
@@ -303,8 +334,6 @@ export const machineService = {
         nextMaintenanceDate: data.nextMaintenanceDate || undefined,
       };
 
-      console.log('Sending machine data to backend:', machineData);
-      
       const response = await api.post<FrontendMachine>('/machines', machineData);
       
       // Ensure the created machine has an id field
@@ -313,7 +342,6 @@ export const machineService = {
         createdMachine.id = createdMachine._id;
       }
       
-      console.log('Created machine:', createdMachine);
       return createdMachine;
     } catch (error: any) {
       console.error('Error creating machine:', error);
@@ -336,8 +364,6 @@ export const machineService = {
         throw new Error('Invalid machine ID for update');
       }
       
-      console.log(`Updating machine ${id} with data:`, data);
-      
       const response = await api.put<FrontendMachine>(`/machines/${id}`, data);
       
       // Ensure the updated machine has an id field
@@ -346,7 +372,6 @@ export const machineService = {
         updatedMachine.id = updatedMachine._id;
       }
       
-      console.log('Updated machine:', updatedMachine);
       return updatedMachine;
     } catch (error: any) {
       console.error(`Error updating machine ${id}:`, error);
@@ -369,9 +394,7 @@ export const machineService = {
         throw new Error('Invalid machine ID for deletion');
       }
       
-      console.log(`Deleting machine ${id}`);
       await api.delete(`/machines/${id}`);
-      console.log(`Machine ${id} deleted successfully`);
     } catch (error: any) {
       console.error(`Error deleting machine ${id}:`, error);
       
@@ -386,33 +409,15 @@ export const machineService = {
     }
   },
 
-  // Get machine statistics with fallback
+  // Get machine statistics - COMPLETELY LOCAL CALCULATION (backend endpoint is broken)
   async getMachineStats(): Promise<MachineStats> {
+    // ALWAYS use local calculation since backend /machines/stats endpoint is broken
+    
     try {
-      console.log('Fetching machine stats from API...');
+      const machines = await this.getMachines();
       
-      // First try the dedicated stats endpoint
-      const response = await api.get<MachineStats>('/machines/stats');
-      console.log('Machine stats from API:', response.data);
-      return response.data;
-    } catch (error: any) {
-      console.warn('Stats endpoint failed, calculating locally...', error);
-      
-      // If stats endpoint fails, get all machines and calculate locally
-      try {
-        console.log('Fetching machines for local stats calculation...');
-        const machines = await this.getMachines();
-        console.log(`Fetched ${machines.length} machines for local stats`);
-        
-        const localStats = calculateLocalMachineStats(machines);
-        console.log('Local machine stats:', localStats);
-        
-        return localStats;
-      } catch (fallbackError) {
-        console.error('Failed to calculate local stats:', fallbackError);
-        
-        // Return empty stats as last resort
-        const emptyStats = {
+      if (machines.length === 0) {
+        return {
           totalMachines: 0,
           totalMachineValue: 0,
           operationalMachines: 0,
@@ -423,10 +428,27 @@ export const machineService = {
           machinesByLocation: {},
           upcomingMaintenanceCount: 0
         };
-        
-        console.log('Returning empty stats:', emptyStats);
-        return emptyStats;
       }
+      
+      const localStats = calculateLocalMachineStats(machines);
+      console.log('Machine stats calculated locally:', localStats);
+      return localStats;
+      
+    } catch (error) {
+      console.error('Failed to calculate local machine stats:', error);
+      
+      // Return empty stats as fallback
+      return {
+        totalMachines: 0,
+        totalMachineValue: 0,
+        operationalMachines: 0,
+        maintenanceMachines: 0,
+        outOfServiceMachines: 0,
+        averageMachineCost: 0,
+        machinesByDepartment: {},
+        machinesByLocation: {},
+        upcomingMaintenanceCount: 0
+      };
     }
   },
 
@@ -436,8 +458,6 @@ export const machineService = {
       if (!machineId || machineId === 'undefined') {
         throw new Error('Invalid machine ID for maintenance');
       }
-      
-      console.log(`Adding maintenance record for machine ${machineId}:`, record);
       
       const response = await api.post<FrontendMachine>(
         `/machines/${machineId}/maintenance`,
@@ -450,7 +470,6 @@ export const machineService = {
         updatedMachine.id = updatedMachine._id;
       }
       
-      console.log('Updated machine after maintenance:', updatedMachine);
       return updatedMachine;
     } catch (error: any) {
       console.error(`Error adding maintenance record for machine ${machineId}:`, error);
@@ -473,9 +492,10 @@ export const machineService = {
   // Search machines
   async searchMachines(query: string): Promise<FrontendMachine[]> {
     try {
-      const response = await api.get<FrontendMachine[]>(
-        `/machines/search?q=${encodeURIComponent(query)}`
-      );
+      // ✅ FIXED: Pass params in the config object
+      const response = await api.get<FrontendMachine[]>(`/machines/search`, {
+        params: { q: query }
+      });
       
       // Normalize the response
       const machines = response.data.map(machine => ({
@@ -508,5 +528,18 @@ export const machineService = {
       m._id === machineId || 
       (m as any)._id?.toString() === machineId
     );
+  },
+
+  // Check if stats endpoint is working (for debugging)
+  async checkStatsEndpoint(): Promise<{ working: boolean; error?: string }> {
+    try {
+      const response = await api.get('/machines/stats');
+      return { working: true };
+    } catch (error: any) {
+      return { 
+        working: false, 
+        error: error.response?.data?.error || error.message 
+      };
+    }
   }
 };

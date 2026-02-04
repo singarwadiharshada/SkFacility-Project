@@ -13,10 +13,9 @@ import {
   DialogContent, 
   DialogHeader, 
   DialogTitle, 
-  DialogTrigger, 
-  DialogDescription,
+  DialogTrigger,
   DialogFooter,
-  DialogClose
+  DialogDescription
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -44,20 +43,21 @@ import {
   MessageCircle, 
   Paperclip, 
   User, 
-  Sparkles,
   Trash2,
-  Car,
-  Shield,
-  Wrench,
   Download,
-  Calendar,
-  MapPin,
   Filter,
   RefreshCw,
-  MoreVertical,
+  Building2,
   Loader2,
-  AlertTriangle,
-  File
+  Mail,
+  MapPin,
+  File,
+  HardHat,
+  Shield,
+  Car,
+  Sparkles,
+  Truck,
+  Info
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -65,15 +65,13 @@ import { useWorkQuery } from "@/hooks/useWorkQuery";
 import { format } from "date-fns";
 import { useRole } from "@/context/RoleContext";
 
-// Types matching the API
+// Types
 interface WorkQueryProofFile {
   name: string;
   type: 'image' | 'video' | 'document' | 'other';
   url: string;
   public_id: string;
   size: string;
-  format?: string;
-  bytes?: number;
   uploadDate: string;
 }
 
@@ -82,24 +80,12 @@ interface WorkQuery {
   queryId: string;
   title: string;
   description: string;
-  type: 'service' | 'task';
   serviceId?: string;
-  serviceTitle?: string;
-  serviceType?: string;
-  serviceStaffId?: string;
-  serviceStaffName?: string;
-  employeeId?: string;
-  employeeName?: string;
   priority: 'low' | 'medium' | 'high' | 'critical';
   status: 'pending' | 'in-progress' | 'resolved' | 'rejected';
   category: string;
   proofFiles: WorkQueryProofFile[];
   reportedBy: {
-    userId: string;
-    name: string;
-    role: string;
-  };
-  assignedTo?: {
     userId: string;
     name: string;
     role: string;
@@ -117,111 +103,6 @@ interface WorkQuery {
   createdAt: string;
   updatedAt: string;
 }
-
-// Fix: Use the API Service type directly
-interface Service {
-  _id: string;
-  serviceId: string;
-  type: string;
-  title: string;
-  description: string;
-  location: string;
-  assignedTo: string;
-  assignedToName: string;
-  status: string;
-  schedule: string;
-  supervisorId: string;
-}
-
-// Helper function to safely convert string to service type
-const getServiceType = (type: string): 'cleaning' | 'waste-management' | 'parking-management' | 'security' | 'maintenance' => {
-  switch(type.toLowerCase()) {
-    case 'cleaning':
-    case 'waste-management':
-    case 'parking-management':
-    case 'security':
-    case 'maintenance':
-      return type.toLowerCase() as any;
-    default:
-      return 'cleaning'; // default fallback
-  }
-};
-
-// Fallback static data for dropdowns (in case API fails)
-const FALLBACK_CATEGORIES = [
-  { value: "service-quality", label: "Service Quality Issue", description: "Issues with the quality of service provided" },
-  { value: "service-delay", label: "Service Delay", description: "Services not completed on time" },
-  { value: "safety-issue", label: "Safety Issue", description: "Safety concerns or violations" },
-  { value: "equipment-failure", label: "Equipment Failure", description: "Equipment not working properly" },
-  { value: "staff-behavior", label: "Staff Behavior", description: "Issues with staff conduct or behavior" },
-  { value: "cleanliness", label: "Cleanliness Issue", description: "Poor cleaning or maintenance" },
-  { value: "communication", label: "Communication Issue", description: "Poor communication from service staff" },
-  { value: "other", label: "Other", description: "Other types of issues" }
-];
-
-const FALLBACK_PRIORITIES = [
-  { value: "low", label: "Low Priority", description: "Minor issue, can be addressed later", color: "green" },
-  { value: "medium", label: "Medium Priority", description: "Standard issue, address within 24-48 hours", color: "yellow" },
-  { value: "high", label: "High Priority", description: "Urgent issue, address within 24 hours", color: "orange" },
-  { value: "critical", label: "Critical Priority", description: "Critical issue, address immediately", color: "red" }
-];
-
-const FALLBACK_STATUSES = [
-  { value: "pending", label: "Pending", description: "Query submitted, awaiting review", color: "yellow" },
-  { value: "in-progress", label: "In Progress", description: "Query is being investigated", color: "blue" },
-  { value: "resolved", label: "Resolved", description: "Query has been resolved", color: "green" },
-  { value: "rejected", label: "Rejected", description: "Query was rejected", color: "red" }
-];
-
-const FALLBACK_SERVICE_TYPES = [
-  { value: "cleaning", label: "Cleaning Service", icon: "sparkles", color: "blue" },
-  { value: "waste-management", label: "Waste Management", icon: "trash-2", color: "green" },
-  { value: "parking-management", label: "Parking Management", icon: "car", color: "purple" },
-  { value: "security", label: "Security Service", icon: "shield", color: "orange" },
-  { value: "maintenance", label: "Maintenance", icon: "wrench", color: "red" }
-];
-
-const FALLBACK_SERVICES = [
-  {
-    _id: '1',
-    serviceId: 'CLEAN001',
-    type: 'cleaning',
-    title: 'Office Floor Deep Cleaning',
-    description: 'Complete deep cleaning of office floor',
-    location: 'Floor 3',
-    assignedTo: 'STAFF001',
-    assignedToName: 'Ramesh Kumar',
-    status: 'in-progress',
-    schedule: '2024-02-15T09:00:00',
-    supervisorId: 'SUP001'
-  },
-  {
-    _id: '2',
-    serviceId: 'WASTE001',
-    type: 'waste-management',
-    title: 'Biomedical Waste Collection',
-    description: 'Urgent collection and disposal',
-    location: 'Clinic Wing',
-    assignedTo: 'STAFF002',
-    assignedToName: 'Suresh Patel',
-    status: 'pending',
-    schedule: '2024-02-15T14:00:00',
-    supervisorId: 'SUP001'
-  },
-  {
-    _id: '3',
-    serviceId: 'PARK001',
-    type: 'parking-management',
-    title: 'Parking Lot Management',
-    description: 'Parking slot allocation and management',
-    location: 'Main Parking Lot',
-    assignedTo: 'STAFF003',
-    assignedToName: 'Anil Sharma',
-    status: 'completed',
-    schedule: '2024-02-14T10:00:00',
-    supervisorId: 'SUP001'
-  }
-];
 
 // Reusable Components
 const PriorityBadge = ({ priority }: { priority: string }) => {
@@ -270,43 +151,15 @@ const StatusBadge = ({ status }: { status: string }) => {
   );
 };
 
-const ServiceTypeBadge = ({ type }: { type: string }) => {
-  const styles = {
-    cleaning: "bg-blue-100 text-blue-800 border-blue-200",
-    "waste-management": "bg-green-100 text-green-800 border-green-200",
-    "parking-management": "bg-purple-100 text-purple-800 border-purple-200",
-    "security": "bg-orange-100 text-orange-800 border-orange-200",
-    "maintenance": "bg-red-100 text-red-800 border-red-200"
-  };
-
-  const icons = {
-    cleaning: Sparkles,
-    "waste-management": Trash2,
-    "parking-management": Car,
-    "security": Shield,
-    "maintenance": Wrench
-  };
-
-  const safeType = getServiceType(type);
-  const Icon = icons[safeType];
-
-  return (
-    <Badge variant="outline" className={`${styles[safeType]} flex items-center gap-1`}>
-      <Icon className="h-3 w-3" />
-      {safeType.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-    </Badge>
-  );
-};
-
 const FileIcon = ({ type }: { type: string }) => {
   const icons = {
     image: <Image className="h-4 w-4" />,
     video: <Video className="h-4 w-4" />,
     document: <FileText className="h-4 w-4" />,
-    other: <Paperclip className="h-4 w-4" />
+    other: <File className="h-4 w-4" />
   };
 
-  return icons[type as keyof typeof icons] || <Paperclip className="h-4 w-4" />;
+  return icons[type as keyof typeof icons] || <File className="h-4 w-4" />;
 };
 
 const FilePreview = ({ file, onRemove }: { file: File; onRemove: () => void }) => {
@@ -352,34 +205,61 @@ const FilePreview = ({ file, onRemove }: { file: File; onRemove: () => void }) =
   );
 };
 
+const ServiceIcon = ({ type }: { type: string }) => {
+  const icons = {
+    cleaning: <Sparkles className="h-4 w-4" />,
+    "waste-management": <Trash2 className="h-4 w-4" />,
+    "parking-management": <Car className="h-4 w-4" />,
+    security: <Shield className="h-4 w-4" />,
+    maintenance: <HardHat className="h-4 w-4" />,
+    default: <Truck className="h-4 w-4" />
+  };
+
+  return icons[type as keyof typeof icons] || icons.default;
+};
+
+// Service Examples - for guidance only
+const SERVICE_EXAMPLES = [
+  { id: "CLEAN001", name: "Office Cleaning Service", type: "cleaning" },
+  { id: "WASTE001", name: "Biomedical Waste Collection", type: "waste-management" },
+  { id: "PARK001", name: "Parking Lot Management", type: "parking-management" },
+  { id: "SEC001", name: "Security Patrol Service", type: "security" },
+  { id: "MAINT001", name: "HVAC Maintenance", type: "maintenance" },
+  { id: "CLEAN002", name: "Restroom Sanitization", type: "cleaning" },
+  { id: "WASTE002", name: "Recycling Collection", type: "waste-management" }
+];
+
 // Main Component
 const WorkQueryPage = () => {
-  const { user, role, isAuthenticated, loading: authLoading } = useRole();
+  const { user: authUser, role, isAuthenticated, loading: authLoading } = useRole();
+  const [currentSupervisor, setCurrentSupervisor] = useState<{
+    id: string;
+    name: string;
+    email?: string;
+    phone?: string;
+    department?: string;
+    site?: string;
+  }>({
+    id: "",
+    name: "",
+    email: "",
+    phone: "",
+    department: "",
+    site: ""
+  });
   
-  // Check if user is a supervisor
-  useEffect(() => {
-    if (!authLoading && (!isAuthenticated || role !== 'supervisor')) {
-      toast.error("Access denied. Only supervisors can access this page.");
-    }
-  }, [isAuthenticated, role, authLoading]);
-
-  // Get supervisor information from logged in user
-  const supervisorId = user?._id || user?.id || "SUP001";
-  const supervisorName = user?.name || "Supervisor User";
+  const [loadingSupervisor, setLoadingSupervisor] = useState(true);
   
   const {
     workQueries,
-    services,
     statistics,
     categories,
-    serviceTypes,
     priorities,
     statuses,
-    loading,
+    loading: workQueryLoading,
     createWorkQuery,
     deleteWorkQuery,
     fetchWorkQueries,
-    fetchServices,
     fetchStatistics,
     validateFile,
     downloadFile,
@@ -388,8 +268,8 @@ const WorkQueryPage = () => {
     changePage,
     changeLimit
   } = useWorkQuery({
-    supervisorId,
-    autoFetch: true,
+    supervisorId: currentSupervisor.id,
+    autoFetch: currentSupervisor.id !== "",
     initialFilters: {
       page: 1,
       limit: 10
@@ -399,7 +279,6 @@ const WorkQueryPage = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
-  const [serviceTypeFilter, setServiceTypeFilter] = useState<string>("all");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedQueryForView, setSelectedQueryForView] = useState<WorkQuery | null>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
@@ -411,46 +290,97 @@ const WorkQueryPage = () => {
     serviceId: "",
     priority: "medium" as "low" | "medium" | "high" | "critical",
     category: "service-quality",
-    supervisorId: supervisorId,
-    supervisorName: supervisorName
+    supervisorId: "",
+    supervisorName: ""
   });
 
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
-  const [selectedService, setSelectedService] = useState<Service | null>(null);
+  const [selectedServiceType, setSelectedServiceType] = useState<string>("other");
 
-  // Use fallback data if API data is empty
-  const displayCategories = categories.length > 0 ? categories : FALLBACK_CATEGORIES;
-  const displayPriorities = priorities.length > 0 ? priorities : FALLBACK_PRIORITIES;
-  const displayStatuses = statuses.length > 0 ? statuses : FALLBACK_STATUSES;
-  const displayServiceTypes = serviceTypes.length > 0 ? serviceTypes : FALLBACK_SERVICE_TYPES;
-  const displayServices = services.length > 0 ? services : FALLBACK_SERVICES;
+  // Service types for radio buttons
+  const serviceTypes = [
+    { value: "cleaning", label: "Cleaning", icon: <Sparkles className="h-4 w-4" /> },
+    { value: "waste-management", label: "Waste Management", icon: <Trash2 className="h-4 w-4" /> },
+    { value: "parking-management", label: "Parking Management", icon: <Car className="h-4 w-4" /> },
+    { value: "security", label: "Security", icon: <Shield className="h-4 w-4" /> },
+    { value: "maintenance", label: "Maintenance", icon: <HardHat className="h-4 w-4" /> },
+    { value: "other", label: "Other", icon: <Truck className="h-4 w-4" /> }
+  ];
 
-  // Debug log
+  // Fetch current supervisor data
   useEffect(() => {
-    console.log('📊 Data state:', {
-      categories: categories,
-      priorities: priorities,
-      statuses: statuses,
-      serviceTypes: serviceTypes,
-      services: services,
-      displayCategories,
-      displayPriorities,
-      displayStatuses,
-      displayServiceTypes,
-      displayServices
-    });
-  }, [categories, priorities, statuses, serviceTypes, services]);
+    const fetchCurrentSupervisor = async () => {
+      try {
+        setLoadingSupervisor(true);
+        
+        if (!authUser || !isAuthenticated) {
+          throw new Error("User not authenticated");
+        }
+        
+        // Use authenticated user data
+        console.log("👤 Auth User:", authUser);
+        
+        setCurrentSupervisor({
+          id: authUser._id || authUser.id || "",
+          name: authUser.name || "Supervisor",
+          email: authUser.email || "",
+          phone: authUser.phone || "",
+          department: authUser.department || "",
+          site: authUser.site || ""
+        });
+        
+        // Update new query with supervisor info
+        setNewQuery(prev => ({
+          ...prev,
+          supervisorId: authUser._id || authUser.id || "",
+          supervisorName: authUser.name || "Supervisor"
+        }));
+        
+      } catch (error: any) {
+        console.error("❌ Error fetching supervisor data:", error);
+        
+        // Fallback to localStorage
+        try {
+          const storedUser = localStorage.getItem('sk_user');
+          if (storedUser) {
+            const parsedUser = JSON.parse(storedUser);
+            setCurrentSupervisor({
+              id: parsedUser._id || parsedUser.id || "SUP001",
+              name: parsedUser.name || "Supervisor User",
+              email: parsedUser.email || "",
+              phone: parsedUser.phone || "",
+              department: parsedUser.department || "",
+              site: parsedUser.site || ""
+            });
+            
+            setNewQuery(prev => ({
+              ...prev,
+              supervisorId: parsedUser._id || parsedUser.id || "SUP001",
+              supervisorName: parsedUser.name || "Supervisor User"
+            }));
+          } else {
+            throw new Error("No user data found");
+          }
+        } catch (localError) {
+          console.error("❌ Error getting user from localStorage:", localError);
+          toast.error("Failed to load user data. Please log in again.");
+        }
+      } finally {
+        setLoadingSupervisor(false);
+      }
+    };
 
-  // Update newQuery when supervisor data changes
-  useEffect(() => {
-    if (supervisorId && supervisorName) {
-      setNewQuery(prev => ({
-        ...prev,
-        supervisorId,
-        supervisorName
-      }));
+    if (isAuthenticated && !authLoading) {
+      fetchCurrentSupervisor();
     }
-  }, [supervisorId, supervisorName]);
+  }, [authUser, isAuthenticated, authLoading]);
+
+  // Check if user is a supervisor
+  useEffect(() => {
+    if (!authLoading && !loadingSupervisor && (!isAuthenticated || role !== 'supervisor')) {
+      toast.error("Access denied. Only supervisors can access this page.");
+    }
+  }, [isAuthenticated, role, authLoading, loadingSupervisor]);
 
   // Filter work queries
   const filteredQueries = workQueries.filter(query => {
@@ -461,9 +391,8 @@ const WorkQueryPage = () => {
     
     const matchesStatus = statusFilter === "all" || query.status === statusFilter;
     const matchesPriority = priorityFilter === "all" || query.priority === priorityFilter;
-    const matchesServiceType = serviceTypeFilter === "all" || query.serviceType === serviceTypeFilter;
 
-    return matchesSearch && matchesStatus && matchesPriority && matchesServiceType;
+    return matchesSearch && matchesStatus && matchesPriority;
   });
 
   // Handle file upload
@@ -501,23 +430,9 @@ const WorkQueryPage = () => {
     setUploadedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  // Handle service selection
-  const handleServiceSelect = (serviceId: string) => {
-    if (!serviceId) {
-      setSelectedService(null);
-      setNewQuery(prev => ({ ...prev, serviceId: "" }));
-      return;
-    }
-    
-    const service = displayServices.find(s => s.serviceId === serviceId);
-    setSelectedService(service || null);
-    setNewQuery(prev => ({ ...prev, serviceId }));
-  };
-
-  // Reset form when dialog closes
+  // Reset form
   const handleDialogClose = () => {
     setIsCreateDialogOpen(false);
-    // Reset form with a small delay to avoid UI flickering
     setTimeout(() => {
       setNewQuery({
         title: "",
@@ -525,11 +440,11 @@ const WorkQueryPage = () => {
         serviceId: "",
         priority: "medium",
         category: "service-quality",
-        supervisorId,
-        supervisorName
+        supervisorId: currentSupervisor.id,
+        supervisorName: currentSupervisor.name
       });
       setUploadedFiles([]);
-      setSelectedService(null);
+      setSelectedServiceType("other");
     }, 300);
   };
 
@@ -537,13 +452,11 @@ const WorkQueryPage = () => {
   const handleSubmitQuery = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Check if user is authenticated as supervisor
     if (!isAuthenticated || role !== 'supervisor') {
       toast.error("You must be logged in as a supervisor to create a work query");
       return;
     }
 
-    // Validate required fields
     if (!newQuery.title.trim()) {
       toast.error("Please enter a query title");
       return;
@@ -554,21 +467,41 @@ const WorkQueryPage = () => {
       return;
     }
 
-    if (!newQuery.serviceId) {
-      toast.error("Please select a service");
+    if (!newQuery.serviceId.trim()) {
+      toast.error("Please enter a Service ID or Name");
       return;
     }
 
-    if (!selectedService) {
-      toast.error("Please select a valid service");
+    if (!currentSupervisor.id || !currentSupervisor.name) {
+      toast.error("Supervisor information is missing");
       return;
     }
 
     try {
+      // Extract service ID from input (if format is "ID - Name", just take the ID part)
+      let serviceId = newQuery.serviceId;
+      let serviceTitle = newQuery.serviceId;
+      
+      // If input contains " - ", split it (assuming format: "ID - Name")
+      if (serviceId.includes(" - ")) {
+        const parts = serviceId.split(" - ");
+        serviceId = parts[0]; // Take the ID part
+        serviceTitle = parts.slice(1).join(" - "); // Take the name part
+      }
+      
+      // Clean up service ID (remove any extra spaces)
+      serviceId = serviceId.trim().toUpperCase();
+      
       const result = await createWorkQuery({
-        ...newQuery,
-        serviceTitle: selectedService.title,
-        serviceTeam: selectedService.type
+        title: newQuery.title,
+        description: newQuery.description,
+        serviceId: serviceId,
+        priority: newQuery.priority,
+        category: newQuery.category,
+        supervisorId: currentSupervisor.id,
+        supervisorName: currentSupervisor.name,
+        serviceTitle: serviceTitle,
+        serviceType: selectedServiceType
       }, uploadedFiles);
       
       if (result.success) {
@@ -590,6 +523,7 @@ const WorkQueryPage = () => {
       
       if (result.success) {
         toast.success(`Work query "${queryTitle}" deleted successfully`);
+        fetchWorkQueries();
       } else {
         toast.error(result.error || "Failed to delete work query");
       }
@@ -608,7 +542,6 @@ const WorkQueryPage = () => {
   // Refresh data
   const handleRefresh = () => {
     fetchWorkQueries();
-    fetchServices();
     fetchStatistics();
     toast.success("Data refreshed successfully");
   };
@@ -622,13 +555,13 @@ const WorkQueryPage = () => {
     }
   };
 
-  // Show loading state while checking authentication
-  if (authLoading) {
+  // Show loading state
+  if (authLoading || loadingSupervisor) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-4 text-muted-foreground">Loading...</p>
+          <p className="mt-4 text-muted-foreground">Loading supervisor data...</p>
         </div>
       </div>
     );
@@ -659,7 +592,7 @@ const WorkQueryPage = () => {
     <div className="min-h-screen bg-gray-50">
       <DashboardHeader 
         title="Work Query Management" 
-        subtitle={`Report and track issues with facility services - ${supervisorName}`}
+        subtitle={`Report and track issues with facility services - ${currentSupervisor.name}`}
       />
       
       <motion.div 
@@ -677,7 +610,7 @@ const WorkQueryPage = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {loading.statistics ? "Loading..." : statistics?.total || 0}
+                {workQueryLoading.statistics ? "Loading..." : statistics?.total || 0}
               </div>
               <p className="text-xs text-muted-foreground">All queries</p>
             </CardContent>
@@ -690,7 +623,7 @@ const WorkQueryPage = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-yellow-600">
-                {loading.statistics ? "..." : statistics?.statusCounts?.pending || 0}
+                {workQueryLoading.statistics ? "..." : statistics?.statusCounts?.pending || 0}
               </div>
               <p className="text-xs text-muted-foreground">Awaiting response</p>
             </CardContent>
@@ -703,7 +636,7 @@ const WorkQueryPage = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-blue-600">
-                {loading.statistics ? "..." : statistics?.statusCounts?.['in-progress'] || 0}
+                {workQueryLoading.statistics ? "..." : statistics?.statusCounts?.['in-progress'] || 0}
               </div>
               <p className="text-xs text-muted-foreground">Being investigated</p>
             </CardContent>
@@ -716,7 +649,7 @@ const WorkQueryPage = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">
-                {loading.statistics ? "..." : statistics?.statusCounts?.resolved || 0}
+                {workQueryLoading.statistics ? "..." : statistics?.statusCounts?.resolved || 0}
               </div>
               <p className="text-xs text-muted-foreground">Completed queries</p>
             </CardContent>
@@ -732,274 +665,330 @@ const WorkQueryPage = () => {
                 <CardDescription>
                   Manage and track issues with facility services
                 </CardDescription>
+                <div className="mt-2 space-y-1">
+                  <div className="text-sm text-muted-foreground flex items-center">
+                    <User className="inline h-3 w-3 mr-1" />
+                    <span className="font-medium mr-1">Supervisor:</span> {currentSupervisor.name}
+                  </div>
+                  {currentSupervisor.department && (
+                    <div className="text-xs text-muted-foreground flex items-center">
+                      <Building2 className="inline h-3 w-3 mr-1" />
+                      <span className="font-medium mr-1">Department:</span> {currentSupervisor.department}
+                    </div>
+                  )}
+                  {currentSupervisor.site && (
+                    <div className="text-xs text-muted-foreground flex items-center">
+                      <MapPin className="inline h-3 w-3 mr-1" />
+                      <span className="font-medium mr-1">Site:</span> {currentSupervisor.site}
+                    </div>
+                  )}
+                </div>
               </div>
-             <div className="flex flex-wrap gap-2">
-  <Button variant="outline" onClick={handleRefresh} disabled={loading.queries}>
-    <RefreshCw className={`h-4 w-4 mr-2 ${loading.queries ? 'animate-spin' : ''}`} />
-    Refresh
-  </Button>
-  
-  {/* Fixed: Removed disabled prop from New Query button */}
-  <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-    <DialogTrigger asChild>
-      <Button>
-        <Plus className="mr-2 h-4 w-4" />
-        New Query
-      </Button>
-    </DialogTrigger>
-    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-      <DialogHeader>
-        <DialogTitle>Create New Work Query</DialogTitle>
-        <DialogDescription>
-          Report an issue with a facility service
-        </DialogDescription>
-      </DialogHeader>
-      
-      <form onSubmit={handleSubmitQuery} className="space-y-6">
-        {/* Basic Information */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Query Details</h3>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="title">Query Title *</Label>
-              <Input
-                id="title"
-                value={newQuery.title}
-                onChange={(e) => setNewQuery(prev => ({ ...prev, title: e.target.value }))}
-                placeholder="Brief description of the issue"
-                required
-                disabled={loading.creating}
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="category">Category *</Label>
-              <Select 
-                value={newQuery.category} 
-                onValueChange={(value) => setNewQuery(prev => ({ ...prev, category: value }))}
-                disabled={loading.creating}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select category">
-                    {displayCategories.find(c => c.value === newQuery.category)?.label || "Select category"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {displayCategories.map(category => (
-                    <SelectItem key={category.value} value={category.value}>
-                      <div className="flex flex-col">
-                        <span>{category.label}</span>
-                        {category.description && (
-                          <span className="text-xs text-muted-foreground">
-                            {category.description}
-                          </span>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={handleRefresh} disabled={workQueryLoading.queries}>
+                  <RefreshCw className={`h-4 w-4 mr-2 ${workQueryLoading.queries ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+                
+                <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Plus className="mr-2 h-4 w-4" />
+                      New Query
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>Create New Work Query</DialogTitle>
+                      <DialogDescription>
+                        Report an issue with a facility service
+                      </DialogDescription>
+                    </DialogHeader>
+                    
+                    <form onSubmit={handleSubmitQuery} className="space-y-6">
+                      {/* Basic Information */}
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="title">Query Title *</Label>
+                          <Input
+                            id="title"
+                            value={newQuery.title}
+                            onChange={(e) => setNewQuery(prev => ({ ...prev, title: e.target.value }))}
+                            placeholder="Brief description of the issue"
+                            required
+                            disabled={workQueryLoading.creating}
+                          />
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <Label htmlFor="description">Detailed Description *</Label>
+                          <Textarea
+                            id="description"
+                            value={newQuery.description}
+                            onChange={(e) => setNewQuery(prev => ({ ...prev, description: e.target.value }))}
+                            placeholder="Provide detailed information about the issue..."
+                            rows={4}
+                            required
+                            disabled={workQueryLoading.creating}
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* SERVICE INPUT FIELD - CHANGED FROM DROPDOWN TO INPUT */}
+                          <div className="space-y-2">
+                            <Label htmlFor="serviceId">Service ID/Name *</Label>
+                            <Input
+                              id="serviceId"
+                              value={newQuery.serviceId}
+                              onChange={(e) => setNewQuery(prev => ({ ...prev, serviceId: e.target.value }))}
+                              placeholder="Enter Service ID or Name (e.g., CLEAN001 or 'Office Cleaning')"
+                              required
+                              disabled={workQueryLoading.creating}
+                            />
+                            <div className="text-xs text-muted-foreground">
+                              <Info className="inline h-3 w-3 mr-1" />
+                              Enter the Service ID or Name you want to report an issue for
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <Label htmlFor="category">Category *</Label>
+                            <Select 
+                              value={newQuery.category} 
+                              onValueChange={(value) => setNewQuery(prev => ({ ...prev, category: value }))}
+                              disabled={workQueryLoading.creating}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select category">
+                                  {categories.find(c => c.value === newQuery.category)?.label || "Select category"}
+                                </SelectValue>
+                              </SelectTrigger>
+                              <SelectContent>
+                                {categories.map(category => (
+                                  <SelectItem key={category.value} value={category.value}>
+                                    <div className="flex flex-col">
+                                      <span>{category.label}</span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {category.description}
+                                      </span>
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        {/* Service Type Selection - Optional but helpful */}
+                        <div className="space-y-2">
+                          <Label>Service Type (Optional)</Label>
+                          <p className="text-xs text-muted-foreground mb-2">
+                            Select the type of service you're reporting an issue for
+                          </p>
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                            {serviceTypes.map((serviceType) => (
+                              <Button
+                                key={serviceType.value}
+                                type="button"
+                                variant={selectedServiceType === serviceType.value ? "default" : "outline"}
+                                className="justify-start h-auto py-2"
+                                onClick={() => setSelectedServiceType(serviceType.value)}
+                              >
+                                <div className="flex items-center gap-2">
+                                  {serviceType.icon}
+                                  <span>{serviceType.label}</span>
+                                </div>
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="priority">Priority Level *</Label>
+                          <Select 
+                            value={newQuery.priority} 
+                            onValueChange={(value) => setNewQuery(prev => ({ ...prev, priority: value as any }))}
+                            disabled={workQueryLoading.creating}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select priority">
+                                {priorities.find(p => p.value === newQuery.priority)?.label || "Select priority"}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              {priorities.map(priority => (
+                                <SelectItem key={priority.value} value={priority.value}>
+                                  <div className="flex items-center gap-2">
+                                    <div className={`w-3 h-3 rounded-full ${
+                                      priority.value === 'low' ? 'bg-green-500' :
+                                      priority.value === 'medium' ? 'bg-yellow-500' :
+                                      priority.value === 'high' ? 'bg-orange-500' : 'bg-red-500'
+                                    }`} />
+                                    <div className="flex flex-col">
+                                      <span>{priority.label}</span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {priority.description}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {/* File Upload Section */}
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold">Supporting Evidence (Optional)</h3>
+                        
+                        <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                          <Upload className="mx-auto h-8 w-8 text-muted-foreground" />
+                          <p className="mt-2 text-sm text-muted-foreground">
+                            Upload screenshots, photos, or documents (Max 10 files, 25MB each)
+                          </p>
+                          <Input
+                            type="file"
+                            multiple
+                            onChange={handleFileUpload}
+                            className="hidden"
+                            id="file-upload"
+                            accept="image/*,video/*,.pdf,.doc,.docx"
+                            disabled={workQueryLoading.creating}
+                          />
+                          <Label htmlFor="file-upload">
+                            <Button 
+                              variant="outline" 
+                              className="mt-4" 
+                              type="button"
+                              disabled={workQueryLoading.creating}
+                            >
+                              Choose Files
+                            </Button>
+                          </Label>
+                        </div>
+
+                        {uploadedFiles.length > 0 && (
+                          <div className="space-y-3">
+                            <Label>Uploaded Files ({uploadedFiles.length}/10)</Label>
+                            <div className="space-y-2">
+                              {uploadedFiles.map((file, index) => (
+                                <FilePreview 
+                                  key={index} 
+                                  file={file} 
+                                  onRemove={() => handleRemoveFile(index)} 
+                                />
+                              ))}
+                            </div>
+                          </div>
                         )}
                       </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="description">Detailed Description *</Label>
-            <Textarea
-              id="description"
-              value={newQuery.description}
-              onChange={(e) => setNewQuery(prev => ({ ...prev, description: e.target.value }))}
-              placeholder="Provide detailed information about the issue..."
-              rows={4}
-              required
-              disabled={loading.creating}
-            />
-          </div>
-        </div>
-
-        {/* Service Selection */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Related Service</h3>
-          
-          <div className="space-y-2">
-            <Label htmlFor="service">Select Service *</Label>
-            <Select 
-              value={newQuery.serviceId} 
-              onValueChange={handleServiceSelect}
-              disabled={loading.creating || loading.services}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Choose a service">
-                  {selectedService ? selectedService.title : "Select a service"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {displayServices.length > 0 ? (
-                  displayServices.map(service => (
-                    <SelectItem key={service.serviceId} value={service.serviceId}>
-                      <div className="flex flex-col">
-                        <span>{service.title}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {service.serviceId} • {service.type}
-                        </span>
+                      {/* Service Examples (for guidance) */}
+                      <div className="p-4 bg-gray-50 rounded-lg border">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Info className="h-4 w-4 text-blue-600" />
+                          <Label className="font-medium text-gray-900">Service Examples</Label>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-3">
+                          Here are some examples of service IDs/Names you can use:
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {SERVICE_EXAMPLES.map((service, index) => (
+                            <div 
+                              key={index}
+                              className="text-xs p-2 border rounded bg-white hover:bg-gray-50 cursor-pointer"
+                              onClick={() => {
+                                setNewQuery(prev => ({ 
+                                  ...prev, 
+                                  serviceId: `${service.id} - ${service.name}` 
+                                }));
+                                setSelectedServiceType(service.type);
+                              }}
+                            >
+                              <div className="flex items-center gap-2">
+                                <ServiceIcon type={service.type} />
+                                <div>
+                                  <div className="font-medium">{service.id}</div>
+                                  <div className="text-muted-foreground truncate">{service.name}</div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-2">
+                          Tip: Click on any example to auto-fill the Service field
+                        </p>
                       </div>
-                    </SelectItem>
-                  ))
-                ) : (
-                  <div className="p-2 text-center text-muted-foreground">
-                    <AlertCircle className="h-4 w-4 mx-auto mb-1" />
-                    <span>No services available</span>
-                  </div>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
 
-          {/* Selected Service Details */}
-          {selectedService && (
-            <div className="p-4 border rounded-lg bg-gray-50">
-              <div className="flex items-center justify-between mb-2">
-                <Label className="font-semibold">Service Details</Label>
-                <ServiceTypeBadge type={selectedService.type} />
+                      {/* Supervisor Info Display */}
+                      <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                        <div className="flex items-center gap-2 mb-2">
+                          <User className="h-4 w-4 text-blue-600" />
+                          <Label className="font-semibold text-blue-900">Supervisor Information</Label>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <div className="text-blue-800 font-medium">Name</div>
+                            <div>{currentSupervisor.name}</div>
+                          </div>
+                          <div>
+                            <div className="text-blue-800 font-medium">ID</div>
+                            <div className="font-mono text-xs">{currentSupervisor.id}</div>
+                          </div>
+                          {currentSupervisor.department && (
+                            <div>
+                              <div className="text-blue-800 font-medium">Department</div>
+                              <div>{currentSupervisor.department}</div>
+                            </div>
+                          )}
+                          {currentSupervisor.site && (
+                            <div>
+                              <div className="text-blue-800 font-medium">Site</div>
+                              <div>{currentSupervisor.site}</div>
+                            </div>
+                          )}
+                        </div>
+                        {currentSupervisor.email && (
+                          <div className="mt-2 text-xs text-blue-700 flex items-center">
+                            <Mail className="h-3 w-3 mr-1" />
+                            {currentSupervisor.email}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Submit Button */}
+                      <DialogFooter className="gap-2">
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          onClick={() => setIsCreateDialogOpen(false)}
+                          disabled={workQueryLoading.creating}
+                        >
+                          Cancel
+                        </Button>
+                        <Button 
+                          type="submit" 
+                          disabled={workQueryLoading.creating}
+                        >
+                          {workQueryLoading.creating ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Creating...
+                            </>
+                          ) : "Submit Query"}
+                        </Button>
+                      </DialogFooter>
+                    </form>
+                  </DialogContent>
+                </Dialog>
               </div>
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center gap-2">
-                  <MapPin className="h-3 w-3" />
-                  <span><strong>Location:</strong> {selectedService.location}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <User className="h-3 w-3" />
-                  <span><strong>Assigned To:</strong> {selectedService.assignedToName}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-3 w-3" />
-                  <span><strong>Schedule:</strong> {formatDate(selectedService.schedule)}</span>
-                </div>
-                <div>
-                  <strong>Description:</strong> {selectedService.description}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="priority">Priority Level *</Label>
-          <Select 
-            value={newQuery.priority} 
-            onValueChange={(value) => setNewQuery(prev => ({ ...prev, priority: value as any }))}
-            disabled={loading.creating}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select priority">
-                {displayPriorities.find(p => p.value === newQuery.priority)?.label || "Select priority"}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {displayPriorities.map(priority => (
-                <SelectItem key={priority.value} value={priority.value}>
-                  <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${
-                      priority.value === 'low' ? 'bg-green-500' :
-                      priority.value === 'medium' ? 'bg-yellow-500' :
-                      priority.value === 'high' ? 'bg-orange-500' : 'bg-red-500'
-                    }`} />
-                    <div className="flex flex-col">
-                      <span>{priority.label}</span>
-                      {priority.description && (
-                        <span className="text-xs text-muted-foreground">
-                          {priority.description}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* File Upload Section */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Supporting Evidence</h3>
-          
-          <div className="border-2 border-dashed rounded-lg p-6 text-center">
-            <Upload className="mx-auto h-8 w-8 text-muted-foreground" />
-            <p className="mt-2 text-sm text-muted-foreground">
-              Upload screenshots, photos, documents, or other proof (Max 10 files, 25MB each)
-            </p>
-            <Input
-              type="file"
-              multiple
-              onChange={handleFileUpload}
-              className="hidden"
-              id="file-upload"
-              accept="image/*,video/*,.pdf,.doc,.docx,.txt,.xlsx,.xls"
-              disabled={loading.creating}
-            />
-            <Label htmlFor="file-upload">
-              <Button 
-                variant="outline" 
-                className="mt-4" 
-                type="button"
-                disabled={loading.creating}
-              >
-                Choose Files
-              </Button>
-            </Label>
-          </div>
-
-          {/* Uploaded Files List */}
-          {uploadedFiles.length > 0 && (
-            <div className="space-y-3">
-              <Label>Uploaded Files ({uploadedFiles.length}/10)</Label>
-              <div className="space-y-2">
-                {uploadedFiles.map((file, index) => (
-                  <FilePreview 
-                    key={index} 
-                    file={file} 
-                    onRemove={() => handleRemoveFile(index)} 
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Submit Button */}
-        <div className="flex gap-2 pt-4">
-          <Button 
-            type="button" 
-            variant="outline" 
-            onClick={() => setIsCreateDialogOpen(false)}
-            className="flex-1"
-            disabled={loading.creating}
-          >
-            Cancel
-          </Button>
-          <Button 
-            type="submit" 
-            className="flex-1"
-            disabled={loading.creating}
-          >
-            {loading.creating ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creating...
-              </>
-            ) : "Submit Query"}
-          </Button>
-        </div>
-      </form>
-    </DialogContent>
-  </Dialog>
-</div>
             </div>
           </CardHeader>
           
           <CardContent>
             {/* Filters */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div className="space-y-2">
                 <Label>Search</Label>
                 <div className="relative">
@@ -1018,12 +1007,12 @@ const WorkQueryPage = () => {
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger>
                     <SelectValue placeholder="All Status">
-                      {statusFilter === "all" ? "All Status" : displayStatuses.find(s => s.value === statusFilter)?.label || statusFilter}
+                      {statusFilter === "all" ? "All Status" : statuses.find(s => s.value === statusFilter)?.label || statusFilter}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Status</SelectItem>
-                    {displayStatuses.map(status => (
+                    {statuses.map(status => (
                       <SelectItem key={status.value} value={status.value}>
                         <div className="flex items-center gap-2">
                           <div className={`w-3 h-3 rounded-full ${
@@ -1031,14 +1020,7 @@ const WorkQueryPage = () => {
                             status.value === 'in-progress' ? 'bg-blue-500' :
                             status.value === 'resolved' ? 'bg-green-500' : 'bg-red-500'
                           }`} />
-                          <div className="flex flex-col">
-                            <span>{status.label}</span>
-                            {status.description && (
-                              <span className="text-xs text-muted-foreground">
-                                {status.description}
-                              </span>
-                            )}
-                          </div>
+                          <span>{status.label}</span>
                         </div>
                       </SelectItem>
                     ))}
@@ -1047,51 +1029,34 @@ const WorkQueryPage = () => {
               </div>
               
               <div className="space-y-2">
-                <Label>Service Type</Label>
-                <Select value={serviceTypeFilter} onValueChange={setServiceTypeFilter}>
+                <Label>Priority</Label>
+                <Select value={priorityFilter} onValueChange={setPriorityFilter}>
                   <SelectTrigger>
-                    <SelectValue placeholder="All Types">
-                      {serviceTypeFilter === "all" ? "All Types" : displayServiceTypes.find(t => t.value === serviceTypeFilter)?.label || serviceTypeFilter}
+                    <SelectValue placeholder="All Priorities">
+                      {priorityFilter === "all" ? "All Priorities" : priorities.find(p => p.value === priorityFilter)?.label || priorityFilter}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Types</SelectItem>
-                    {displayServiceTypes.map(type => (
-                      <SelectItem key={type.value} value={type.value}>
+                    <SelectItem value="all">All Priorities</SelectItem>
+                    {priorities.map(priority => (
+                      <SelectItem key={priority.value} value={priority.value}>
                         <div className="flex items-center gap-2">
-                          {type.value === 'cleaning' && <Sparkles className="h-4 w-4 text-blue-600" />}
-                          {type.value === 'waste-management' && <Trash2 className="h-4 w-4 text-green-600" />}
-                          {type.value === 'parking-management' && <Car className="h-4 w-4 text-purple-600" />}
-                          {type.value === 'security' && <Shield className="h-4 w-4 text-orange-600" />}
-                          {type.value === 'maintenance' && <Wrench className="h-4 w-4 text-red-600" />}
-                          <span>{type.label}</span>
+                          <div className={`w-3 h-3 rounded-full ${
+                            priority.value === 'low' ? 'bg-green-500' :
+                            priority.value === 'medium' ? 'bg-yellow-500' :
+                            priority.value === 'high' ? 'bg-orange-500' : 'bg-red-500'
+                          }`} />
+                          <span>{priority.label}</span>
                         </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              
-              <div className="space-y-2">
-                <Label>Actions</Label>
-                <Button 
-                  variant="outline" 
-                  className="w-full" 
-                  onClick={() => {
-                    setSearchTerm("");
-                    setStatusFilter("all");
-                    setPriorityFilter("all");
-                    setServiceTypeFilter("all");
-                  }}
-                >
-                  <Filter className="h-4 w-4 mr-2" />
-                  Clear Filters
-                </Button>
               </div>
             </div>
 
             {/* Queries Table */}
-            {loading.queries ? (
+            {workQueryLoading.queries ? (
               <div className="text-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
                 <p className="mt-4 text-muted-foreground">Loading work queries...</p>
@@ -1115,11 +1080,9 @@ const WorkQueryPage = () => {
                         <TableHead>Query ID</TableHead>
                         <TableHead>Title</TableHead>
                         <TableHead>Service</TableHead>
-                        <TableHead>Category</TableHead>
                         <TableHead>Priority</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Created</TableHead>
-                        <TableHead>Files</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1139,18 +1102,8 @@ const WorkQueryPage = () => {
                           </TableCell>
                           <TableCell>
                             <div className="max-w-xs">
-                              <div className="font-medium text-sm">{query.serviceTitle || query.serviceId}</div>
-                              {query.serviceType && (
-                                <Badge variant="outline" className="mt-1">
-                                  {query.serviceType.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                                </Badge>
-                              )}
+                              <div className="font-medium text-sm">{query.serviceId}</div>
                             </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">
-                              {displayCategories.find(c => c.value === query.category)?.label || query.category}
-                            </Badge>
                           </TableCell>
                           <TableCell>
                             <PriorityBadge priority={query.priority} />
@@ -1161,12 +1114,6 @@ const WorkQueryPage = () => {
                           <TableCell>
                             <div className="text-sm">
                               {formatDate(query.createdAt)}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              <Paperclip className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-sm">{query.proofFiles.length}</span>
                             </div>
                           </TableCell>
                           <TableCell>
@@ -1187,7 +1134,7 @@ const WorkQueryPage = () => {
                                     variant="destructive"
                                     disabled={
                                       (query.status === 'in-progress' || query.status === 'resolved') ||
-                                      loading.deleting
+                                      workQueryLoading.deleting
                                     }
                                   >
                                     <Trash2 className="h-3 w-3 mr-1" />
@@ -1222,7 +1169,7 @@ const WorkQueryPage = () => {
 
                 {/* View Query Details Dialog */}
                 <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-                  <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                  <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
                     {selectedQueryForView && (
                       <>
                         <DialogHeader>
@@ -1236,10 +1183,10 @@ const WorkQueryPage = () => {
                               <p className="mt-1">{selectedQueryForView.title}</p>
                             </div>
                             <div>
-                              <Label className="font-semibold">Category</Label>
-                              <Badge className="mt-1">
-                                {displayCategories.find(c => c.value === selectedQueryForView.category)?.label || selectedQueryForView.category}
-                              </Badge>
+                              <Label className="font-semibold">Service</Label>
+                              <div className="mt-1">
+                                <div className="font-medium">{selectedQueryForView.serviceId}</div>
+                              </div>
                             </div>
                             <div>
                               <Label className="font-semibold">Priority</Label>
@@ -1253,6 +1200,34 @@ const WorkQueryPage = () => {
                                 <StatusBadge status={selectedQueryForView.status} />
                               </div>
                             </div>
+                            <div>
+                              <Label className="font-semibold">Category</Label>
+                              <p className="mt-1">
+                                {categories.find(c => c.value === selectedQueryForView.category)?.label || selectedQueryForView.category}
+                              </p>
+                            </div>
+                            <div>
+                              <Label className="font-semibold">Created</Label>
+                              <p className="mt-1">{formatDate(selectedQueryForView.createdAt)}</p>
+                            </div>
+                          </div>
+
+                          {/* Supervisor Information */}
+                          <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              <User className="h-5 w-5 text-blue-600" />
+                              <Label className="font-semibold text-blue-900">Reported By</Label>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div>
+                                <div className="text-sm text-blue-800 font-medium">Supervisor</div>
+                                <div className="text-sm">{selectedQueryForView.reportedBy?.name || selectedQueryForView.supervisorName}</div>
+                              </div>
+                              <div>
+                                <div className="text-sm text-blue-800 font-medium">Role</div>
+                                <div className="text-sm">{selectedQueryForView.reportedBy?.role || 'Supervisor'}</div>
+                              </div>
+                            </div>
                           </div>
 
                           {/* Description */}
@@ -1261,24 +1236,6 @@ const WorkQueryPage = () => {
                             <p className="mt-1 text-sm whitespace-pre-wrap bg-gray-50 p-3 rounded-lg">
                               {selectedQueryForView.description}
                             </p>
-                          </div>
-
-                          {/* Service Information */}
-                          <div>
-                            <Label className="font-semibold">Service Information</Label>
-                            <div className="mt-1 p-3 border rounded-lg">
-                              <div className="font-medium">{selectedQueryForView.serviceTitle || selectedQueryForView.serviceId}</div>
-                              {selectedQueryForView.serviceType && (
-                                <div className="mt-2">
-                                  <ServiceTypeBadge type={selectedQueryForView.serviceType} />
-                                </div>
-                              )}
-                              {selectedQueryForView.serviceStaffName && (
-                                <div className="mt-2 text-sm">
-                                  <strong>Service Staff:</strong> {selectedQueryForView.serviceStaffName}
-                                </div>
-                              )}
-                            </div>
                           </div>
 
                           {/* Proof Files */}
@@ -1295,7 +1252,7 @@ const WorkQueryPage = () => {
                                       <div>
                                         <div className="font-medium">{file.name}</div>
                                         <div className="text-xs text-muted-foreground">
-                                          {file.size} • {file.type} • {formatDate(file.uploadDate)}
+                                          {file.size} • {formatDate(file.uploadDate)}
                                         </div>
                                       </div>
                                     </div>
@@ -1325,61 +1282,18 @@ const WorkQueryPage = () => {
 
                           {/* Superadmin Response */}
                           {selectedQueryForView.superadminResponse && (
-                            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                              <Label className="font-semibold text-blue-900">Superadmin Response</Label>
-                              <p className="mt-1 text-sm text-blue-800 whitespace-pre-wrap">
+                            <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                              <Label className="font-semibold text-green-900">Superadmin Response</Label>
+                              <p className="mt-1 text-sm text-green-800 whitespace-pre-wrap">
                                 {selectedQueryForView.superadminResponse}
                               </p>
                               {selectedQueryForView.responseDate && (
-                                <div className="text-xs text-blue-600 mt-2">
+                                <div className="text-xs text-green-600 mt-2">
                                   Responded on: {formatDate(selectedQueryForView.responseDate)}
                                 </div>
                               )}
                             </div>
                           )}
-
-                          {/* Created Info */}
-                          <div className="text-sm text-muted-foreground">
-                            Created by {selectedQueryForView.reportedBy.name} on {formatDate(selectedQueryForView.createdAt)}
-                          </div>
-
-                          {/* Actions in View Dialog */}
-                          <DialogFooter>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button 
-                                  variant="destructive"
-                                  disabled={
-                                    (selectedQueryForView.status === 'in-progress' || selectedQueryForView.status === 'resolved') ||
-                                    loading.deleting
-                                  }
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete Query
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Work Query</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Are you sure you want to delete this work query? This action cannot be undone.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    className="bg-red-600 hover:bg-red-700"
-                                    onClick={() => {
-                                      handleDeleteQuery(selectedQueryForView._id, selectedQueryForView.title);
-                                      setIsViewDialogOpen(false);
-                                    }}
-                                  >
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </DialogFooter>
                         </div>
                       </>
                     )}

@@ -38,10 +38,11 @@ import invoiceRoutes from './routes/invoiceRoutes';
 import managerLeaveRoutes from './routes/managerLeaveRoutes';
 import attendanceRoutes from './routes/attendanceRoutes';
 import supervisorRoutes from './routes/supervisorRoutes';
-import dashboardRoutes from './routes/dashboardRoutes';
+//import dashboardRoutes from './routes/dashboardRoutes';
 import trainingRoutes from './routes/trainingRoutes';
 import briefingRoutes from './routes/briefingRoutes';
 import settingsRoutes from './routes/settings';
+import managerAttendanceRoutes from './routes/managerAttendanceRoutes';
 
 const app: Application = express();
 
@@ -226,12 +227,13 @@ app.use('/api/alerts',alertRoutes);
 app.use('/api/machines', machineRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/invoices', invoiceRoutes);
-app.use('/api/manager-leaves', managerLeaveRoutes); // Add this line
+app.use('/api/manager-leaves', managerLeaveRoutes); 
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/supervisors', supervisorRoutes);
 app.use('/api/trainings', trainingRoutes);
 app.use('/api/briefings', briefingRoutes);
-app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/manager-attendance', managerAttendanceRoutes);
+
 
 // ==================== BASIC TEST ENDPOINTS ====================
 app.get('/', (req: Request, res: Response) => {
@@ -310,7 +312,7 @@ app.post('/api/users', async (req: Request, res: Response) => {
       lastName,
       name,
       department: department || 'General',
-      site: site || 'Mumbai Office',
+      // site: site || 'Mumbai Office',
       phone,
       joinDate: joinDate ? new Date(joinDate) : new Date(),
       isActive: true
@@ -328,7 +330,7 @@ app.post('/api/users', async (req: Request, res: Response) => {
       lastName: newUser.lastName,
       role: newUser.role,
       department: newUser.department,
-      site: newUser.site,
+      //site: newUser.site,
       phone: newUser.phone,
       isActive: newUser.isActive,
       status: newUser.isActive ? 'active' : 'inactive',

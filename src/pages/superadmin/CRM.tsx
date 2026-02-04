@@ -10,9 +10,15 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, Plus, Edit, Trash2, Phone, Mail, Calendar, Eye, MapPin, Building, Loader2, Upload, Download } from "lucide-react";
+import { 
+  Search, Plus, Edit, Trash2, Phone, Mail, Calendar, Eye, MapPin, Building, 
+  Loader2, Upload, Download, Users, TrendingUp, Target, BarChart3, MessageSquare,
+  ChevronRight, Filter, MoreVertical, CheckCircle, XCircle, AlertCircle,
+  ArrowUpRight, Users as UsersIcon, FileText, Clock, Bell, Sun, Moon,
+  DollarSign, Check, X, Menu, DownloadCloud, UploadCloud
+} from "lucide-react";
 import { toast } from "sonner";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import * as XLSX from "xlsx";
 import { 
   crmService, 
@@ -33,13 +39,15 @@ const CRM = () => {
   const [clientDialogOpen, setClientDialogOpen] = useState(false);
   const [leadDialogOpen, setLeadDialogOpen] = useState(false);
   const [commDialogOpen, setCommDialogOpen] = useState(false);
-  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importClientDialogOpen, setImportClientDialogOpen] = useState(false);
+  const [importLeadDialogOpen, setImportLeadDialogOpen] = useState(false);
   const [viewClientDialog, setViewClientDialog] = useState<string | null>(null);
   const [viewLeadDialog, setViewLeadDialog] = useState<string | null>(null);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importLoading, setImportLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState("clients");
   const [loading, setLoading] = useState({
     clients: false,
     leads: false,
@@ -153,72 +161,62 @@ const CRM = () => {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Client Functions
-  const handleAddClient = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    
-    try {
-      const newClient = {
-        name: formData.get("name") as string,
-        company: formData.get("company") as string,
-        email: formData.get("email") as string,
-        phone: formData.get("phone") as string,
-        address: formData.get("address") as string || "",
-        city: formData.get("city") as string || "Mumbai",
-        status: "active" as const,
-        value: formData.get("value") as string,
-        industry: formData.get("industry") as string || "IT Services",
-        contactPerson: formData.get("contactPerson") as string || "",
+  // Common function to read Excel file
+  const readExcelFile = (file: File): Promise<any[]> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      
+      reader.onload = (e) => {
+        try {
+          const data = e.target?.result;
+          const workbook = XLSX.read(data, { type: 'binary' });
+          const sheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json(sheet, { 
+            header: 1,
+            blankrows: false,
+            defval: ''
+          });
+          
+          if (jsonData.length < 2) {
+            resolve([]);
+            return;
+          }
+          
+          const headers = (jsonData[0] as string[]).map(h => h?.toString().trim() || '');
+          const rows = jsonData.slice(1) as any[];
+          
+          const formattedData = rows
+            .filter(row => {
+              return row.some((cell: any) => cell !== null && cell !== undefined && cell.toString().trim() !== '');
+            })
+            .map(row => {
+              const obj: any = {};
+              headers.forEach((header, index) => {
+                if (header && row[index] !== undefined && row[index] !== null) {
+                  obj[header] = row[index]?.toString().trim();
+                } else {
+                  obj[header] = '';
+                }
+              });
+              return obj;
+            });
+          
+          resolve(formattedData);
+        } catch (error) {
+          reject(error);
+        }
       };
-
-      await crmService.clients.create(newClient);
-      setClientDialogOpen(false);
-      fetchAllData();
-    } catch (error) {
-      console.error("Failed to add client:", error);
-    }
-  };
-
-  const handleEditClient = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!editingClient) return;
-    
-    const formData = new FormData(e.currentTarget);
-    
-    try {
-      const updateData = {
-        name: formData.get("name") as string,
-        company: formData.get("company") as string,
-        email: formData.get("email") as string,
-        phone: formData.get("phone") as string,
-        address: formData.get("address") as string,
-        city: formData.get("city") as string,
-        value: formData.get("value") as string,
-        industry: formData.get("industry") as string,
-        contactPerson: formData.get("contactPerson") as string,
+      
+      reader.onerror = (error) => {
+        reject(error);
       };
-
-      await crmService.clients.update(editingClient._id, updateData);
-      setEditingClient(null);
-      fetchAllData();
-    } catch (error) {
-      console.error("Failed to update client:", error);
-    }
+      
+      reader.readAsBinaryString(file);
+    });
   };
 
-  const handleDeleteClient = async (clientId: string) => {
-    if (!confirm("Are you sure you want to delete this client?")) return;
-    
-    try {
-      await crmService.clients.delete(clientId);
-      fetchAllData();
-    } catch (error) {
-      console.error("Failed to delete client:", error);
-    }
-  };
-
-  // Excel Import Functions
+  // Client Import Functions
   const handleImportExcel = async () => {
     if (!importFile) {
       toast.error("Please select a file to import");
@@ -261,7 +259,7 @@ const CRM = () => {
         if (errors.length > 0) {
           console.error('Import errors:', errors);
         }
-        setImportDialogOpen(false);
+        setImportClientDialogOpen(false);
         setImportFile(null);
         fetchAllData();
       } else {
@@ -273,61 +271,6 @@ const CRM = () => {
     } finally {
       setImportLoading(false);
     }
-  };
-
-  const readExcelFile = (file: File): Promise<any[]> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      
-      reader.onload = (e) => {
-        try {
-          const data = e.target?.result;
-          const workbook = XLSX.read(data, { type: 'binary' });
-          const sheetName = workbook.SheetNames[0];
-          const sheet = workbook.Sheets[sheetName];
-          const jsonData = XLSX.utils.sheet_to_json(sheet, { 
-            header: 1,
-            blankrows: false,
-            defval: ''
-          });
-          
-          if (jsonData.length < 2) {
-            resolve([]);
-            return;
-          }
-          
-          const headers = (jsonData[0] as string[]).map(h => h?.toString().trim() || '');
-          const rows = jsonData.slice(1) as any[];
-          
-          const formattedData = rows
-            .filter(row => {
-              return row.some((cell: any) => cell !== null && cell !== undefined && cell.toString().trim() !== '');
-            })
-            .map(row => {
-              const obj: any = {};
-              headers.forEach((header, index) => {
-                if (header && row[index] !== undefined && row[index] !== null) {
-                  obj[header] = row[index]?.toString().trim();
-                } else {
-                  obj[header] = '';
-                }
-              });
-              return obj;
-            })
-            .filter(row => row['Client Name'] || row['Company']);
-          
-          resolve(formattedData);
-        } catch (error) {
-          reject(error);
-        }
-      };
-      
-      reader.onerror = (error) => {
-        reject(error);
-      };
-      
-      reader.readAsBinaryString(file);
-    });
   };
 
   const validateImportData = (data: any[]): Client[] => {
@@ -379,7 +322,7 @@ const CRM = () => {
         city: row['City'] || 'Pune',
         value: expectedValue,
         address: row['Address'] || '',
-        contactPerson: '', // Add empty string as default
+        contactPerson: row['Contact Person'] || '',
         status: 'active',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -401,7 +344,7 @@ const CRM = () => {
     return validClients;
   };
 
-  const downloadTemplate = () => {
+  const downloadClientTemplate = () => {
     const templateData = [
       ['SR. NO.', 'Client Name', 'Company', 'Email', 'Phone', 'Industry', 'City', 'Expected Value', 'Address', 'Contact Person (Optional)'],
       ['1', 'PHOENIX MALL', 'ALYSSUM DEVELOPERS PVT LTD', 'contact@phoenixmall.com', '9876543210', 'MALL', 'PUNE', '₹50,00,000', 'WAKAD. PUNE', ''],
@@ -419,6 +362,264 @@ const CRM = () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Client Details');
     XLSX.writeFile(wb, 'Client_Import_Template.xlsx');
+  };
+
+  // Lead Import Functions
+  const handleImportLeadExcel = async () => {
+    if (!importFile) {
+      toast.error("Please select a file to import");
+      return;
+    }
+    
+    setImportLoading(true);
+    
+    try {
+      const importedData = await readExcelFile(importFile);
+      console.log('Raw imported data:', importedData);
+      
+      const validData = validateLeadImportData(importedData);
+      console.log('Valid lead data:', validData);
+      
+      if (validData.length === 0) {
+        toast.error("No valid lead data found in the file");
+        return;
+      }
+      
+      let successCount = 0;
+      let errorCount = 0;
+      const errors: string[] = [];
+      
+      // Import each valid lead
+      for (const leadData of validData) {
+        try {
+          // Remove the temporary _id before sending to API
+          const { _id, createdAt, updatedAt, ...leadToCreate } = leadData;
+          await crmService.leads.create(leadToCreate);
+          successCount++;
+        } catch (error: any) {
+          console.error(`Failed to import lead ${leadData.name}:`, error);
+          errors.push(`${leadData.name}: ${error.message || 'Unknown error'}`);
+          errorCount++;
+        }
+      }
+      
+      if (successCount > 0) {
+        toast.success(`Successfully imported ${successCount} leads${errorCount > 0 ? `, ${errorCount} failed` : ''}`);
+        if (errors.length > 0) {
+          console.error('Lead import errors:', errors);
+        }
+        setImportLeadDialogOpen(false);
+        setImportFile(null);
+        fetchAllData();
+      } else {
+        toast.error(`Failed to import any leads. ${errors[0] || 'Check the template format.'}`);
+      }
+    } catch (error) {
+      console.error("Lead import failed:", error);
+      toast.error("Failed to import file. Please check the format.");
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const validateLeadImportData = (data: any[]): Lead[] => {
+    const validLeads: Lead[] = [];
+    
+    console.log('Validating lead data, total rows:', data.length);
+    
+    data.forEach((row, index) => {
+      console.log(`Row ${index}:`, row);
+      
+      // Get values from row (case-insensitive column names)
+      const leadName = row['Lead Name'] || row['Lead Name*'] || row['LEAD NAME'] || row['lead name'] || '';
+      const companyName = row['Company'] || row['Company*'] || row['COMPANY'] || row['company'] || '';
+      const email = row['Email'] || row['Email*'] || row['EMAIL'] || row['email'] || '';
+      const phone = row['Phone'] || row['Phone*'] || row['PHONE'] || row['phone'] || '';
+      const source = row['Source'] || row['Source*'] || row['SOURCE'] || row['source'] || 'Website';
+      const expectedValue = row['Expected Value'] || row['Expected Value*'] || row['EXPECTED VALUE'] || row['expected value'] || row['Value'] || '';
+      const assignedTo = row['Assigned To'] || row['Assigned To*'] || row['ASSIGNED TO'] || row['assigned to'] || 'Sales Team';
+      const followUpDate = row['Follow-up Date'] || row['Follow-up Date*'] || row['FOLLOW-UP DATE'] || row['follow-up date'] || row['Follow Up Date'] || '';
+      const notes = row['Notes'] || row['NOTES'] || row['notes'] || '';
+      
+      console.log(`Row ${index} parsed:`, {
+        leadName, companyName, email, phone, source, expectedValue, assignedTo, followUpDate, notes
+      });
+      
+      // Skip if both lead name and company are empty
+      if (!leadName.trim() && !companyName.trim()) {
+        console.log(`Skipping row ${index + 1}: Missing both lead name and company`);
+        return;
+      }
+      
+      // Generate missing required data
+      let finalLeadName = leadName.trim();
+      let finalCompanyName = companyName.trim();
+      let finalEmail = email.trim();
+      let finalPhone = phone.toString().trim();
+      let finalValue = expectedValue.trim();
+      
+      // If lead name is empty but company exists, use company name
+      if (!finalLeadName && finalCompanyName) {
+        finalLeadName = `Contact at ${finalCompanyName}`;
+      }
+      
+      // If company is empty but lead name exists, use lead name
+      if (!finalCompanyName && finalLeadName) {
+        finalCompanyName = `${finalLeadName}'s Company`;
+      }
+      
+      // Generate email if empty
+      if (!finalEmail && finalLeadName) {
+        const emailName = finalLeadName.toLowerCase()
+          .replace(/[^\w\s]/g, '')
+          .replace(/\s+/g, '.');
+        finalEmail = `${emailName}@company.com`;
+      }
+      
+      // Generate phone number if empty
+      if (!finalPhone) {
+        const randomNum = Math.floor(1000000000 + Math.random() * 9000000000);
+        finalPhone = `9${randomNum.toString().slice(0, 9)}`;
+      }
+      
+      // Generate expected value if empty
+      if (!finalValue) {
+        const randomValue = Math.floor(10 + Math.random() * 90) * 100000;
+        finalValue = `₹${randomValue.toLocaleString('en-IN')}`;
+      }
+      
+      // Validate source
+      const validSources = ['Website', 'Referral', 'Cold Call', 'Social Media', 'Email Campaign', 'Trade Show'];
+      const finalSource = validSources.includes(source) ? source : 'Website';
+      
+      // Format follow-up date if provided
+      let formattedFollowUpDate = '';
+      if (followUpDate) {
+        try {
+          // Try to parse the date
+          const date = new Date(followUpDate);
+          if (!isNaN(date.getTime())) {
+            formattedFollowUpDate = date.toISOString();
+          }
+        } catch (e) {
+          console.log('Invalid follow-up date format:', followUpDate);
+        }
+      }
+      
+      // Create lead object
+      const lead: Lead = {
+        _id: `temp-${Date.now()}-${index}`,
+        name: finalLeadName,
+        company: finalCompanyName,
+        email: finalEmail,
+        phone: finalPhone,
+        source: finalSource,
+        status: 'new',
+        value: finalValue,
+        assignedTo: assignedTo.trim() || 'Sales Team',
+        followUpDate: formattedFollowUpDate,
+        notes: notes.trim(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      
+      console.log(`Validated lead ${index}:`, lead);
+      validLeads.push(lead);
+    });
+    
+    console.log('Total valid leads:', validLeads.length);
+    return validLeads;
+  };
+
+  const downloadLeadTemplate = () => {
+    const templateData = [
+      ['Lead Name*', 'Company*', 'Email*', 'Phone*', 'Source*', 'Expected Value*', 'Assigned To*', 'Follow-up Date', 'Notes'],
+      ['Amit Sharma', 'Sharma Enterprises', 'amit@sharma.com', '9876543210', 'Website', '₹30,00,000', 'Sales Team', '2024-01-20', 'Interested in commercial space'],
+      ['Priya Patel', 'Patel Group', 'priya@patelgroup.com', '9876543211', 'Referral', '₹45,00,000', 'Marketing Team', '2024-01-25', 'Follow up for meeting'],
+      ['Raj Kumar', 'Kumar Industries', 'raj@kumar.com', '9876543212', 'Cold Call', '₹25,00,000', 'Sales Team', '2024-01-22', 'Requested proposal'],
+      ['Sneha Gupta', 'Gupta Retail', 'sneha@gupta.com', '9876543213', 'Social Media', '₹35,00,000', 'Marketing Team', '2024-01-28', 'Initial inquiry'],
+      ['Vikram Singh', 'Singh Builders', 'vikram@singh.com', '9876543214', 'Trade Show', '₹50,00,000', 'Sales Team', '2024-01-30', 'High priority lead'],
+      ['', '', '', '', '', '', '', '', ''],
+      ['*Required fields: Lead Name, Company, Email, Phone, Source, Expected Value, Assigned To'],
+      ['Source options: Website, Referral, Cold Call, Social Media, Email Campaign, Trade Show'],
+      ['Date format: YYYY-MM-DD'],
+    ];
+    
+    const ws = XLSX.utils.aoa_to_sheet(templateData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Lead Details');
+    XLSX.writeFile(wb, 'Lead_Import_Template.xlsx');
+  };
+
+  // Client Functions
+  const handleAddClient = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    
+    try {
+      const newClient = {
+        name: formData.get("name") as string,
+        company: formData.get("company") as string,
+        email: formData.get("email") as string,
+        phone: formData.get("phone") as string,
+        address: formData.get("address") as string || "",
+        city: formData.get("city") as string || "Mumbai",
+        status: "active" as const,
+        value: formData.get("value") as string,
+        industry: formData.get("industry") as string || "IT Services",
+        contactPerson: formData.get("contactPerson") as string || "",
+      };
+
+      await crmService.clients.create(newClient);
+      setClientDialogOpen(false);
+      fetchAllData();
+      toast.success("Client added successfully!");
+    } catch (error) {
+      console.error("Failed to add client:", error);
+      toast.error("Failed to add client. Please try again.");
+    }
+  };
+
+  const handleEditClient = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingClient) return;
+    
+    const formData = new FormData(e.currentTarget);
+    
+    try {
+      const updateData = {
+        name: formData.get("name") as string,
+        company: formData.get("company") as string,
+        email: formData.get("email") as string,
+        phone: formData.get("phone") as string,
+        address: formData.get("address") as string,
+        city: formData.get("city") as string,
+        value: formData.get("value") as string,
+        industry: formData.get("industry") as string,
+        contactPerson: formData.get("contactPerson") as string,
+      };
+
+      await crmService.clients.update(editingClient._id, updateData);
+      setEditingClient(null);
+      fetchAllData();
+      toast.success("Client updated successfully!");
+    } catch (error) {
+      console.error("Failed to update client:", error);
+      toast.error("Failed to update client. Please try again.");
+    }
+  };
+
+  const handleDeleteClient = async (clientId: string) => {
+    if (!confirm("Are you sure you want to delete this client?")) return;
+    
+    try {
+      await crmService.clients.delete(clientId);
+      fetchAllData();
+      toast.success("Client deleted successfully!");
+    } catch (error) {
+      console.error("Failed to delete client:", error);
+      toast.error("Failed to delete client. Please try again.");
+    }
   };
 
   // Lead Functions
@@ -443,8 +644,10 @@ const CRM = () => {
       await crmService.leads.create(newLead);
       setLeadDialogOpen(false);
       fetchAllData();
+      toast.success("Lead added successfully!");
     } catch (error) {
       console.error("Failed to add lead:", error);
+      toast.error("Failed to add lead. Please try again.");
     }
   };
 
@@ -470,8 +673,10 @@ const CRM = () => {
       await crmService.leads.update(editingLead._id, updateData);
       setEditingLead(null);
       fetchAllData();
+      toast.success("Lead updated successfully!");
     } catch (error) {
       console.error("Failed to update lead:", error);
+      toast.error("Failed to update lead. Please try again.");
     }
   };
 
@@ -481,8 +686,10 @@ const CRM = () => {
     try {
       await crmService.leads.delete(leadId);
       fetchAllData();
+      toast.success("Lead deleted successfully!");
     } catch (error) {
       console.error("Failed to delete lead:", error);
+      toast.error("Failed to delete lead. Please try again.");
     }
   };
 
@@ -490,8 +697,10 @@ const CRM = () => {
     try {
       await crmService.leads.updateStatus(leadId, newStatus);
       fetchAllData();
+      toast.success("Lead status updated!");
     } catch (error) {
       console.error("Failed to update lead status:", error);
+      toast.error("Failed to update lead status. Please try again.");
     }
   };
 
@@ -514,8 +723,10 @@ const CRM = () => {
       await crmService.communications.create(newComm);
       setCommDialogOpen(false);
       fetchAllData();
+      toast.success("Communication logged successfully!");
     } catch (error) {
       console.error("Failed to log communication:", error);
+      toast.error("Failed to log communication. Please try again.");
     }
   };
 
@@ -525,8 +736,10 @@ const CRM = () => {
     try {
       await crmService.communications.delete(commId);
       fetchAllData();
+      toast.success("Communication deleted successfully!");
     } catch (error) {
       console.error("Failed to delete communication:", error);
+      toast.error("Failed to delete communication. Please try again.");
     }
   };
 
@@ -602,973 +815,1491 @@ const CRM = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <DashboardHeader title="CRM Management" />
-      
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="p-6 space-y-6"
-      >
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="sticky top-0 z-50 bg-white border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">CRM Management</h1>
+            <p className="text-sm text-gray-500 mt-1">Manage your clients, leads, and communications</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search clients, leads, communications..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 w-64 rounded-full border-gray-300 bg-gray-100 focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <button className="w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                <Bell className="h-5 w-5 text-gray-600" />
+              </button>
+              <button className="w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                <Sun className="h-5 w-5 text-gray-600" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="p-6 space-y-6">
         {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Total Clients</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {loading.stats ? <Loader2 className="h-6 w-6 animate-spin" /> : stats.totalClients}
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Active Leads</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-primary">
-                {loading.stats ? <Loader2 className="h-6 w-6 animate-spin" /> : stats.activeLeads}
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Total Value</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {loading.stats ? <Loader2 className="h-6 w-6 animate-spin" /> : stats.totalValue}
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Communications</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {loading.stats ? <Loader2 className="h-6 w-6 animate-spin" /> : stats.communications}
-              </div>
-            </CardContent>
-          </Card>
+        <div className="grid gap-6 md:grid-cols-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            whileHover={{ y: -4, transition: { duration: 0.2 } }}
+          >
+            <Card className="border-0 shadow-lg rounded-2xl bg-gradient-to-br from-white to-blue-50 hover:shadow-xl transition-shadow duration-300">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
+                    <Users className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-gray-500 mb-1">Total Clients</p>
+                    <p className="text-3xl font-bold text-gray-900">
+                      {loading.stats ? <Loader2 className="h-7 w-7 animate-spin text-blue-500" /> : stats.totalClients}
+                    </p>
+                  </div>
+                </div>
+               
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+            whileHover={{ y: -4, transition: { duration: 0.2 } }}
+          >
+            <Card className="border-0 shadow-lg rounded-2xl bg-gradient-to-br from-white to-blue-50 hover:shadow-xl transition-shadow duration-300">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
+                    <Target className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-gray-500 mb-1">Active Leads</p>
+                    <p className="text-3xl font-bold text-blue-600">
+                      {loading.stats ? <Loader2 className="h-7 w-7 animate-spin text-blue-500" /> : stats.activeLeads}
+                    </p>
+                  </div>
+                </div>
+               
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.2 }}
+            whileHover={{ y: -4, transition: { duration: 0.2 } }}
+          >
+            <Card className="border-0 shadow-lg rounded-2xl bg-gradient-to-br from-white to-green-50 hover:shadow-xl transition-shadow duration-300">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center">
+                    <DollarSign className="h-6 w-6 text-green-600" />
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-gray-500 mb-1">Total Value</p>
+                    <p className="text-3xl font-bold text-gray-900">
+                      {loading.stats ? <Loader2 className="h-7 w-7 animate-spin text-green-500" /> : stats.totalValue}
+                    </p>
+                  </div>
+                </div>
+               
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.3 }}
+            whileHover={{ y: -4, transition: { duration: 0.2 } }}
+          >
+            <Card className="border-0 shadow-lg rounded-2xl bg-gradient-to-br from-white to-purple-50 hover:shadow-xl transition-shadow duration-300">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center">
+                    <MessageSquare className="h-6 w-6 text-purple-600" />
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-gray-500 mb-1">Communications</p>
+                    <p className="text-3xl font-bold text-gray-900">
+                      {loading.stats ? <Loader2 className="h-7 w-7 animate-spin text-purple-500" /> : stats.communications}
+                    </p>
+                  </div>
+                </div>
+                
+              </CardContent>
+            </Card>
+          </motion.div>
         </div>
 
-        {/* Excel Import Dialog */}
-        <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-          <DialogContent className="max-w-md">
+        {/* Client Import Dialog */}
+        <Dialog open={importClientDialogOpen} onOpenChange={setImportClientDialogOpen}>
+          <DialogContent className="max-w-md bg-white rounded-2xl">
             <DialogHeader>
-              <DialogTitle>Import Clients from Excel</DialogTitle>
+              <DialogTitle className="text-lg font-semibold text-gray-900">Import Clients from Excel</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="excel-file">Upload Excel File</Label>
-                <Input 
-                  id="excel-file"
-                  type="file" 
-                  accept=".xlsx,.xls,.csv"
-                  onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                />
-                <p className="text-sm text-muted-foreground">
-                  Use the template below. Required fields: Client Name, Company
-                </p>
-              </div>
-              
-              <div className="p-4 border rounded bg-muted/50">
-                <h4 className="font-medium mb-2">Template Format:</h4>
-                <div className="text-sm space-y-1">
-                  <div><strong>Column A:</strong> SR. NO. (Optional)</div>
-                  <div><strong>Column B:</strong> Client Name <span className="text-red-500">*Required</span></div>
-                  <div><strong>Column C:</strong> Company <span className="text-red-500">*Required</span></div>
-                  <div><strong>Column D:</strong> Email <span className="text-red-500">*Required</span></div>
-                  <div><strong>Column E:</strong> Phone <span className="text-red-500">*Required</span></div>
-                  <div><strong>Column F:</strong> Industry <span className="text-red-500">*Required</span></div>
-                  <div><strong>Column G:</strong> City</div>
-                  <div><strong>Column H:</strong> Expected Value <span className="text-red-500">*Required</span></div>
-                  <div><strong>Column I:</strong> Address</div>
-                  <div><strong>Column J:</strong> Contact Person (Optional)</div>
+                <Label htmlFor="client-excel-file" className="text-sm font-medium text-gray-700">Upload Excel File</Label>
+                <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-400 transition-colors bg-gray-50">
+                  <Input 
+                    id="client-excel-file"
+                    type="file" 
+                    accept=".xlsx,.xls,.csv"
+                    onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                    className="hidden"
+                  />
+                  <Label htmlFor="client-excel-file" className="cursor-pointer">
+                    <UploadCloud className="h-10 w-10 mx-auto mb-3 text-gray-400" />
+                    <p className="text-sm font-medium text-gray-700">Drag & drop or click to upload</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Supports .xlsx, .xls, .csv files
+                    </p>
+                  </Label>
+                  {importFile && (
+                    <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                      <p className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-blue-500" />
+                        {importFile.name}
+                      </p>
+                    </div>
+                  )}
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  *Required fields must have values. Use the download template button for a pre-filled example.
-                </p>
               </div>
               
-              <Button 
-                onClick={downloadTemplate}
-                variant="outline"
-                className="w-full"
-              >
-                <Download className="mr-2 h-4 w-4" />
-                Download Template
-              </Button>
+              <div className="p-4 border border-gray-200 rounded-xl bg-gray-50">
+                <h4 className="font-medium text-gray-900 mb-2">Template Format</h4>
+                <div className="text-sm space-y-2 text-gray-600">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-3 w-3 text-green-500" />
+                    <span>Required fields marked with *</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-3">
+                    <div><span className="font-medium">Client Name</span> <span className="text-red-500">*</span></div>
+                    <div><span className="font-medium">Company</span> <span className="text-red-500">*</span></div>
+                    <div><span className="font-medium">Email</span> <span className="text-red-500">*</span></div>
+                    <div><span className="font-medium">Phone</span> <span className="text-red-500">*</span></div>
+                  </div>
+                </div>
+              </div>
               
-              <Button 
-                onClick={handleImportExcel}
-                disabled={!importFile || importLoading}
-                className="w-full"
-              >
-                {importLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Importing...
-                  </>
-                ) : (
-                  'Import Clients'
-                )}
-              </Button>
+              <div className="flex gap-3">
+                <Button 
+                  onClick={downloadClientTemplate}
+                  variant="outline"
+                  className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50 rounded-xl"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Download Template
+                </Button>
+                
+                <Button 
+                  onClick={handleImportExcel}
+                  disabled={!importFile || importLoading}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 rounded-xl"
+                >
+                  {importLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Importing...
+                    </>
+                  ) : (
+                    'Import Clients'
+                  )}
+                </Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>
 
-        {/* Main Tabs */}
-        <Tabs defaultValue="clients" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="clients">Clients</TabsTrigger>
-            <TabsTrigger value="leads">Leads</TabsTrigger>
-            <TabsTrigger value="communications">Communications</TabsTrigger>
-          </TabsList>
+        {/* Lead Import Dialog */}
+        <Dialog open={importLeadDialogOpen} onOpenChange={setImportLeadDialogOpen}>
+          <DialogContent className="max-w-md bg-white rounded-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-semibold text-gray-900">Import Leads from Excel</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="lead-excel-file" className="text-sm font-medium text-gray-700">Upload Excel File</Label>
+                <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-400 transition-colors bg-gray-50">
+                  <Input 
+                    id="lead-excel-file"
+                    type="file" 
+                    accept=".xlsx,.xls,.csv"
+                    onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                    className="hidden"
+                  />
+                  <Label htmlFor="lead-excel-file" className="cursor-pointer">
+                    <UploadCloud className="h-10 w-10 mx-auto mb-3 text-gray-400" />
+                    <p className="text-sm font-medium text-gray-700">Drag & drop or click to upload</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Supports .xlsx, .xls, .csv files
+                    </p>
+                  </Label>
+                  {importFile && (
+                    <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                      <p className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-blue-500" />
+                        {importFile.name}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="p-4 border border-gray-200 rounded-xl bg-gray-50">
+                <h4 className="font-medium text-gray-900 mb-2">Important Notes</h4>
+                <div className="text-sm space-y-2 text-gray-600">
+                  <div className="flex items-center gap-2">
+                    <XCircle className="h-3 w-3 text-red-500" />
+                    <span>Required fields: Lead Name, Company, Email, Phone</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-3 w-3 text-green-500" />
+                    <span>Optional: Follow-up Date, Notes</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex gap-3">
+                <Button 
+                  onClick={downloadLeadTemplate}
+                  variant="outline"
+                  className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50 rounded-xl"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Download Template
+                </Button>
+                
+                <Button 
+                  onClick={handleImportLeadExcel}
+                  disabled={!importFile || importLoading}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 rounded-xl"
+                >
+                  {importLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Importing...
+                    </>
+                  ) : (
+                    'Import Leads'
+                  )}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Tabs Section */}
+        <div className="space-y-6">
+          <div className="border-b border-gray-200">
+            <Tabs defaultValue="clients" className="w-full" onValueChange={setActiveTab}>
+              <TabsList className="inline-flex h-12 items-center justify-start rounded-lg bg-transparent p-0">
+                <TabsTrigger 
+                  value="clients" 
+                  className="relative px-6 py-3 text-sm font-medium text-gray-600 hover:text-gray-900 data-[state=active]:text-blue-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 transition-all"
+                >
+                  <Building className="mr-2 h-4 w-4" />
+                  Clients
+                  {activeTab === "clients" && (
+                    <motion.div
+                      layoutId="activeTab"
+                      className="absolute inset-0 z-[-1]"
+                      initial={false}
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    />
+                  )}
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="leads" 
+                  className="relative px-6 py-3 text-sm font-medium text-gray-600 hover:text-gray-900 data-[state=active]:text-blue-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 transition-all"
+                >
+                  <Target className="mr-2 h-4 w-4" />
+                  Leads
+                  {activeTab === "leads" && (
+                    <motion.div
+                      layoutId="activeTab"
+                      className="absolute inset-0 z-[-1]"
+                      initial={false}
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    />
+                  )}
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="communications" 
+                  className="relative px-6 py-3 text-sm font-medium text-gray-600 hover:text-gray-900 data-[state=active]:text-blue-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 transition-all"
+                >
+                  <MessageSquare className="mr-2 h-4 w-4" />
+                  Communications
+                  {activeTab === "communications" && (
+                    <motion.div
+                      layoutId="activeTab"
+                      className="absolute inset-0 z-[-1]"
+                      initial={false}
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    />
+                  )}
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
 
           {/* Clients Tab */}
-          <TabsContent value="clients">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <CardTitle>Client List</CardTitle>
-                <div className="flex gap-2">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search clients..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10 w-64"
-                    />
-                  </div>
-                  <Button 
-                    variant="outline"
-                    onClick={() => setImportDialogOpen(true)}
-                  >
-                    <Upload className="mr-2 h-4 w-4" />
-                    Import Excel
-                  </Button>
-                  <Dialog open={clientDialogOpen} onOpenChange={setClientDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button><Plus className="mr-2 h-4 w-4" />Add Client</Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-2xl">
-                      <DialogHeader>
-                        <DialogTitle>Add New Client</DialogTitle>
-                      </DialogHeader>
-                      <form onSubmit={handleAddClient} className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="name">Client Name *</Label>
-                            <Input id="name" name="name" required />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="company">Company *</Label>
-                            <Input id="company" name="company" required />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="email">Email *</Label>
-                            <Input id="email" name="email" type="email" required />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="phone">Phone *</Label>
-                            <Input id="phone" name="phone" required />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="contactPerson">Contact Person</Label>
-                            <Input id="contactPerson" name="contactPerson" />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="industry">Industry</Label>
-                            <Select name="industry" defaultValue="MALL">
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select industry" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {industries.map(industry => (
-                                  <SelectItem key={industry} value={industry}>{industry}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="city">City</Label>
-                            <Select name="city" defaultValue="Mumbai">
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select city" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {indianCities.map(city => (
-                                  <SelectItem key={city} value={city}>{city}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="value">Expected Value *</Label>
-                            <Input id="value" name="value" placeholder="₹50,00,000" required />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="address">Address</Label>
-                          <Textarea id="address" name="address" />
-                        </div>
-                        <Button type="submit" className="w-full">Add Client</Button>
-                      </form>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {loading.clients ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="h-8 w-8 animate-spin" />
-                  </div>
-                ) : clients.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No clients found. Add your first client or import from Excel!
-                  </div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Company</TableHead>
-                        <TableHead>Contact</TableHead>
-                        <TableHead>Industry</TableHead>
-                        <TableHead>Value</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {clients.map((client) => (
-                        <TableRow key={client._id}>
-                          <TableCell className="font-medium">{client.name}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              <Building className="h-3 w-3" />
-                              {client.company}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-col gap-1">
-                              <div className="flex items-center gap-1 text-sm">
-                                <Mail className="h-3 w-3" />
-                                {client.email}
+          <AnimatePresence mode="wait">
+            {activeTab === "clients" && (
+              <motion.div
+                key="clients"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
+                  <CardHeader className="bg-white border-b border-gray-200 px-6 py-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-xl font-bold text-gray-900">Client List</CardTitle>
+                        <p className="text-sm text-gray-500 mt-1">Manage your valuable client relationships</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Button 
+                          variant="outline"
+                          onClick={() => setImportClientDialogOpen(true)}
+                          className="border-gray-300 text-gray-700 hover:bg-gray-50 rounded-xl"
+                        >
+                          <Upload className="mr-2 h-4 w-4" />
+                          Import Clients
+                        </Button>
+                        <Dialog open={clientDialogOpen} onOpenChange={setClientDialogOpen}>
+                          <DialogTrigger asChild>
+                            <Button className="bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm hover:shadow">
+                              <Plus className="mr-2 h-4 w-4" />
+                              Add Client
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-2xl bg-white rounded-2xl">
+                            <DialogHeader>
+                              <DialogTitle className="text-lg font-semibold text-gray-900">Add New Client</DialogTitle>
+                            </DialogHeader>
+                            <form onSubmit={handleAddClient} className="space-y-5">
+                              <div className="grid grid-cols-2 gap-5">
+                                <div className="space-y-2">
+                                  <Label htmlFor="name" className="text-sm font-medium text-gray-700">Client Name *</Label>
+                                  <Input id="name" name="name" required className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="company" className="text-sm font-medium text-gray-700">Company *</Label>
+                                  <Input id="company" name="company" required className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                </div>
                               </div>
-                              <div className="flex items-center gap-1 text-sm">
-                                <Phone className="h-3 w-3" />
-                                {client.phone}
+                              <div className="grid grid-cols-2 gap-5">
+                                <div className="space-y-2">
+                                  <Label htmlFor="email" className="text-sm font-medium text-gray-700">Email *</Label>
+                                  <Input id="email" name="email" type="email" required className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="phone" className="text-sm font-medium text-gray-700">Phone *</Label>
+                                  <Input id="phone" name="phone" required className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                </div>
                               </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>{client.industry}</TableCell>
-                          <TableCell className="font-semibold">{client.value}</TableCell>
-                          <TableCell>
-                            <Badge variant={getStatusColor(client.status)}>
-                              {client.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex gap-2">
-                              <Dialog>
-                                <DialogTrigger asChild>
-                                  <Button 
-                                    variant="outline" 
-                                    size="sm" 
-                                    onClick={() => setViewClientDialog(client._id)}
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                </DialogTrigger>
-                                <DialogContent className="max-w-2xl">
-                                  <DialogHeader>
-                                    <DialogTitle>Client Details</DialogTitle>
-                                  </DialogHeader>
-                                  {viewClientDialog && getClientById(viewClientDialog) && (() => {
-                                    const client = getClientById(viewClientDialog)!;
-                                    return (
-                                      <div className="space-y-4">
-                                        <div className="grid grid-cols-2 gap-4">
-                                          <div><strong>Name:</strong> {client.name}</div>
-                                          <div><strong>Company:</strong> {client.company}</div>
-                                          <div><strong>Email:</strong> {client.email}</div>
-                                          <div><strong>Phone:</strong> {client.phone}</div>
-                                          <div><strong>Industry:</strong> {client.industry}</div>
-                                          <div><strong>City:</strong> {client.city}</div>
-                                          <div><strong>Value:</strong> {client.value}</div>
-                                          <div><strong>Status:</strong> {client.status}</div>
-                                          <div><strong>Contact Person:</strong> {client.contactPerson || "N/A"}</div>
-                                          <div><strong>Created:</strong> {formatDate(client.createdAt)}</div>
-                                          <div><strong>Updated:</strong> {formatDate(client.updatedAt)}</div>
-                                        </div>
-                                        {client.address && (
-                                          <div>
-                                            <strong>Address:</strong>
-                                            <div className="flex items-center gap-1 mt-1">
-                                              <MapPin className="h-3 w-3" />
-                                              {client.address}
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })()}
-                                </DialogContent>
-                              </Dialog>
-                              
-                              <Dialog open={!!editingClient} onOpenChange={(open) => !open && setEditingClient(null)}>
-                                <DialogTrigger asChild>
-                                  <Button 
-                                    variant="outline" 
-                                    size="sm"
-                                    onClick={() => setEditingClient(client)}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                </DialogTrigger>
-                                {editingClient && editingClient._id === client._id && (
-                                  <DialogContent className="max-w-2xl">
-                                    <DialogHeader>
-                                      <DialogTitle>Edit Client</DialogTitle>
-                                    </DialogHeader>
-                                    <form onSubmit={handleEditClient} className="space-y-4">
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-name">Client Name</Label>
-                                          <Input 
-                                            id="edit-name" 
-                                            name="name" 
-                                            defaultValue={editingClient.name} 
-                                            required 
-                                          />
-                                        </div>
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-company">Company</Label>
-                                          <Input 
-                                            id="edit-company" 
-                                            name="company" 
-                                            defaultValue={editingClient.company} 
-                                            required 
-                                          />
-                                        </div>
-                                      </div>
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-email">Email</Label>
-                                          <Input 
-                                            id="edit-email" 
-                                            name="email" 
-                                            type="email" 
-                                            defaultValue={editingClient.email} 
-                                            required 
-                                          />
-                                        </div>
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-phone">Phone</Label>
-                                          <Input 
-                                            id="edit-phone" 
-                                            name="phone" 
-                                            defaultValue={editingClient.phone} 
-                                            required 
-                                          />
-                                        </div>
-                                      </div>
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-contactPerson">Contact Person</Label>
-                                          <Input 
-                                            id="edit-contactPerson" 
-                                            name="contactPerson" 
-                                            defaultValue={editingClient.contactPerson || ""} 
-                                          />
-                                        </div>
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-industry">Industry</Label>
-                                          <Select name="industry" defaultValue={editingClient.industry}>
-                                            <SelectTrigger>
-                                              <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              {industries.map(industry => (
-                                                <SelectItem key={industry} value={industry}>{industry}</SelectItem>
-                                              ))}
-                                            </SelectContent>
-                                          </Select>
-                                        </div>
-                                      </div>
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-city">City</Label>
-                                          <Select name="city" defaultValue={editingClient.city}>
-                                            <SelectTrigger>
-                                              <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              {indianCities.map(city => (
-                                                <SelectItem key={city} value={city}>{city}</SelectItem>
-                                              ))}
-                                            </SelectContent>
-                                          </Select>
-                                        </div>
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-value">Expected Value</Label>
-                                          <Input 
-                                            id="edit-value" 
-                                            name="value" 
-                                            defaultValue={editingClient.value} 
-                                            required 
-                                          />
-                                        </div>
-                                      </div>
-                                      <div className="space-y-2">
-                                        <Label htmlFor="edit-address">Address</Label>
-                                        <Textarea 
-                                          id="edit-address" 
-                                          name="address" 
-                                          defaultValue={editingClient.address || ""} 
-                                        />
-                                      </div>
-                                      <Button type="submit" className="w-full">Update Client</Button>
-                                    </form>
-                                  </DialogContent>
-                                )}
-                              </Dialog>
-                              
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
-                                onClick={() => handleDeleteClient(client._id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
+                              <div className="grid grid-cols-2 gap-5">
+                                <div className="space-y-2">
+                                  <Label htmlFor="contactPerson" className="text-sm font-medium text-gray-700">Contact Person</Label>
+                                  <Input id="contactPerson" name="contactPerson" className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="industry" className="text-sm font-medium text-gray-700">Industry</Label>
+                                  <Select name="industry" defaultValue="MALL">
+                                    <SelectTrigger className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                                      <SelectValue placeholder="Select industry" />
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-lg">
+                                      {industries.map(industry => (
+                                        <SelectItem key={industry} value={industry} className="rounded-md">{industry}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-5">
+                                <div className="space-y-2">
+                                  <Label htmlFor="city" className="text-sm font-medium text-gray-700">City</Label>
+                                  <Select name="city" defaultValue="Mumbai">
+                                    <SelectTrigger className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                                      <SelectValue placeholder="Select city" />
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-lg">
+                                      {indianCities.map(city => (
+                                        <SelectItem key={city} value={city} className="rounded-md">{city}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="value" className="text-sm font-medium text-gray-700">Expected Value *</Label>
+                                  <Input id="value" name="value" placeholder="₹50,00,000" required className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="address" className="text-sm font-medium text-gray-700">Address</Label>
+                                <Textarea id="address" name="address" className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 min-h-[100px]" />
+                              </div>
+                              <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 rounded-lg">
+                                Add Client
                               </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+                            </form>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {loading.clients ? (
+                      <div className="flex justify-center items-center py-12">
+                        <div className="text-center">
+                          <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-500" />
+                          <p className="text-gray-500 mt-3">Loading clients...</p>
+                        </div>
+                      </div>
+                    ) : clients.length === 0 ? (
+                      <div className="text-center py-12">
+                        <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                          <Users className="h-8 w-8 text-gray-400" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-gray-900">No clients found</h3>
+                        <p className="text-gray-500 mt-2">
+                          Add your first client or import from Excel to get started
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="overflow-hidden">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-gray-50 hover:bg-gray-50">
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Client</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Company</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Contact</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Industry</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Value</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider text-right">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {clients.map((client, index) => (
+                              <TableRow 
+                                key={client._id} 
+                                className={`hover:bg-blue-50/50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                              >
+                                <TableCell className="py-4 px-6">
+                                  <div className="flex items-center">
+                                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-3">
+                                      <span className="text-blue-600 font-semibold">{client.name.charAt(0)}</span>
+                                    </div>
+                                    <div>
+                                      <div className="font-medium text-gray-900">{client.name}</div>
+                                      <div className="text-sm text-gray-500">{client.city}</div>
+                                    </div>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="py-4 px-6">
+                                  <div className="flex items-center text-gray-700">
+                                    <Building className="h-4 w-4 mr-2 text-gray-400" />
+                                    {client.company}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="py-4 px-6">
+                                  <div className="space-y-1">
+                                    <div className="flex items-center text-sm text-gray-600">
+                                      <Mail className="h-3 w-3 mr-2 text-gray-400" />
+                                      {client.email}
+                                    </div>
+                                    <div className="flex items-center text-sm text-gray-600">
+                                      <Phone className="h-3 w-3 mr-2 text-gray-400" />
+                                      {client.phone}
+                                    </div>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="py-4 px-6">
+                                  <Badge variant="outline" className="border-gray-300 text-gray-700 font-normal px-3 py-1 rounded-full">
+                                    {client.industry}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="py-4 px-6 text-right">
+                                  <div className="font-bold text-green-600">{client.value}</div>
+                                </TableCell>
+                                <TableCell className="py-4 px-6">
+                                  <Badge 
+                                    className={`px-3 py-1 rounded-full ${
+                                      client.status === 'active' 
+                                        ? 'bg-green-100 text-green-800 border-green-200' 
+                                        : 'bg-gray-100 text-gray-800 border-gray-200'
+                                    }`}
+                                  >
+                                    {client.status}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="py-4 px-6 text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <Dialog>
+                                      <DialogTrigger asChild>
+                                        <Button 
+                                          variant="ghost" 
+                                          size="sm"
+                                          onClick={() => setViewClientDialog(client._id)}
+                                          className="w-8 h-8 p-0 rounded-full hover:bg-blue-100 hover:text-blue-600"
+                                          title="View Details"
+                                        >
+                                          <Eye className="h-4 w-4" />
+                                        </Button>
+                                      </DialogTrigger>
+                                      <DialogContent className="max-w-2xl bg-white rounded-2xl">
+                                        <DialogHeader>
+                                          <DialogTitle className="text-lg font-semibold text-gray-900">Client Details</DialogTitle>
+                                        </DialogHeader>
+                                        {viewClientDialog && getClientById(viewClientDialog) && (() => {
+                                          const client = getClientById(viewClientDialog)!;
+                                          return (
+                                            <div className="space-y-6">
+                                              <div className="flex items-center gap-4">
+                                                <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center">
+                                                  <span className="text-blue-600 font-bold text-xl">{client.name.charAt(0)}</span>
+                                                </div>
+                                                <div>
+                                                  <h3 className="text-xl font-bold text-gray-900">{client.name}</h3>
+                                                  <p className="text-gray-500">{client.company}</p>
+                                                </div>
+                                              </div>
+                                              
+                                              <div className="grid grid-cols-2 gap-6">
+                                                <div className="space-y-4">
+                                                  <div>
+                                                    <Label className="text-xs text-gray-500 uppercase font-medium">Email</Label>
+                                                    <p className="flex items-center gap-2 text-gray-900">
+                                                      <Mail className="h-4 w-4 text-gray-400" />
+                                                      {client.email}
+                                                    </p>
+                                                  </div>
+                                                  <div>
+                                                    <Label className="text-xs text-gray-500 uppercase font-medium">Phone</Label>
+                                                    <p className="flex items-center gap-2 text-gray-900">
+                                                      <Phone className="h-4 w-4 text-gray-400" />
+                                                      {client.phone}
+                                                    </p>
+                                                  </div>
+                                                  <div>
+                                                    <Label className="text-xs text-gray-500 uppercase font-medium">Industry</Label>
+                                                    <p className="text-gray-900">{client.industry}</p>
+                                                  </div>
+                                                </div>
+                                                <div className="space-y-4">
+                                                  <div>
+                                                    <Label className="text-xs text-gray-500 uppercase font-medium">City</Label>
+                                                    <p className="flex items-center gap-2 text-gray-900">
+                                                      <MapPin className="h-4 w-4 text-gray-400" />
+                                                      {client.city}
+                                                    </p>
+                                                  </div>
+                                                  <div>
+                                                    <Label className="text-xs text-gray-500 uppercase font-medium">Value</Label>
+                                                    <p className="text-lg font-bold text-green-600">{client.value}</p>
+                                                  </div>
+                                                  <div>
+                                                    <Label className="text-xs text-gray-500 uppercase font-medium">Status</Label>
+                                                    <Badge 
+                                                      className={`px-3 py-1 rounded-full ${
+                                                        client.status === 'active' 
+                                                          ? 'bg-green-100 text-green-800 border-green-200' 
+                                                          : 'bg-gray-100 text-gray-800 border-gray-200'
+                                                      }`}
+                                                    >
+                                                      {client.status}
+                                                    </Badge>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                              
+                                              {client.address && (
+                                                <div>
+                                                  <Label className="text-xs text-gray-500 uppercase font-medium">Address</Label>
+                                                  <div className="flex items-start gap-2 mt-2 p-3 bg-gray-50 rounded-lg">
+                                                    <MapPin className="h-4 w-4 mt-0.5 text-gray-400" />
+                                                    <p className="text-gray-900">{client.address}</p>
+                                                  </div>
+                                                </div>
+                                              )}
+                                              
+                                              <div className="flex items-center justify-between text-sm text-gray-500 pt-4 border-t">
+                                                <span>Created: {formatDate(client.createdAt)}</span>
+                                                <span>Updated: {formatDate(client.updatedAt)}</span>
+                                              </div>
+                                            </div>
+                                          );
+                                        })()}
+                                      </DialogContent>
+                                    </Dialog>
+                                    
+                                    <Dialog open={!!editingClient} onOpenChange={(open) => !open && setEditingClient(null)}>
+                                      <DialogTrigger asChild>
+                                        <Button 
+                                          variant="ghost" 
+                                          size="sm"
+                                          onClick={() => setEditingClient(client)}
+                                          className="w-8 h-8 p-0 rounded-full hover:bg-blue-100 hover:text-blue-600"
+                                          title="Edit"
+                                        >
+                                          <Edit className="h-4 w-4" />
+                                        </Button>
+                                      </DialogTrigger>
+                                      {editingClient && editingClient._id === client._id && (
+                                        <DialogContent className="max-w-2xl bg-white rounded-2xl">
+                                          <DialogHeader>
+                                            <DialogTitle className="text-lg font-semibold text-gray-900">Edit Client</DialogTitle>
+                                          </DialogHeader>
+                                          <form onSubmit={handleEditClient} className="space-y-5">
+                                            <div className="grid grid-cols-2 gap-5">
+                                              <div className="space-y-2">
+                                                <Label htmlFor="edit-name" className="text-sm font-medium text-gray-700">Client Name</Label>
+                                                <Input 
+                                                  id="edit-name" 
+                                                  name="name" 
+                                                  defaultValue={editingClient.name} 
+                                                  required 
+                                                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                                />
+                                              </div>
+                                              <div className="space-y-2">
+                                                <Label htmlFor="edit-company" className="text-sm font-medium text-gray-700">Company</Label>
+                                                <Input 
+                                                  id="edit-company" 
+                                                  name="company" 
+                                                  defaultValue={editingClient.company} 
+                                                  required 
+                                                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                                />
+                                              </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-5">
+                                              <div className="space-y-2">
+                                                <Label htmlFor="edit-email" className="text-sm font-medium text-gray-700">Email</Label>
+                                                <Input 
+                                                  id="edit-email" 
+                                                  name="email" 
+                                                  type="email" 
+                                                  defaultValue={editingClient.email} 
+                                                  required 
+                                                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                                />
+                                              </div>
+                                              <div className="space-y-2">
+                                                <Label htmlFor="edit-phone" className="text-sm font-medium text-gray-700">Phone</Label>
+                                                <Input 
+                                                  id="edit-phone" 
+                                                  name="phone" 
+                                                  defaultValue={editingClient.phone} 
+                                                  required 
+                                                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                                />
+                                              </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-5">
+                                              <div className="space-y-2">
+                                                <Label htmlFor="edit-contactPerson" className="text-sm font-medium text-gray-700">Contact Person</Label>
+                                                <Input 
+                                                  id="edit-contactPerson" 
+                                                  name="contactPerson" 
+                                                  defaultValue={editingClient.contactPerson || ""} 
+                                                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                                />
+                                              </div>
+                                              <div className="space-y-2">
+                                                <Label htmlFor="edit-industry" className="text-sm font-medium text-gray-700">Industry</Label>
+                                                <Select name="industry" defaultValue={editingClient.industry}>
+                                                  <SelectTrigger className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                                                    <SelectValue />
+                                                  </SelectTrigger>
+                                                  <SelectContent className="rounded-lg">
+                                                    {industries.map(industry => (
+                                                      <SelectItem key={industry} value={industry} className="rounded-md">{industry}</SelectItem>
+                                                    ))}
+                                                  </SelectContent>
+                                                </Select>
+                                              </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-5">
+                                              <div className="space-y-2">
+                                                <Label htmlFor="edit-city" className="text-sm font-medium text-gray-700">City</Label>
+                                                <Select name="city" defaultValue={editingClient.city}>
+                                                  <SelectTrigger className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                                                    <SelectValue />
+                                                  </SelectTrigger>
+                                                  <SelectContent className="rounded-lg">
+                                                    {indianCities.map(city => (
+                                                      <SelectItem key={city} value={city} className="rounded-md">{city}</SelectItem>
+                                                    ))}
+                                                  </SelectContent>
+                                                </Select>
+                                              </div>
+                                              <div className="space-y-2">
+                                                <Label htmlFor="edit-value" className="text-sm font-medium text-gray-700">Expected Value</Label>
+                                                <Input 
+                                                  id="edit-value" 
+                                                  name="value" 
+                                                  defaultValue={editingClient.value} 
+                                                  required 
+                                                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                                />
+                                              </div>
+                                            </div>
+                                            <div className="space-y-2">
+                                              <Label htmlFor="edit-address" className="text-sm font-medium text-gray-700">Address</Label>
+                                              <Textarea 
+                                                id="edit-address" 
+                                                name="address" 
+                                                defaultValue={editingClient.address || ""} 
+                                                className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 min-h-[100px]"
+                                              />
+                                            </div>
+                                            <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 rounded-lg">
+                                              Update Client
+                                            </Button>
+                                          </form>
+                                        </DialogContent>
+                                      )}
+                                    </Dialog>
+                                    
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm" 
+                                      onClick={() => handleDeleteClient(client._id)}
+                                      className="w-8 h-8 p-0 rounded-full hover:bg-red-100 hover:text-red-600"
+                                      title="Delete"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Leads Tab */}
-          <TabsContent value="leads">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <CardTitle>Lead Tracker</CardTitle>
-                <div className="flex gap-2">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search leads..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10 w-64"
-                    />
-                  </div>
-                  <Dialog open={leadDialogOpen} onOpenChange={setLeadDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button><Plus className="mr-2 h-4 w-4" />Add Lead</Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-2xl">
-                      <DialogHeader>
-                        <DialogTitle>Add New Lead</DialogTitle>
-                      </DialogHeader>
-                      <form onSubmit={handleAddLead} className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="leadName">Lead Name *</Label>
-                            <Input id="leadName" name="name" required />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="leadCompany">Company *</Label>
-                            <Input id="leadCompany" name="company" required />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="leadEmail">Email *</Label>
-                            <Input id="leadEmail" name="email" type="email" required />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="leadPhone">Phone *</Label>
-                            <Input id="leadPhone" name="phone" required />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="source">Source *</Label>
-                            <Select name="source" required>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select source" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {leadSources.map(source => (
-                                  <SelectItem key={source} value={source}>{source}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="leadValue">Expected Value *</Label>
-                            <Input id="leadValue" name="value" placeholder="₹30,00,000" required />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="assignedTo">Assign To *</Label>
-                            <Input id="assignedTo" name="assignedTo" required />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="followUpDate">Follow-up Date</Label>
-                            <Input id="followUpDate" name="followUpDate" type="date" />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="leadNotes">Notes</Label>
-                          <Textarea id="leadNotes" name="notes" />
-                        </div>
-                        <Button type="submit" className="w-full">Add Lead</Button>
-                      </form>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {loading.leads ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="h-8 w-8 animate-spin" />
-                  </div>
-                ) : leads.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No leads found. Add your first lead!
-                  </div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Lead Name</TableHead>
-                        <TableHead>Company</TableHead>
-                        <TableHead>Contact</TableHead>
-                        <TableHead>Source</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Value</TableHead>
-                        <TableHead>Follow-up</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {leads.map((lead) => (
-                        <TableRow key={lead._id}>
-                          <TableCell className="font-medium">{lead.name}</TableCell>
-                          <TableCell>{lead.company}</TableCell>
-                          <TableCell>
-                            <div className="flex flex-col gap-1">
-                              <div className="text-sm">{lead.email}</div>
-                              <div className="text-sm">{lead.phone}</div>
-                            </div>
-                          </TableCell>
-                          <TableCell>{lead.source}</TableCell>
-                          <TableCell>
-                            <Select 
-                              value={lead.status} 
-                              onValueChange={(value) => handleLeadStatusChange(lead._id, value as Lead['status'])}
-                            >
-                              <SelectTrigger className="w-36">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="new">New</SelectItem>
-                                <SelectItem value="contacted">Contacted</SelectItem>
-                                <SelectItem value="qualified">Qualified</SelectItem>
-                                <SelectItem value="proposal">Proposal Sent</SelectItem>
-                                <SelectItem value="negotiation">Negotiation</SelectItem>
-                                <SelectItem value="closed-won">Won</SelectItem>
-                                <SelectItem value="closed-lost">Lost</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
-                          <TableCell className="font-semibold">{lead.value}</TableCell>
-                          <TableCell>
-                            {lead.followUpDate ? (
-                              <div className="flex items-center gap-1">
-                                <Calendar className="h-3 w-3" />
-                                {formatDate(lead.followUpDate)}
+          <AnimatePresence mode="wait">
+            {activeTab === "leads" && (
+              <motion.div
+                key="leads"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
+                  <CardHeader className="bg-white border-b border-gray-200 px-6 py-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-xl font-bold text-gray-900">Lead Tracker</CardTitle>
+                        <p className="text-sm text-gray-500 mt-1">Track and convert potential opportunities</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Button 
+                          variant="outline"
+                          onClick={() => setImportLeadDialogOpen(true)}
+                          className="border-gray-300 text-gray-700 hover:bg-gray-50 rounded-xl"
+                        >
+                          <Upload className="mr-2 h-4 w-4" />
+                          Import Leads
+                        </Button>
+                        <Dialog open={leadDialogOpen} onOpenChange={setLeadDialogOpen}>
+                          <DialogTrigger asChild>
+                            <Button className="bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm hover:shadow">
+                              <Plus className="mr-2 h-4 w-4" />
+                              Add Lead
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-2xl bg-white rounded-2xl">
+                            <DialogHeader>
+                              <DialogTitle className="text-lg font-semibold text-gray-900">Add New Lead</DialogTitle>
+                            </DialogHeader>
+                            <form onSubmit={handleAddLead} className="space-y-5">
+                              <div className="grid grid-cols-2 gap-5">
+                                <div className="space-y-2">
+                                  <Label htmlFor="leadName" className="text-sm font-medium text-gray-700">Lead Name *</Label>
+                                  <Input id="leadName" name="name" required className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="leadCompany" className="text-sm font-medium text-gray-700">Company *</Label>
+                                  <Input id="leadCompany" name="company" required className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                </div>
                               </div>
-                            ) : (
-                              <span className="text-muted-foreground">No follow-up</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex gap-2">
-                              <Dialog>
-                                <DialogTrigger asChild>
-                                  <Button 
-                                    variant="outline" 
-                                    size="sm" 
-                                    onClick={() => setViewLeadDialog(lead._id)}
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                </DialogTrigger>
-                                <DialogContent className="max-w-2xl">
-                                  <DialogHeader>
-                                    <DialogTitle>Lead Details</DialogTitle>
-                                  </DialogHeader>
-                                  {viewLeadDialog && getLeadById(viewLeadDialog) && (() => {
-                                    const lead = getLeadById(viewLeadDialog)!;
-                                    return (
-                                      <div className="space-y-4">
-                                        <div className="grid grid-cols-2 gap-4">
-                                          <div><strong>Name:</strong> {lead.name}</div>
-                                          <div><strong>Company:</strong> {lead.company}</div>
-                                          <div><strong>Email:</strong> {lead.email}</div>
-                                          <div><strong>Phone:</strong> {lead.phone}</div>
-                                          <div><strong>Source:</strong> {lead.source}</div>
-                                          <div><strong>Status:</strong> {getStatusText(lead.status)}</div>
-                                          <div><strong>Value:</strong> {lead.value}</div>
-                                          <div><strong>Assigned To:</strong> {lead.assignedTo}</div>
-                                          <div><strong>Created:</strong> {formatDate(lead.createdAt)}</div>
-                                          <div><strong>Updated:</strong> {formatDate(lead.updatedAt)}</div>
-                                        </div>
-                                        {lead.followUpDate && (
-                                          <div>
-                                            <strong>Follow-up Date:</strong> {formatDate(lead.followUpDate)}
-                                          </div>
-                                        )}
-                                        {lead.notes && (
-                                          <div>
-                                            <strong>Notes:</strong>
-                                            <div className="mt-1 p-2 border rounded">{lead.notes}</div>
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })()}
-                                </DialogContent>
-                              </Dialog>
-                              
-                              <Dialog open={!!editingLead} onOpenChange={(open) => !open && setEditingLead(null)}>
-                                <DialogTrigger asChild>
-                                  <Button 
-                                    variant="outline" 
-                                    size="sm"
-                                    onClick={() => setEditingLead(lead)}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                </DialogTrigger>
-                                {editingLead && editingLead._id === lead._id && (
-                                  <DialogContent className="max-w-2xl">
-                                    <DialogHeader>
-                                      <DialogTitle>Edit Lead</DialogTitle>
-                                    </DialogHeader>
-                                    <form onSubmit={handleEditLead} className="space-y-4">
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-lead-name">Lead Name</Label>
-                                          <Input 
-                                            id="edit-lead-name" 
-                                            name="name" 
-                                            defaultValue={editingLead.name} 
-                                            required 
-                                          />
-                                        </div>
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-lead-company">Company</Label>
-                                          <Input 
-                                            id="edit-lead-company" 
-                                            name="company" 
-                                            defaultValue={editingLead.company} 
-                                            required 
-                                          />
-                                        </div>
-                                      </div>
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-lead-email">Email</Label>
-                                          <Input 
-                                            id="edit-lead-email" 
-                                            name="email" 
-                                            type="email" 
-                                            defaultValue={editingLead.email} 
-                                            required 
-                                          />
-                                        </div>
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-lead-phone">Phone</Label>
-                                          <Input 
-                                            id="edit-lead-phone" 
-                                            name="phone" 
-                                            defaultValue={editingLead.phone} 
-                                            required 
-                                          />
-                                        </div>
-                                      </div>
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-source">Source</Label>
-                                          <Select name="source" defaultValue={editingLead.source}>
-                                            <SelectTrigger>
-                                              <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                              {leadSources.map(source => (
-                                                <SelectItem key={source} value={source}>{source}</SelectItem>
-                                              ))}
-                                            </SelectContent>
-                                          </Select>
-                                        </div>
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-lead-value">Expected Value</Label>
-                                          <Input 
-                                            id="edit-lead-value" 
-                                            name="value" 
-                                            defaultValue={editingLead.value} 
-                                            required 
-                                          />
-                                        </div>
-                                      </div>
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-assignedTo">Assign To</Label>
-                                          <Input 
-                                            id="edit-assignedTo" 
-                                            name="assignedTo" 
-                                            defaultValue={editingLead.assignedTo} 
-                                            required 
-                                          />
-                                        </div>
-                                        <div className="space-y-2">
-                                          <Label htmlFor="edit-followUpDate">Follow-up Date</Label>
-                                          <Input 
-                                            id="edit-followUpDate" 
-                                            name="followUpDate" 
-                                            type="date" 
-                                            defaultValue={editingLead.followUpDate ? editingLead.followUpDate.split('T')[0] : ''} 
-                                          />
-                                        </div>
-                                      </div>
-                                      <div className="space-y-2">
-                                        <Label htmlFor="edit-lead-notes">Notes</Label>
-                                        <Textarea 
-                                          id="edit-lead-notes" 
-                                          name="notes" 
-                                          defaultValue={editingLead.notes || ""} 
-                                        />
-                                      </div>
-                                      <Button type="submit" className="w-full">Update Lead</Button>
-                                    </form>
-                                  </DialogContent>
-                                )}
-                              </Dialog>
-                              
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
-                                onClick={() => handleDeleteLead(lead._id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
+                              <div className="grid grid-cols-2 gap-5">
+                                <div className="space-y-2">
+                                  <Label htmlFor="leadEmail" className="text-sm font-medium text-gray-700">Email *</Label>
+                                  <Input id="leadEmail" name="email" type="email" required className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="leadPhone" className="text-sm font-medium text-gray-700">Phone *</Label>
+                                  <Input id="leadPhone" name="phone" required className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-5">
+                                <div className="space-y-2">
+                                  <Label htmlFor="source" className="text-sm font-medium text-gray-700">Source *</Label>
+                                  <Select name="source" required>
+                                    <SelectTrigger className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                                      <SelectValue placeholder="Select source" />
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-lg">
+                                      {leadSources.map(source => (
+                                        <SelectItem key={source} value={source} className="rounded-md">{source}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="leadValue" className="text-sm font-medium text-gray-700">Expected Value *</Label>
+                                  <Input id="leadValue" name="value" placeholder="₹30,00,000" required className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-5">
+                                <div className="space-y-2">
+                                  <Label htmlFor="assignedTo" className="text-sm font-medium text-gray-700">Assign To *</Label>
+                                  <Input id="assignedTo" name="assignedTo" required className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="followUpDate" className="text-sm font-medium text-gray-700">Follow-up Date</Label>
+                                  <Input id="followUpDate" name="followUpDate" type="date" className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="leadNotes" className="text-sm font-medium text-gray-700">Notes</Label>
+                                <Textarea id="leadNotes" name="notes" className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 min-h-[100px]" />
+                              </div>
+                              <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 rounded-lg">
+                                Add Lead
                               </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+                            </form>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {loading.leads ? (
+                      <div className="flex justify-center items-center py-12">
+                        <div className="text-center">
+                          <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-500" />
+                          <p className="text-gray-500 mt-3">Loading leads...</p>
+                        </div>
+                      </div>
+                    ) : leads.length === 0 ? (
+                      <div className="text-center py-12">
+                        <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                          <Target className="h-8 w-8 text-gray-400" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-gray-900">No leads found</h3>
+                        <p className="text-gray-500 mt-2">
+                          Add your first lead or import from Excel to get started
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="overflow-hidden">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-gray-50 hover:bg-gray-50">
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Lead</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Company</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Contact</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Source</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Value</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Follow-up</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider text-right">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {leads.map((lead, index) => (
+                              <TableRow 
+                                key={lead._id} 
+                                className={`hover:bg-blue-50/50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                              >
+                                <TableCell className="py-4 px-6">
+                                  <div className="flex items-center">
+                                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-3">
+                                      <span className="text-blue-600 font-semibold">{lead.name.charAt(0)}</span>
+                                    </div>
+                                    <div>
+                                      <div className="font-medium text-gray-900">{lead.name}</div>
+                                      <div className="text-sm text-gray-500">Added {formatDate(lead.createdAt)}</div>
+                                    </div>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="py-4 px-6">
+                                  <div className="flex items-center text-gray-700">
+                                    <Building className="h-4 w-4 mr-2 text-gray-400" />
+                                    {lead.company}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="py-4 px-6">
+                                  <div className="space-y-1">
+                                    <div className="text-sm text-gray-600">{lead.email}</div>
+                                    <div className="text-sm text-gray-600">{lead.phone}</div>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="py-4 px-6">
+                                  <Badge variant="outline" className="border-gray-300 text-gray-700 font-normal px-3 py-1 rounded-full">
+                                    {lead.source}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="py-4 px-6">
+                                  <Select 
+                                    value={lead.status} 
+                                    onValueChange={(value) => handleLeadStatusChange(lead._id, value as Lead['status'])}
+                                  >
+                                    <SelectTrigger className="w-36 rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-lg">
+                                      <SelectItem value="new" className="rounded-md">New</SelectItem>
+                                      <SelectItem value="contacted" className="rounded-md">Contacted</SelectItem>
+                                      <SelectItem value="qualified" className="rounded-md">Qualified</SelectItem>
+                                      <SelectItem value="proposal" className="rounded-md">Proposal Sent</SelectItem>
+                                      <SelectItem value="negotiation" className="rounded-md">Negotiation</SelectItem>
+                                      <SelectItem value="closed-won" className="rounded-md">Won</SelectItem>
+                                      <SelectItem value="closed-lost" className="rounded-md">Lost</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </TableCell>
+                                <TableCell className="py-4 px-6">
+                                  <div className="font-bold text-blue-600">{lead.value}</div>
+                                </TableCell>
+                                <TableCell className="py-4 px-6">
+                                  {lead.followUpDate ? (
+                                    <div className="flex items-center gap-2">
+                                      <Calendar className="h-4 w-4 text-gray-400" />
+                                      <span className="text-sm text-gray-700">{formatDate(lead.followUpDate)}</span>
+                                    </div>
+                                  ) : (
+                                    <Badge variant="outline" className="border-gray-300 text-gray-500 font-normal px-3 py-1 rounded-full">
+                                      No follow-up
+                                    </Badge>
+                                  )}
+                                </TableCell>
+                                <TableCell className="py-4 px-6 text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <Dialog>
+                                      <DialogTrigger asChild>
+                                        <Button 
+                                          variant="ghost" 
+                                          size="sm"
+                                          onClick={() => setViewLeadDialog(lead._id)}
+                                          className="w-8 h-8 p-0 rounded-full hover:bg-blue-100 hover:text-blue-600"
+                                          title="View Details"
+                                        >
+                                          <Eye className="h-4 w-4" />
+                                        </Button>
+                                      </DialogTrigger>
+                                      <DialogContent className="max-w-2xl bg-white rounded-2xl">
+                                        <DialogHeader>
+                                          <DialogTitle className="text-lg font-semibold text-gray-900">Lead Details</DialogTitle>
+                                        </DialogHeader>
+                                        {viewLeadDialog && getLeadById(viewLeadDialog) && (() => {
+                                          const lead = getLeadById(viewLeadDialog)!;
+                                          return (
+                                            <div className="space-y-6">
+                                              <div className="flex items-center gap-4">
+                                                <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center">
+                                                  <span className="text-blue-600 font-bold text-xl">{lead.name.charAt(0)}</span>
+                                                </div>
+                                                <div>
+                                                  <h3 className="text-xl font-bold text-gray-900">{lead.name}</h3>
+                                                  <p className="text-gray-500">{lead.company}</p>
+                                                </div>
+                                              </div>
+                                              
+                                              <div className="grid grid-cols-2 gap-6">
+                                                <div className="space-y-4">
+                                                  <div>
+                                                    <Label className="text-xs text-gray-500 uppercase font-medium">Email</Label>
+                                                    <p className="flex items-center gap-2 text-gray-900">
+                                                      <Mail className="h-4 w-4 text-gray-400" />
+                                                      {lead.email}
+                                                    </p>
+                                                  </div>
+                                                  <div>
+                                                    <Label className="text-xs text-gray-500 uppercase font-medium">Phone</Label>
+                                                    <p className="flex items-center gap-2 text-gray-900">
+                                                      <Phone className="h-4 w-4 text-gray-400" />
+                                                      {lead.phone}
+                                                    </p>
+                                                  </div>
+                                                  <div>
+                                                    <Label className="text-xs text-gray-500 uppercase font-medium">Source</Label>
+                                                    <p className="text-gray-900">{lead.source}</p>
+                                                  </div>
+                                                </div>
+                                                <div className="space-y-4">
+                                                  <div>
+                                                    <Label className="text-xs text-gray-500 uppercase font-medium">Status</Label>
+                                                    <div>
+                                                      <Badge 
+                                                        className={`px-3 py-1 rounded-full ${
+                                                          lead.status === 'new' 
+                                                            ? 'bg-blue-100 text-blue-800 border-blue-200' 
+                                                            : lead.status === 'closed-won'
+                                                            ? 'bg-green-100 text-green-800 border-green-200'
+                                                            : 'bg-gray-100 text-gray-800 border-gray-200'
+                                                        }`}
+                                                      >
+                                                        {getStatusText(lead.status)}
+                                                      </Badge>
+                                                    </div>
+                                                  </div>
+                                                  <div>
+                                                    <Label className="text-xs text-gray-500 uppercase font-medium">Value</Label>
+                                                    <p className="text-lg font-bold text-blue-600">{lead.value}</p>
+                                                  </div>
+                                                  <div>
+                                                    <Label className="text-xs text-gray-500 uppercase font-medium">Assigned To</Label>
+                                                    <p className="text-gray-900">{lead.assignedTo}</p>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                              
+                                              {lead.followUpDate && (
+                                                <div>
+                                                  <Label className="text-xs text-gray-500 uppercase font-medium">Follow-up Date</Label>
+                                                  <div className="flex items-center gap-2 mt-2 p-3 bg-gray-50 rounded-lg">
+                                                    <Calendar className="h-4 w-4 text-gray-400" />
+                                                    <span className="text-gray-900">{formatDate(lead.followUpDate)}</span>
+                                                  </div>
+                                                </div>
+                                              )}
+                                              
+                                              {lead.notes && (
+                                                <div>
+                                                  <Label className="text-xs text-gray-500 uppercase font-medium">Notes</Label>
+                                                  <div className="mt-2 p-3 bg-gray-50 rounded-lg">
+                                                    <p className="text-gray-900">{lead.notes}</p>
+                                                  </div>
+                                                </div>
+                                              )}
+                                              
+                                              <div className="flex items-center justify-between text-sm text-gray-500 pt-4 border-t">
+                                                <span>Created: {formatDate(lead.createdAt)}</span>
+                                                <span>Updated: {formatDate(lead.updatedAt)}</span>
+                                              </div>
+                                            </div>
+                                          );
+                                        })()}
+                                      </DialogContent>
+                                    </Dialog>
+                                    
+                                    <Dialog open={!!editingLead} onOpenChange={(open) => !open && setEditingLead(null)}>
+                                      <DialogTrigger asChild>
+                                        <Button 
+                                          variant="ghost" 
+                                          size="sm"
+                                          onClick={() => setEditingLead(lead)}
+                                          className="w-8 h-8 p-0 rounded-full hover:bg-blue-100 hover:text-blue-600"
+                                          title="Edit"
+                                        >
+                                          <Edit className="h-4 w-4" />
+                                        </Button>
+                                      </DialogTrigger>
+                                      {editingLead && editingLead._id === lead._id && (
+                                        <DialogContent className="max-w-2xl bg-white rounded-2xl">
+                                          <DialogHeader>
+                                            <DialogTitle className="text-lg font-semibold text-gray-900">Edit Lead</DialogTitle>
+                                          </DialogHeader>
+                                          <form onSubmit={handleEditLead} className="space-y-5">
+                                            <div className="grid grid-cols-2 gap-5">
+                                              <div className="space-y-2">
+                                                <Label htmlFor="edit-lead-name" className="text-sm font-medium text-gray-700">Lead Name</Label>
+                                                <Input 
+                                                  id="edit-lead-name" 
+                                                  name="name" 
+                                                  defaultValue={editingLead.name} 
+                                                  required 
+                                                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                                />
+                                              </div>
+                                              <div className="space-y-2">
+                                                <Label htmlFor="edit-lead-company" className="text-sm font-medium text-gray-700">Company</Label>
+                                                <Input 
+                                                  id="edit-lead-company" 
+                                                  name="company" 
+                                                  defaultValue={editingLead.company} 
+                                                  required 
+                                                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                                />
+                                              </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-5">
+                                              <div className="space-y-2">
+                                                <Label htmlFor="edit-lead-email" className="text-sm font-medium text-gray-700">Email</Label>
+                                                <Input 
+                                                  id="edit-lead-email" 
+                                                  name="email" 
+                                                  type="email" 
+                                                  defaultValue={editingLead.email} 
+                                                  required 
+                                                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                                />
+                                              </div>
+                                              <div className="space-y-2">
+                                                <Label htmlFor="edit-lead-phone" className="text-sm font-medium text-gray-700">Phone</Label>
+                                                <Input 
+                                                  id="edit-lead-phone" 
+                                                  name="phone" 
+                                                  defaultValue={editingLead.phone} 
+                                                  required 
+                                                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                                />
+                                              </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-5">
+                                              <div className="space-y-2">
+                                                <Label htmlFor="edit-source" className="text-sm font-medium text-gray-700">Source</Label>
+                                                <Select name="source" defaultValue={editingLead.source}>
+                                                  <SelectTrigger className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                                                    <SelectValue />
+                                                  </SelectTrigger>
+                                                  <SelectContent className="rounded-lg">
+                                                    {leadSources.map(source => (
+                                                      <SelectItem key={source} value={source} className="rounded-md">{source}</SelectItem>
+                                                    ))}
+                                                  </SelectContent>
+                                                </Select>
+                                              </div>
+                                              <div className="space-y-2">
+                                                <Label htmlFor="edit-lead-value" className="text-sm font-medium text-gray-700">Expected Value</Label>
+                                                <Input 
+                                                  id="edit-lead-value" 
+                                                  name="value" 
+                                                  defaultValue={editingLead.value} 
+                                                  required 
+                                                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                                />
+                                              </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-5">
+                                              <div className="space-y-2">
+                                                <Label htmlFor="edit-assignedTo" className="text-sm font-medium text-gray-700">Assign To</Label>
+                                                <Input 
+                                                  id="edit-assignedTo" 
+                                                  name="assignedTo" 
+                                                  defaultValue={editingLead.assignedTo} 
+                                                  required 
+                                                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                                />
+                                              </div>
+                                              <div className="space-y-2">
+                                                <Label htmlFor="edit-followUpDate" className="text-sm font-medium text-gray-700">Follow-up Date</Label>
+                                                <Input 
+                                                  id="edit-followUpDate" 
+                                                  name="followUpDate" 
+                                                  type="date" 
+                                                  defaultValue={editingLead.followUpDate ? editingLead.followUpDate.split('T')[0] : ''} 
+                                                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                                />
+                                              </div>
+                                            </div>
+                                            <div className="space-y-2">
+                                              <Label htmlFor="edit-lead-notes" className="text-sm font-medium text-gray-700">Notes</Label>
+                                              <Textarea 
+                                                id="edit-lead-notes" 
+                                                name="notes" 
+                                                defaultValue={editingLead.notes || ""} 
+                                                className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 min-h-[100px]"
+                                              />
+                                            </div>
+                                            <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 rounded-lg">
+                                              Update Lead
+                                            </Button>
+                                          </form>
+                                        </DialogContent>
+                                      )}
+                                    </Dialog>
+                                    
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm" 
+                                      onClick={() => handleDeleteLead(lead._id)}
+                                      className="w-8 h-8 p-0 rounded-full hover:bg-red-100 hover:text-red-600"
+                                      title="Delete"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Communications Tab */}
-          <TabsContent value="communications">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <CardTitle>Communication Logs</CardTitle>
-                <div className="flex gap-2">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search communications..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10 w-64"
-                    />
-                  </div>
-                  <Dialog open={commDialogOpen} onOpenChange={setCommDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button><Plus className="mr-2 h-4 w-4" />Log Communication</Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-2xl">
-                      <DialogHeader>
-                        <DialogTitle>Log Communication</DialogTitle>
-                      </DialogHeader>
-                      <form onSubmit={handleAddCommunication} className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="commClientName">Client Name *</Label>
-                            <Select name="clientName" required>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select client" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {clients.map(client => (
-                                  <SelectItem key={client._id} value={client.name}>
-                                    {client.name} - {client.company}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="commType">Type *</Label>
-                            <Select name="type" required>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select type" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {communicationTypes.map(type => (
-                                  <SelectItem key={type} value={type}>
-                                    {type.charAt(0).toUpperCase() + type.slice(1)}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="commDate">Date *</Label>
-                            <Input 
-                              id="commDate" 
-                              name="date" 
-                              type="date" 
-                              defaultValue={new Date().toISOString().split('T')[0]} 
-                              required 
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="commClientId">Client ID</Label>
-                            <Select name="clientId">
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select client ID" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {clients.map(client => (
-                                  <SelectItem key={client._id} value={client._id}>
-                                    {client._id.slice(-6)} - {client.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="commNotes">Notes *</Label>
-                          <Textarea id="commNotes" name="notes" required />
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <input 
-                            type="checkbox" 
-                            id="followUpRequired" 
-                            name="followUpRequired" 
-                            className="rounded" 
-                          />
-                          <Label htmlFor="followUpRequired">Follow-up Required</Label>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="commFollowUpDate">Follow-up Date</Label>
-                          <Input id="commFollowUpDate" name="followUpDate" type="date" />
-                        </div>
-                        <Button type="submit" className="w-full">Log Communication</Button>
-                      </form>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {loading.communications ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="h-8 w-8 animate-spin" />
-                  </div>
-                ) : communications.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No communications found. Log your first communication!
-                  </div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Client</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Notes</TableHead>
-                        <TableHead>Follow-up</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {communications.map((comm) => (
-                        <TableRow key={comm._id}>
-                          <TableCell className="font-medium">
-                            {comm.clientName}
-                            {typeof comm.clientId === 'object' && comm.clientId && (
-                              <div className="text-sm text-muted-foreground">
-                                {comm.clientId.company}
-                              </div>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">
-                              {getCommunicationTypeIcon(comm.type)}
-                              {comm.type.charAt(0).toUpperCase() + comm.type.slice(1)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{formatDateTime(comm.date)}</TableCell>
-                          <TableCell className="max-w-xs">
-                            <div className="truncate">{comm.notes}</div>
-                          </TableCell>
-                          <TableCell>
-                            {comm.followUpRequired ? (
-                              <div className="flex items-center gap-1">
-                                <Calendar className="h-3 w-3" />
-                                {comm.followUpDate ? formatDate(comm.followUpDate) : "Pending"}
-                              </div>
-                            ) : (
-                              <Badge variant="outline">Not Required</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              onClick={() => handleDeleteCommunication(comm._id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
+          <AnimatePresence mode="wait">
+            {activeTab === "communications" && (
+              <motion.div
+                key="communications"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
+                  <CardHeader className="bg-white border-b border-gray-200 px-6 py-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-xl font-bold text-gray-900">Communication Logs</CardTitle>
+                        <p className="text-sm text-gray-500 mt-1">Track all client interactions and engagements</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Dialog open={commDialogOpen} onOpenChange={setCommDialogOpen}>
+                          <DialogTrigger asChild>
+                            <Button className="bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm hover:shadow">
+                              <Plus className="mr-2 h-4 w-4" />
+                              Log Communication
                             </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </motion.div>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-2xl bg-white rounded-2xl">
+                            <DialogHeader>
+                              <DialogTitle className="text-lg font-semibold text-gray-900">Log Communication</DialogTitle>
+                            </DialogHeader>
+                            <form onSubmit={handleAddCommunication} className="space-y-5">
+                              <div className="grid grid-cols-2 gap-5">
+                                <div className="space-y-2">
+                                  <Label htmlFor="commClientName" className="text-sm font-medium text-gray-700">Client Name *</Label>
+                                  <Select name="clientName" required>
+                                    <SelectTrigger className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                                      <SelectValue placeholder="Select client" />
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-lg">
+                                      {clients.map(client => (
+                                        <SelectItem key={client._id} value={client.name} className="rounded-md">
+                                          {client.name} - {client.company}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="commType" className="text-sm font-medium text-gray-700">Type *</Label>
+                                  <Select name="type" required>
+                                    <SelectTrigger className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                                      <SelectValue placeholder="Select type" />
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-lg">
+                                      {communicationTypes.map(type => (
+                                        <SelectItem key={type} value={type} className="rounded-md">
+                                          {type.charAt(0).toUpperCase() + type.slice(1)}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-5">
+                                <div className="space-y-2">
+                                  <Label htmlFor="commDate" className="text-sm font-medium text-gray-700">Date *</Label>
+                                  <Input 
+                                    id="commDate" 
+                                    name="date" 
+                                    type="date" 
+                                    defaultValue={new Date().toISOString().split('T')[0]} 
+                                    required 
+                                    className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="commClientId">Client ID</Label>
+                                  <Select name="clientId">
+                                    <SelectTrigger className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                                      <SelectValue placeholder="Select client ID" />
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-lg">
+                                      {clients.map(client => (
+                                        <SelectItem key={client._id} value={client._id} className="rounded-md">
+                                          {client._id.slice(-6)} - {client.name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="commNotes" className="text-sm font-medium text-gray-700">Notes *</Label>
+                                <Textarea id="commNotes" name="notes" required className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 min-h-[120px]" />
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <input 
+                                  type="checkbox" 
+                                  id="followUpRequired" 
+                                  name="followUpRequired" 
+                                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" 
+                                />
+                                <Label htmlFor="followUpRequired" className="text-sm text-gray-700">Follow-up Required</Label>
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="commFollowUpDate">Follow-up Date</Label>
+                                <Input id="commFollowUpDate" name="followUpDate" type="date" className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                              </div>
+                              <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 rounded-lg">
+                                Log Communication
+                              </Button>
+                            </form>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {loading.communications ? (
+                      <div className="flex justify-center items-center py-12">
+                        <div className="text-center">
+                          <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-500" />
+                          <p className="text-gray-500 mt-3">Loading communications...</p>
+                        </div>
+                      </div>
+                    ) : communications.length === 0 ? (
+                      <div className="text-center py-12">
+                        <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                          <MessageSquare className="h-8 w-8 text-gray-400" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-gray-900">No communications found</h3>
+                        <p className="text-gray-500 mt-2">
+                          Log your first communication to start tracking client interactions
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="overflow-hidden">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-gray-50 hover:bg-gray-50">
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Client</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Type</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Date & Time</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Notes</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Follow-up</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider text-right">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {communications.map((comm, index) => (
+                              <TableRow 
+                                key={comm._id} 
+                                className={`hover:bg-blue-50/50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                              >
+                                <TableCell className="py-4 px-6">
+                                  <div className="flex items-center">
+                                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-3">
+                                      <span className="text-blue-600 font-semibold">{comm.clientName.charAt(0)}</span>
+                                    </div>
+                                    <div>
+                                      <div className="font-medium text-gray-900">{comm.clientName}</div>
+                                      {typeof comm.clientId === 'object' && comm.clientId && (
+                                        <div className="text-sm text-gray-500">
+                                          {comm.clientId.company}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="py-4 px-6">
+                                  <Badge 
+                                    variant="outline" 
+                                    className="gap-1 border-gray-300 text-gray-700 font-normal px-3 py-1 rounded-full"
+                                  >
+                                    {getCommunicationTypeIcon(comm.type)}
+                                    {comm.type.charAt(0).toUpperCase() + comm.type.slice(1)}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="py-4 px-6">
+                                  <div className="text-sm text-gray-700">
+                                    {formatDateTime(comm.date)}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="py-4 px-6 max-w-xs">
+                                  <div className="truncate text-gray-600" title={comm.notes}>{comm.notes}</div>
+                                </TableCell>
+                                <TableCell className="py-4 px-6">
+                                  {comm.followUpRequired ? (
+                                    <div className="flex items-center gap-2">
+                                      <Calendar className="h-4 w-4 text-gray-400" />
+                                      {comm.followUpDate ? (
+                                        <span className="text-sm text-gray-700">{formatDate(comm.followUpDate)}</span>
+                                      ) : (
+                                        <Badge 
+                                          variant="outline" 
+                                          className="border-orange-200 text-orange-600 font-normal px-3 py-1 rounded-full"
+                                        >
+                                          Pending
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <Badge 
+                                      variant="outline" 
+                                      className="border-gray-300 text-gray-500 font-normal px-3 py-1 rounded-full"
+                                    >
+                                      Not Required
+                                    </Badge>
+                                  )}
+                                </TableCell>
+                                <TableCell className="py-4 px-6 text-right">
+                                  <div className="flex items-center justify-end">
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm" 
+                                      onClick={() => handleDeleteCommunication(comm._id)}
+                                      className="w-8 h-8 p-0 rounded-full hover:bg-red-100 hover:text-red-600"
+                                      title="Delete"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
     </div>
   );
 };

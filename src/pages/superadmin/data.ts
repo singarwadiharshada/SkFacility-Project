@@ -16,6 +16,9 @@ export interface HourlyUpdate {
 }
 
 export interface Task {
+  category: string;
+  type: any;
+  notes: any;
   id: string;
   title: string;
   description: string;
@@ -31,6 +34,7 @@ export interface Task {
 
 // Update your Site interface to include staffDeployment
 export interface Site {
+  issues: number;
   id: string;
   name: string;
   clientName: string;

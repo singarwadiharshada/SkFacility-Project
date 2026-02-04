@@ -1,17 +1,21 @@
 'use client';
 
 import { useState, useEffect } from "react";
-import { DashboardHeader } from "@/components/shared/DashboardHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { ThemeToggle } from "@/components/shared/ThemeToggle";
-import { Save, User, Lock, Shield, Loader2, LogIn, Key, AlertCircle, Eye, EyeOff, Bug, Database } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { 
+  Save, User, Lock, Shield, Loader2, Key, Eye, EyeOff,
+  Mail, Phone, KeyRound, CheckCircle, AlertCircle, Bell,
+  Search, LogOut, ShieldCheck
+} from "lucide-react";
 
 const getApiUrl = () => {
   if (typeof window === 'undefined') {
@@ -23,26 +27,17 @@ const getApiUrl = () => {
 const API_BASE = getApiUrl();
 const SETTINGS_BASE = `${API_BASE}/settings`;
 
-// Enhanced token getter with debugging
 const getAuthToken = () => {
   if (typeof window === 'undefined') return null;
-  
-  // Check all possible token locations
-  const token = localStorage.getItem('sk_token') || 
-                localStorage.getItem('token') ||
-                localStorage.getItem('auth_token') ||
-                sessionStorage.getItem('sk_token') ||
-                sessionStorage.getItem('token');
-  
-  return token;
+  return localStorage.getItem('sk_token') || 
+         localStorage.getItem('token') ||
+         sessionStorage.getItem('sk_token');
 };
 
-// Enhanced authFetch with detailed debugging
 const authFetch = async (url: string, options: RequestInit = {}) => {
   const token = getAuthToken();
   
   if (!token) {
-    console.error('❌ No authentication token found in any storage');
     throw new Error('No authentication token found. Please log in.');
   }
 
@@ -52,25 +47,7 @@ const authFetch = async (url: string, options: RequestInit = {}) => {
     ...options.headers
   };
 
-  console.log(`📤 Making request to: ${url}`);
-  console.log(`📤 Method: ${options.method || 'GET'}`);
-  console.log(`📤 Headers:`, { 
-    Authorization: `Bearer ${token.substring(0, 30)}...`,
-    'Content-Type': 'application/json'
-  });
-  
-  if (options.body) {
-    console.log(`📤 Body:`, JSON.parse(options.body as string));
-  }
-
-  const startTime = Date.now();
-  const response = await fetch(url, { ...options, headers });
-  const endTime = Date.now();
-  
-  console.log(`📥 Response: ${response.status} ${response.statusText} (${endTime - startTime}ms)`);
-  console.log(`📥 Response headers:`, Object.fromEntries(response.headers.entries()));
-  
-  return response;
+  return await fetch(url, { ...options, headers });
 };
 
 const Settings = () => {
@@ -78,9 +55,6 @@ const Settings = () => {
     profile: false,
     password: false,
     permissions: false,
-    debug: false,
-    reset: false,
-    passwordInfo: false
   });
   const [showPassword, setShowPassword] = useState({
     current: false,
@@ -103,133 +77,52 @@ const Settings = () => {
     canViewReports: true,
     canDeleteUsers: true,
   });
-  const [backendStatus, setBackendStatus] = useState('Checking...');
-  const [apiUrl, setApiUrl] = useState('');
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authToken, setAuthToken] = useState<string | null>(null);
-  const [requestLogs, setRequestLogs] = useState<string[]>([]);
-  const [debugInfo, setDebugInfo] = useState<any>(null);
-  const [passwordInfo, setPasswordInfo] = useState<any>(null);
-
-  const addLog = (message: string) => {
-    setRequestLogs(prev => [`[${new Date().toLocaleTimeString()}] ${message}`, ...prev.slice(0, 9)]);
-  };
+  const [activeTab, setActiveTab] = useState("profile");
 
   useEffect(() => {
-    const currentApiUrl = getApiUrl();
-    setApiUrl(currentApiUrl);
-    
-    // Enhanced token check
-    const token = getAuthToken();
-    setAuthToken(token);
-    setIsAuthenticated(!!token);
-    
-    console.log('📡 Settings API URL:', SETTINGS_BASE);
-    addLog(`API URL: ${SETTINGS_BASE}`);
-    addLog(`Token: ${token ? 'Found' : 'Not found'}`);
-    
-    checkBackend();
+    loadData();
   }, []);
 
-  const checkBackend = async () => {
-    addLog('Checking backend connection...');
-    try {
-      // Test the settings test endpoint first
-      const testRes = await authFetch(`${SETTINGS_BASE}/test`).catch(() => null);
-      
-      if (testRes?.ok) {
-        const data = await testRes.json();
-        console.log('✅ Backend test successful:', data);
-        setBackendStatus('Connected & Authenticated ✅');
-        await loadData();
-      } else if (testRes?.status === 401) {
-        setBackendStatus('Connected but not authenticated 🔒');
-        addLog('⚠️ Authentication required');
-      } else if (testRes?.status === 404) {
-        setBackendStatus('Settings endpoint not found 🔍');
-        addLog('❌ Settings endpoint not found');
-        // Try to load data anyway
-        await loadData();
-      } else {
-        setBackendStatus('Connection error ❌');
-        addLog(`❌ Test failed: ${testRes?.status}`);
-      }
-    } catch (error) {
-      console.error('❌ Backend check failed:', error);
-      setBackendStatus('Not Connected ❌');
-      addLog(`Error: ${error.message}`);
-      toast.error('Cannot connect to backend');
-      useMockData();
-    }
-  };
-
-  const useMockData = () => {
-    addLog('Using mock data');
-    setProfileData({
-      name: 'Super Admin',
-      email: 'admin@skproject.com',
-      phone: '+1234567890',
-    });
-    setPermissions({
-      canCreateAdmins: true,
-      canManageManagers: true,
-      canViewReports: true,
-      canDeleteUsers: true,
-    });
-  };
-
   const loadData = async () => {
-    addLog('Loading data...');
     try {
-      // Try profile endpoint
-      try {
-        const profileRes = await authFetch(`${SETTINGS_BASE}/profile`);
-        addLog(`Profile: ${profileRes.status} ${profileRes.statusText}`);
-        
-        if (profileRes.ok) {
-          const data = await profileRes.json();
-          console.log('✅ Profile data:', data);
-          if (data.success && data.data) {
-            setProfileData({
-              name: data.data.name || 'Super Admin',
-              email: data.data.email || 'admin@skproject.com',
-              phone: data.data.phone || '+1234567890',
-            });
-            addLog('✅ Profile loaded from backend');
-          }
+      const profileRes = await authFetch(`${SETTINGS_BASE}/profile`);
+      if (profileRes.ok) {
+        const data = await profileRes.json();
+        if (data.success && data.data) {
+          setProfileData({
+            name: data.data.name || 'Super Admin',
+            email: data.data.email || 'admin@skproject.com',
+            phone: data.data.phone || '+1234567890',
+          });
         }
-      } catch (error: any) {
-        addLog(`❌ Profile error: ${error.message}`);
       }
 
-      // Try permissions endpoint
-      try {
-        const permRes = await authFetch(`${SETTINGS_BASE}/permissions`);
-        addLog(`Permissions: ${permRes.status} ${permRes.statusText}`);
-        
-        if (permRes.ok) {
-          const data = await permRes.json();
-          console.log('✅ Permissions data:', data);
-          if (data.success && data.data) {
-            setPermissions(data.data);
-            addLog('✅ Permissions loaded from backend');
-          }
+      const permRes = await authFetch(`${SETTINGS_BASE}/permissions`);
+      if (permRes.ok) {
+        const data = await permRes.json();
+        if (data.success && data.data) {
+          setPermissions(data.data);
         }
-      } catch (error: any) {
-        addLog(`❌ Permissions error: ${error.message}`);
       }
-      
-    } catch (error) {
-      console.error('❌ Load data error:', error);
-      addLog(`Load error: ${error.message}`);
-      useMockData();
+    } catch (error: any) {
+      // Use mock data if API fails
+      setProfileData({
+        name: 'Super Admin',
+        email: 'admin@skproject.com',
+        phone: '+1234567890',
+      });
+      setPermissions({
+        canCreateAdmins: true,
+        canManageManagers: true,
+        canViewReports: true,
+        canDeleteUsers: true,
+      });
     }
   };
 
   const handleProfileUpdate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading({ ...loading, profile: true });
-    addLog('Updating profile...');
 
     try {
       const response = await authFetch(`${SETTINGS_BASE}/profile`, {
@@ -237,23 +130,16 @@ const Settings = () => {
         body: JSON.stringify(profileData),
       });
 
-      addLog(`Profile update: ${response.status} ${response.statusText}`);
-
       if (response.ok) {
         const data = await response.json();
-        toast.success(data.message || 'Profile updated!');
-        addLog('✅ Profile updated successfully');
+        toast.success(data.message || 'Profile updated successfully!');
       } else if (response.status === 401) {
-        toast.error('Authentication failed. Profile not updated.');
-        addLog('❌ Auth failed for profile update');
+        toast.error('Authentication failed. Please login again.');
       } else {
-        toast.error(`Failed to update profile: ${response.status}`);
-        addLog(`❌ Profile update failed: ${response.status}`);
+        toast.error('Failed to update profile');
       }
     } catch (error: any) {
       toast.error(`Error: ${error.message}`);
-      addLog(`❌ Profile update error: ${error.message}`);
-      console.error('Profile update error:', error);
     } finally {
       setLoading({ ...loading, profile: false });
     }
@@ -262,30 +148,18 @@ const Settings = () => {
   const handlePasswordUpdate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading({ ...loading, password: true });
-    addLog('Updating password...');
 
-    const currentPassword = passwordData.currentPassword;
-    const newPassword = passwordData.newPassword;
-    const confirmPassword = passwordData.confirmPassword;
-
-    console.log('🔧 [FRONTEND] Password update attempt:', {
-      currentPasswordLength: currentPassword.length,
-      newPasswordLength: newPassword.length,
-      confirmPasswordLength: confirmPassword.length,
-      passwordsMatch: newPassword === confirmPassword
-    });
+    const { currentPassword, newPassword, confirmPassword } = passwordData;
 
     if (newPassword !== confirmPassword) {
       toast.error("Passwords don't match!");
       setLoading({ ...loading, password: false });
-      addLog('❌ Passwords do not match');
       return;
     }
 
     if (newPassword.length < 6) {
       toast.error("Password must be at least 6 characters!");
       setLoading({ ...loading, password: false });
-      addLog('❌ Password too short');
       return;
     }
 
@@ -295,63 +169,27 @@ const Settings = () => {
         body: JSON.stringify({ currentPassword, newPassword }),
       });
 
-      addLog(`Password update: ${response.status} ${response.statusText}`);
-
-      // Get the full response for debugging
       const responseText = await response.text();
-      console.log('📥 [FRONTEND] Full server response:', responseText);
-      
-      // Try to parse the response
       let responseData;
       try {
         responseData = JSON.parse(responseText);
-        console.log('📥 [FRONTEND] Parsed response:', responseData);
-      } catch (parseError) {
-        console.log('📥 [FRONTEND] Could not parse response as JSON:', responseText);
-      }
+      } catch (parseError) {}
 
       if (response.ok) {
         toast.success(responseData?.message || 'Password updated successfully!');
-        addLog('✅ Password updated successfully');
-        
-        // Reset password fields
-        setPasswordData({
-          currentPassword: '',
-          newPassword: '',
-          confirmPassword: ''
-        });
-        
-        // Also clear the password visibility states
-        setShowPassword({
-          current: false,
-          new: false,
-          confirm: false
-        });
+        setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        setShowPassword({ current: false, new: false, confirm: false });
       } else if (response.status === 400) {
-        // Bad Request - show specific error
         const errorMessage = responseData?.error || 'Invalid current password or password requirements not met';
         toast.error(errorMessage);
-        addLog(`❌ Password update failed: ${errorMessage}`);
-        
-        // Log detailed error for debugging
-        console.error('❌ [FRONTEND] Password update failed with 400:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: responseData?.error,
-          fullResponse: responseData
-        });
       } else if (response.status === 401) {
-        toast.error('Authentication failed. Password not updated.');
-        addLog('❌ Auth failed for password update');
+        toast.error('Authentication failed. Please login again.');
       } else {
-        const errorMessage = responseData?.error || `Failed to update password: ${response.status}`;
+        const errorMessage = responseData?.error || 'Failed to update password';
         toast.error(errorMessage);
-        addLog(`❌ Password update failed: ${response.status}`);
       }
     } catch (error: any) {
       toast.error(`Error: ${error.message}`);
-      addLog(`❌ Password update error: ${error.message}`);
-      console.error('❌ [FRONTEND] Password update error:', error);
     } finally {
       setLoading({ ...loading, password: false });
     }
@@ -359,7 +197,6 @@ const Settings = () => {
 
   const handlePermissionsUpdate = async () => {
     setLoading({ ...loading, permissions: true });
-    addLog('Updating permissions...');
 
     try {
       const response = await authFetch(`${SETTINGS_BASE}/permissions`, {
@@ -367,172 +204,18 @@ const Settings = () => {
         body: JSON.stringify(permissions),
       });
 
-      addLog(`Permissions update: ${response.status} ${response.statusText}`);
-
       if (response.ok) {
         const data = await response.json();
-        toast.success(data.message || 'Permissions updated!');
-        addLog('✅ Permissions updated successfully');
+        toast.success(data.message || 'Permissions updated successfully!');
       } else if (response.status === 401) {
-        toast.error('Authentication failed. Permissions not updated.');
-        addLog('❌ Auth failed for permissions update');
+        toast.error('Authentication failed. Please login again.');
       } else {
-        toast.error(`Failed to update permissions: ${response.status}`);
-        addLog(`❌ Permissions update failed: ${response.status}`);
+        toast.error('Failed to update permissions');
       }
     } catch (error: any) {
       toast.error(`Error: ${error.message}`);
-      addLog(`❌ Permissions update error: ${error.message}`);
-      console.error('Permissions update error:', error);
     } finally {
       setLoading({ ...loading, permissions: false });
-    }
-  };
-
-  // Debug password function
-  const handleDebugPassword = async () => {
-    setLoading({ ...loading, debug: true });
-    addLog('Debugging password...');
-
-    try {
-      const response = await authFetch(`${SETTINGS_BASE}/debug-password`);
-      const responseText = await response.text();
-      console.log('🔍 [FRONTEND] Debug response:', responseText);
-      
-      try {
-        const data = JSON.parse(responseText);
-        if (response.ok) {
-          setDebugInfo(data.data);
-          addLog('✅ Password debug info retrieved');
-          console.log('🔍 Debug info:', data.data);
-          
-          // Show which passwords match
-          const matchingPasswords = data.data.testResults.filter((r: any) => r.matches);
-          if (matchingPasswords.length > 0) {
-            toast.info(`Found matching password: ${matchingPasswords[0].password}`);
-            // Auto-fill the current password field with the found password
-            setPasswordData({
-              ...passwordData,
-              currentPassword: matchingPasswords[0].password
-            });
-          } else {
-            toast.warning('No matching passwords found in common list');
-          }
-        } else {
-          toast.error(data.error || 'Debug failed');
-          addLog(`❌ Debug failed: ${data.error}`);
-        }
-      } catch (parseError) {
-        console.error('❌ Could not parse debug response:', responseText);
-        toast.error('Invalid debug response from server');
-      }
-    } catch (error: any) {
-      toast.error(`Debug error: ${error.message}`);
-      addLog(`❌ Debug error: ${error.message}`);
-    } finally {
-      setLoading({ ...loading, debug: false });
-    }
-  };
-
-  // Get password info function
-  const handleGetPasswordInfo = async () => {
-    setLoading({ ...loading, passwordInfo: true });
-    addLog('Getting password info...');
-
-    try {
-      const response = await authFetch(`${SETTINGS_BASE}/password-info`);
-      const responseText = await response.text();
-      console.log('🔍 [FRONTEND] Password info response:', responseText);
-      
-      try {
-        const data = JSON.parse(responseText);
-        if (response.ok) {
-          setPasswordInfo(data.data);
-          addLog('✅ Password info retrieved');
-          console.log('🔍 Password info:', data.data);
-          toast.info('Password info retrieved - check console');
-        } else {
-          toast.error(data.error || 'Failed to get password info');
-          addLog(`❌ Password info failed: ${data.error}`);
-        }
-      } catch (parseError) {
-        console.error('❌ Could not parse password info response:', responseText);
-        toast.error('Invalid response from server');
-      }
-    } catch (error: any) {
-      toast.error(`Error: ${error.message}`);
-      addLog(`❌ Password info error: ${error.message}`);
-    } finally {
-      setLoading({ ...loading, passwordInfo: false });
-    }
-  };
-
-  // Reset password for testing
-  const handleResetPasswordForTesting = async () => {
-    const newPassword = prompt("Enter new password for testing:");
-    if (!newPassword) return;
-    
-    const confirm = window.confirm(`This will reset your password to "${newPassword}". Are you sure?`);
-    if (!confirm) return;
-    
-    setLoading({ ...loading, reset: true });
-    addLog(`Resetting password to: ${newPassword}`);
-
-    try {
-      const response = await authFetch(`${SETTINGS_BASE}/reset-password-test`, {
-        method: 'POST',
-        body: JSON.stringify({ newPassword }),
-      });
-      
-      const responseText = await response.text();
-      console.log('🔄 [FRONTEND] Reset response:', responseText);
-      
-      try {
-        const data = JSON.parse(responseText);
-        
-        if (response.ok) {
-          toast.success(`Password reset to "${newPassword}"`);
-          addLog(`✅ Password reset to ${newPassword}`);
-          console.log('✅ Password reset successful:', data);
-          
-          // Update the password field for easy testing
-          setPasswordData({
-            currentPassword: newPassword,
-            newPassword: '',
-            confirmPassword: ''
-          });
-          
-          toast.info(`Your current password is now: ${newPassword}`);
-        } else {
-          toast.error(data.error || 'Failed to reset password');
-          addLog(`❌ Password reset failed: ${data.error}`);
-        }
-      } catch (parseError) {
-        console.error('❌ Could not parse reset response:', responseText);
-        toast.error('Invalid response from server');
-      }
-    } catch (error: any) {
-      if (error.message.includes('404')) {
-        toast.error('Reset password endpoint not found. Make sure backend is updated.');
-        addLog('❌ Reset endpoint not found (404)');
-      } else {
-        toast.error(`Error: ${error.message}`);
-        addLog(`❌ Password reset error: ${error.message}`);
-      }
-    } finally {
-      setLoading({ ...loading, reset: false });
-    }
-  };
-
-  const handleSetToken = () => {
-    const token = prompt("Enter your JWT token:");
-    if (token) {
-      localStorage.setItem('sk_token', token);
-      setAuthToken(token);
-      setIsAuthenticated(true);
-      toast.success('Token set! Reloading...');
-      addLog('🔑 Token set manually');
-      setTimeout(() => window.location.reload(), 1000);
     }
   };
 
@@ -543,482 +226,438 @@ const Settings = () => {
     localStorage.removeItem('sk_user');
     sessionStorage.removeItem('sk_token');
     sessionStorage.removeItem('token');
-    setAuthToken(null);
-    setIsAuthenticated(false);
-    toast.success('Logged out');
-    addLog('🚪 User logged out');
+    toast.success('Logged out successfully');
     setTimeout(() => window.location.reload(), 1000);
   };
 
-  const testEndpoint = async (endpoint: string) => {
-    addLog(`Testing: ${endpoint}`);
-    try {
-      const response = await authFetch(endpoint);
-      const data = await response.json();
-      console.log(`✅ ${endpoint}:`, data);
-      addLog(`✅ ${endpoint}: ${response.status} ${response.statusText}`);
-      toast.success(`${endpoint} works!`);
-    } catch (error: any) {
-      console.error(`❌ ${endpoint}:`, error);
-      addLog(`❌ ${endpoint}: ${error.message}`);
-      toast.error(`${endpoint}: ${error.message}`);
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-background">
-      <DashboardHeader title="Settings" />
-      
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="p-6 space-y-6"
-      >
-        {/* Debug Panel */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5" />
-              Connection Status
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="font-medium">Backend Status:</span>
-              <span className={`font-bold ${
-                backendStatus.includes('✅') ? 'text-green-600' : 
-                backendStatus.includes('🔒') ? 'text-yellow-600' : 
-                'text-red-600'
-              }`}>
-                {backendStatus}
-              </span>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header - CRM Style */}
+      <div className="sticky top-0 z-50 bg-white border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              Settings & Configuration
+            </h1>
+            <p className="text-sm text-gray-500 mt-1">Manage your account settings and preferences</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search settings..."
+                className="pl-10 w-64 rounded-full border-gray-300 bg-gray-100 focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
             </div>
-            
-            <div className="flex items-center justify-between">
-              <span className="font-medium">Authentication:</span>
-              <span className={`font-bold ${isAuthenticated ? 'text-green-600' : 'text-red-600'}`}>
-                {isAuthenticated ? 'Authenticated ✅' : 'Not Authenticated ❌'}
-              </span>
+            <div className="flex items-center gap-2">
+              <button className="w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                <Bell className="h-5 w-5 text-gray-600" />
+              </button>
             </div>
-            
-            <div className="flex items-center justify-between">
-              <span className="font-medium">Token Status:</span>
-              <span className={`font-bold ${authToken ? 'text-green-600' : 'text-red-600'}`}>
-                {authToken ? 'Token Found ✅' : 'No Token ❌'}
-              </span>
-            </div>
-            
-            {/* Debug Information */}
-            {debugInfo && (
-              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md">
-                <div className="text-xs font-semibold mb-2 flex items-center gap-1">
-                  <Bug className="h-3 w-3" /> Password Debug:
-                </div>
-                <div className="space-y-1 text-xs">
-                  <div className="flex justify-between">
-                    <span>User Email:</span>
-                    <span className="font-mono">{debugInfo.email}</span>
-                  </div>
-                  <div className="mt-2">
-                    <span className="font-semibold">Password Tests:</span>
-                    <div className="space-y-1 mt-1 max-h-20 overflow-y-auto">
-                      {debugInfo.testResults.map((result: any, index: number) => (
-                        <div key={index} className={`flex justify-between ${result.matches ? 'text-green-600 font-bold' : ''}`}>
-                          <span>{result.password}:</span>
-                          <span>{result.matches ? '✅ MATCHES' : '❌ NO MATCH'}</span>
-                        </div>
-                      ))}
-                    </div>
-                    {debugInfo.testResults.some((r: any) => r.matches) && (
-                      <div className="mt-2 p-2 bg-green-50 dark:bg-green-900/20 rounded">
-                        <p className="text-green-700 dark:text-green-300 text-xs font-semibold">
-                          💡 Found matching password! It has been auto-filled in the Current Password field.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            {/* Password Info */}
-            {passwordInfo && (
-              <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-md">
-                <div className="text-xs font-semibold mb-2 flex items-center gap-1">
-                  <Database className="h-3 w-3" /> Database Info:
-                </div>
-                <div className="space-y-1 text-xs">
-                  <div className="flex justify-between">
-                    <span>Email:</span>
-                    <span className="font-mono">{passwordInfo.email}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Hash Exists:</span>
-                    <span className="font-mono">{passwordInfo.passwordHashExists ? 'Yes' : 'No'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Hash Length:</span>
-                    <span className="font-mono">{passwordInfo.passwordHashLength} chars</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Hash Prefix:</span>
-                    <span className="font-mono">{passwordInfo.passwordHashPrefix}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Last Changed:</span>
-                    <span className="font-mono">{passwordInfo.passwordChangedAt}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            {/* Request Logs */}
-            {requestLogs.length > 0 && (
-              <div className="p-3 bg-muted rounded-md max-h-40 overflow-y-auto">
-                <div className="text-xs font-semibold mb-2">Request Logs:</div>
-                <div className="space-y-1 text-xs">
-                  {requestLogs.map((log, index) => (
-                    <div key={index} className={`font-mono ${log.includes('✅') ? 'text-green-600' : log.includes('❌') ? 'text-red-600' : log.includes('⚠️') ? 'text-yellow-600' : 'text-muted-foreground'}`}>
-                      {log}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            
-            {/* Action Buttons */}
-            <div className="grid grid-cols-2 gap-2 pt-2">
-              {!isAuthenticated ? (
-                <>
-                  <Button variant="outline" size="sm" onClick={handleSetToken}>
-                    <Key className="mr-2 h-4 w-4" /> Set Token
-                  </Button>
-                  <Button variant="default" size="sm" onClick={() => window.location.href = '/login'}>
-                    <LogIn className="mr-2 h-4 w-4" /> Go to Login
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button variant="outline" size="sm" onClick={checkBackend}>
-                    <Loader2 className="mr-2 h-4 w-4" /> Test Connection
-                  </Button>
-                  <Button variant="destructive" size="sm" onClick={handleLogout}>
-                    <LogIn className="mr-2 h-4 w-4" /> Logout
-                  </Button>
-                </>
-              )}
-            </div>
-            
-            {/* Debug Actions */}
-            {isAuthenticated && (
-              <div className="grid grid-cols-3 gap-2 pt-2">
-                <Button variant="outline" size="sm" onClick={() => testEndpoint(`${SETTINGS_BASE}/test`)}>
-                  Test API
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => testEndpoint(`${SETTINGS_BASE}/profile`)}>
-                  Test Profile
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => testEndpoint(`${SETTINGS_BASE}/permissions`)}>
-                  Test Perms
-                </Button>
-              </div>
-            )}
-            
-            {/* Password Debug Actions */}
-            {isAuthenticated && (
-              <div className="grid grid-cols-3 gap-2 pt-2 border-t">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={handleDebugPassword}
-                  disabled={loading.debug}
-                >
-                  {loading.debug ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Bug className="mr-2 h-4 w-4" />
-                  )}
-                  Debug Password
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={handleGetPasswordInfo}
-                  disabled={loading.passwordInfo}
-                >
-                  {loading.passwordInfo ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Database className="mr-2 h-4 w-4" />
-                  )}
-                  DB Info
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={handleResetPasswordForTesting}
-                  disabled={loading.reset}
-                >
-                  {loading.reset ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Key className="mr-2 h-4 w-4" />
-                  )}
-                  Reset Password
-                </Button>
-              </div>
-            )}
-            
-            {/* Quick Instructions */}
-            {isAuthenticated && (
-              <div className="pt-2 text-xs text-muted-foreground border-t">
-                <p className="font-semibold mb-1">💡 How to fix password issue:</p>
-                <ol className="list-decimal pl-4 space-y-1">
-                  <li>Click <strong>"Debug Password"</strong> to find your current password</li>
-                  <li>If found, it auto-fills the Current Password field</li>
-                  <li>If not found, click <strong>"Reset Password"</strong> to set a new one</li>
-                  <li>Use <strong>"DB Info"</strong> to see hash details</li>
-                </ol>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+      </div>
 
-        {/* Settings Tabs */}
-        {isAuthenticated && (
-          <Tabs defaultValue="profile">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="profile">Profile</TabsTrigger>
-              <TabsTrigger value="security">Security</TabsTrigger>
-              <TabsTrigger value="permissions">Permissions</TabsTrigger>
-            </TabsList>
+      <div className="p-6">
+        <div className="max-w-6xl mx-auto">
+          {/* Main Content */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            {/* Sidebar Navigation */}
+            <div className="lg:col-span-1">
+              <div className="bg-white rounded-2xl shadow-lg border border-gray-200">
+                <div className="p-6 border-b border-gray-200">
+                  <h2 className="text-lg font-bold text-gray-900">Settings Menu</h2>
+                </div>
+                <div className="p-4 space-y-2">
+                  <button
+                    onClick={() => setActiveTab("profile")}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === "profile" ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'hover:bg-gray-100 text-gray-700'}`}
+                  >
+                    <User className="h-5 w-5" />
+                    <span className="font-medium">Profile Settings</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("security")}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === "security" ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'hover:bg-gray-100 text-gray-700'}`}
+                  >
+                    <ShieldCheck className="h-5 w-5" />
+                    <span className="font-medium">Security</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("permissions")}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === "permissions" ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'hover:bg-gray-100 text-gray-700'}`}
+                  >
+                    <Shield className="h-5 w-5" />
+                    <span className="font-medium">Permissions</span>
+                  </button>
+                </div>
+                
+                <Separator className="my-4" />
+                
+                <div className="p-4">
+                  <Button
+                    variant="outline"
+                    className="w-full gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                    onClick={handleLogout}
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Logout
+                  </Button>
+                </div>
+              </div>
+            </div>
 
-            {/* Profile Tab */}
-            <TabsContent value="profile">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <User className="h-5 w-5" /> Profile Settings
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <form onSubmit={handleProfileUpdate} className="space-y-6">
-                    <div className="space-y-2">
-                      <Label>Full Name</Label>
-                      <Input 
-                        value={profileData.name}
-                        onChange={(e) => setProfileData({...profileData, name: e.target.value})}
-                        disabled={loading.profile}
-                        placeholder="Enter your full name"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Email</Label>
-                      <Input 
-                        value={profileData.email}
-                        disabled
-                        className="bg-muted"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Phone</Label>
-                      <Input 
-                        value={profileData.phone}
-                        onChange={(e) => setProfileData({...profileData, phone: e.target.value})}
-                        disabled={loading.profile}
-                        placeholder="Enter phone number"
-                      />
-                    </div>
-                    <Button type="submit" disabled={loading.profile} className="w-full">
-                      {loading.profile ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="mr-2 h-4 w-4" /> Save Changes
-                        </>
-                      )}
-                    </Button>
-                  </form>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* Security Tab */}
-            <TabsContent value="security">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Lock className="h-5 w-5" /> Change Password
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <form onSubmit={handlePasswordUpdate} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>Current Password</Label>
-                      <div className="relative">
-                        <Input 
-                          name="currentPassword" 
-                          type={showPassword.current ? "text" : "password"} 
-                          value={passwordData.currentPassword}
-                          onChange={(e) => setPasswordData({...passwordData, currentPassword: e.target.value})}
-                          disabled={loading.password}
-                          placeholder="Enter current password"
-                          required
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6"
-                          onClick={() => setShowPassword({...showPassword, current: !showPassword.current})}
-                        >
-                          {showPassword.current ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </Button>
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label>New Password</Label>
-                      <div className="relative">
-                        <Input 
-                          name="newPassword" 
-                          type={showPassword.new ? "text" : "password"} 
-                          value={passwordData.newPassword}
-                          onChange={(e) => setPasswordData({...passwordData, newPassword: e.target.value})}
-                          disabled={loading.password}
-                          placeholder="Enter new password"
-                          required
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6"
-                          onClick={() => setShowPassword({...showPassword, new: !showPassword.new})}
-                        >
-                          {showPassword.new ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </Button>
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label>Confirm Password</Label>
-                      <div className="relative">
-                        <Input 
-                          name="confirmPassword" 
-                          type={showPassword.confirm ? "text" : "password"} 
-                          value={passwordData.confirmPassword}
-                          onChange={(e) => setPasswordData({...passwordData, confirmPassword: e.target.value})}
-                          disabled={loading.password}
-                          placeholder="Confirm new password"
-                          required
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6"
-                          onClick={() => setShowPassword({...showPassword, confirm: !showPassword.confirm})}
-                        >
-                          {showPassword.confirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </Button>
-                      </div>
-                    </div>
-                    
-                    <div className="flex space-x-2">
-                      <Button type="submit" disabled={loading.password} className="flex-1">
-                        {loading.password ? (
-                          <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Updating...</>
-                        ) : 'Update Password'}
-                      </Button>
-                      <Button 
-                        type="button" 
-                        variant="outline" 
-                        onClick={() => {
-                          setPasswordData({
-                            currentPassword: '',
-                            newPassword: '',
-                            confirmPassword: ''
-                          });
-                          setShowPassword({
-                            current: false,
-                            new: false,
-                            confirm: false
-                          });
-                          toast.info('Password fields cleared');
-                        }}
-                      >
-                        Clear
-                      </Button>
-                    </div>
-                    
-                    {/* Debug Info */}
-                    {(debugInfo || passwordInfo) && (
-                      <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md">
-                        <div className="text-xs">
-                          <p className="font-semibold mb-1">💡 Debug Information:</p>
-                          {debugInfo && debugInfo.testResults.some((r: any) => r.matches) ? (
-                            <p className="text-green-600">
-                              Matching password found! Current Password field has been auto-filled.
-                            </p>
-                          ) : (
-                            <p className="text-yellow-600">
-                              No matching password found. Try "Reset Password" or check backend logs.
-                            </p>
-                          )}
-                          {passwordInfo && (
-                            <p className="text-xs mt-1">
-                              Hash length: {passwordInfo.passwordHashLength} chars
-                            </p>
-                          )}
+            {/* Main Content Area */}
+            <div className="lg:col-span-3">
+              <AnimatePresence mode="wait">
+                {/* Profile Tab */}
+                {activeTab === "profile" && (
+                  <motion.div
+                    key="profile"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
+                      <div className="bg-white border-b border-gray-200 px-6 py-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h2 className="text-xl font-bold text-gray-900">Profile Settings</h2>
+                            <p className="text-sm text-gray-500 mt-1">Manage your personal information and preferences</p>
+                          </div>
+                          <Badge variant="secondary" className="px-3 py-1">
+                            Super Admin
+                          </Badge>
                         </div>
                       </div>
-                    )}
-                  </form>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* Permissions Tab */}
-            <TabsContent value="permissions">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Shield className="h-5 w-5" /> Permissions
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {Object.entries(permissions).map(([key, value]) => (
-                    <div key={key} className="flex justify-between items-center">
-                      <div>
-                        <Label className="capitalize">
-                          {key.replace(/([A-Z])/g, ' $1').trim()}
-                        </Label>
+                      <div className="p-6">
+                        <form onSubmit={handleProfileUpdate} className="space-y-6">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-3">
+                              <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                                <User className="h-4 w-4" />
+                                Full Name
+                              </Label>
+                              <Input 
+                                value={profileData.name}
+                                onChange={(e) => setProfileData({...profileData, name: e.target.value})}
+                                disabled={loading.profile}
+                                placeholder="Enter your full name"
+                                className="h-11 rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                              />
+                            </div>
+                            
+                            <div className="space-y-3">
+                              <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                                <Mail className="h-4 w-4" />
+                                Email Address
+                              </Label>
+                              <Input 
+                                value={profileData.email}
+                                disabled
+                                className="h-11 rounded-lg border-gray-300 bg-gray-50"
+                                readOnly
+                              />
+                            </div>
+                            
+                            <div className="space-y-3">
+                              <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                                <Phone className="h-4 w-4" />
+                                Phone Number
+                              </Label>
+                              <Input 
+                                value={profileData.phone}
+                                onChange={(e) => setProfileData({...profileData, phone: e.target.value})}
+                                disabled={loading.profile}
+                                placeholder="Enter phone number"
+                                className="h-11 rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                              />
+                            </div>
+                          </div>
+                          
+                          <div className="flex justify-end pt-4">
+                            <Button 
+                              type="submit" 
+                              disabled={loading.profile} 
+                              className="gap-2 h-11 px-6 bg-blue-600 hover:bg-blue-700 rounded-lg"
+                            >
+                              {loading.profile ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                  Saving...
+                                </>
+                              ) : (
+                                <>
+                                  <Save className="h-4 w-4" />
+                                  Save Changes
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        </form>
                       </div>
-                      <Switch 
-                        checked={value}
-                        onCheckedChange={(checked) => 
-                          setPermissions({...permissions, [key]: checked})
-                        }
-                        disabled={loading.permissions}
-                      />
                     </div>
-                  ))}
-                  <Button onClick={handlePermissionsUpdate} disabled={loading.permissions} className="w-full">
-                    {loading.permissions ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</>
-                    ) : 'Save Permissions'}
-                  </Button>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-        )}
-      </motion.div>
+                  </motion.div>
+                )}
+
+                {/* Security Tab */}
+                {activeTab === "security" && (
+                  <motion.div
+                    key="security"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
+                      <div className="bg-white border-b border-gray-200 px-6 py-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h2 className="text-xl font-bold text-gray-900">Security Settings</h2>
+                            <p className="text-sm text-gray-500 mt-1">Manage your password and security preferences</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-6">
+                        <form onSubmit={handlePasswordUpdate} className="space-y-6">
+                          <div className="space-y-4">
+                            <div className="space-y-3">
+                              <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                                <KeyRound className="h-4 w-4" />
+                                Current Password
+                              </Label>
+                              <div className="relative">
+                                <Input 
+                                  name="currentPassword" 
+                                  type={showPassword.current ? "text" : "password"} 
+                                  value={passwordData.currentPassword}
+                                  onChange={(e) => setPasswordData({...passwordData, currentPassword: e.target.value})}
+                                  disabled={loading.password}
+                                  placeholder="Enter current password"
+                                  required
+                                  className="h-11 rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 pl-11 pr-11"
+                                />
+                                <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="absolute right-3 top-1/2 transform -translate-y-1/2 h-8 w-8"
+                                  onClick={() => setShowPassword({...showPassword, current: !showPassword.current})}
+                                >
+                                  {showPassword.current ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                </Button>
+                              </div>
+                            </div>
+                            
+                            <div className="space-y-3">
+                              <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                                <Key className="h-4 w-4" />
+                                New Password
+                              </Label>
+                              <div className="relative">
+                                <Input 
+                                  name="newPassword" 
+                                  type={showPassword.new ? "text" : "password"} 
+                                  value={passwordData.newPassword}
+                                  onChange={(e) => setPasswordData({...passwordData, newPassword: e.target.value})}
+                                  disabled={loading.password}
+                                  placeholder="Enter new password"
+                                  required
+                                  className="h-11 rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 pl-11 pr-11"
+                                />
+                                <Key className="absolute left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="absolute right-3 top-1/2 transform -translate-y-1/2 h-8 w-8"
+                                  onClick={() => setShowPassword({...showPassword, new: !showPassword.new})}
+                                >
+                                  {showPassword.new ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                </Button>
+                              </div>
+                            </div>
+                            
+                            <div className="space-y-3">
+                              <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                                <KeyRound className="h-4 w-4" />
+                                Confirm Password
+                              </Label>
+                              <div className="relative">
+                                <Input 
+                                  name="confirmPassword" 
+                                  type={showPassword.confirm ? "text" : "password"} 
+                                  value={passwordData.confirmPassword}
+                                  onChange={(e) => setPasswordData({...passwordData, confirmPassword: e.target.value})}
+                                  disabled={loading.password}
+                                  placeholder="Confirm new password"
+                                  required
+                                  className="h-11 rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 pl-11 pr-11"
+                                />
+                                <Shield className="absolute left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="absolute right-3 top-1/2 transform -translate-y-1/2 h-8 w-8"
+                                  onClick={() => setShowPassword({...showPassword, confirm: !showPassword.confirm})}
+                                >
+                                  {showPassword.confirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                            <div className="flex items-start gap-3">
+                              <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                              <div>
+                                <p className="font-medium text-amber-800 mb-2">Password Requirements</p>
+                                <ul className="text-sm text-amber-700 space-y-1">
+                                  <li className="flex items-center gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-amber-600" />
+                                    Minimum 6 characters
+                                  </li>
+                                  <li className="flex items-center gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-amber-600" />
+                                    Avoid common passwords
+                                  </li>
+                                  <li className="flex items-center gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-amber-600" />
+                                    Update regularly for security
+                                  </li>
+                                </ul>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="flex gap-3 pt-4">
+                            <Button 
+                              type="submit" 
+                              disabled={loading.password} 
+                              className="gap-2 h-11 px-6 bg-blue-600 hover:bg-blue-700 rounded-lg flex-1"
+                            >
+                              {loading.password ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                  Updating...
+                                </>
+                              ) : (
+                                <>
+                                  <ShieldCheck className="h-4 w-4" />
+                                  Update Password
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Permissions Tab */}
+                {activeTab === "permissions" && (
+                  <motion.div
+                    key="permissions"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
+                      <div className="bg-white border-b border-gray-200 px-6 py-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h2 className="text-xl font-bold text-gray-900">Permission Settings</h2>
+                            <p className="text-sm text-gray-500 mt-1">Configure access controls and system permissions</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-6">
+                        <div className="space-y-6">
+                          <div className="space-y-4">
+                            {Object.entries(permissions).map(([key, value]) => (
+                              <div
+                                key={key}
+                                className="flex items-center justify-between p-4 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors"
+                              >
+                                <div className="flex items-center gap-4">
+                                  <div className={`p-2 rounded-lg ${value ? 'bg-green-100' : 'bg-gray-100'}`}>
+                                    {value ? (
+                                      <CheckCircle className="h-5 w-5 text-green-600" />
+                                    ) : (
+                                      <AlertCircle className="h-5 w-5 text-gray-400" />
+                                    )}
+                                  </div>
+                                  <div>
+                                    <Label className="font-medium text-gray-900 cursor-pointer capitalize">
+                                      {key.replace(/([A-Z])/g, ' $1').trim()}
+                                    </Label>
+                                    <p className="text-sm text-gray-500 mt-1">
+                                      {getPermissionDescription(key)}
+                                    </p>
+                                  </div>
+                                </div>
+                                <Switch 
+                                  checked={value}
+                                  onCheckedChange={(checked) => 
+                                    setPermissions({...permissions, [key]: checked})
+                                  }
+                                  disabled={loading.permissions}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                          
+                          <div className="flex items-center justify-between pt-6 border-t">
+                            <div className="text-sm text-gray-500">
+                              <p>Super Admin has full system access.</p>
+                              <p>Toggle switches to restrict specific actions.</p>
+                            </div>
+                            <Button 
+                              onClick={handlePermissionsUpdate} 
+                              disabled={loading.permissions} 
+                              className="gap-2 h-11 px-6 bg-blue-600 hover:bg-blue-700 rounded-lg"
+                            >
+                              {loading.permissions ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                  Saving...
+                                </>
+                              ) : (
+                                <>
+                                  <Save className="h-4 w-4" />
+                                  Save Permissions
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
+};
+
+// Helper function for permission descriptions
+const getPermissionDescription = (key: string) => {
+  const descriptions: { [key: string]: string } = {
+    canCreateAdmins: 'Allow creating new admin accounts',
+    canManageManagers: 'Allow managing manager accounts',
+    canViewReports: 'Allow accessing system reports',
+    canDeleteUsers: 'Allow deleting user accounts',
+  };
+  return descriptions[key] || 'Manage system access';
 };
 
 export default Settings;

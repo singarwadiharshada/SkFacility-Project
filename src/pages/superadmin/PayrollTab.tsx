@@ -371,40 +371,6 @@ const PayrollTab = ({ selectedMonth, setSelectedMonth }: PayrollTabProps) => {
 
       console.log("Fetching data for month:", selectedMonth);
 
-      // TEMPORARY: Test with hardcoded data first
-      // Uncomment this to test with sample data:
-      // const testPayrollData = [{
-      //   _id: 'test-1',
-      //   employeeId: 'EMP001',
-      //   month: selectedMonth,
-      //   basicSalary: 25000,
-      //   allowances: 5000,
-      //   deductions: 2000,
-      //   netSalary: 28000,
-      //   status: 'processed',
-      //   presentDays: 22,
-      //   absentDays: 0,
-      //   halfDays: 0,
-      //   leaves: 0,
-      //   paidAmount: 0,
-      //   paymentStatus: 'pending',
-      //   employee: {
-      //     _id: 'emp-1',
-      //     employeeId: 'EMP001',
-      //     name: 'John Doe',
-      //     department: 'Engineering',
-      //     salary: 30000,
-      //     status: 'active',
-      //     accountNumber: '1234567890',
-      //     ifscCode: 'SBIN0001234',
-      //     bankBranch: 'Main Branch',
-      //     bankName: 'SBI'
-      //   }
-      // }];
-      // setPayroll(testPayrollData);
-      // setLoading(prev => ({ ...prev, payroll: false }));
-      // return;
-
       // Fetch all data with simple fetch calls
       const [employeesRes, payrollRes, structuresRes] = await Promise.all([
         // Employees
@@ -794,7 +760,20 @@ const PayrollTab = ({ selectedMonth, setSelectedMonth }: PayrollTabProps) => {
       const response = await payrollApi.process(payrollData);
 
       if (response.success) {
-        toast.success("Payroll processed successfully");
+        toast.success("Payroll processed successfully", {
+          description: `Salary processed for ${employee.name}`,
+          action: {
+            label: "View",
+            onClick: () => {
+              const newPayroll = payroll.find(p => 
+                p.employeeId === employeeId && p.month === selectedMonth
+              );
+              if (newPayroll) {
+                handleOpenPaymentStatus(newPayroll);
+              }
+            },
+          },
+        });
 
         // Add the new payroll to state
         if (response.data) {
@@ -861,7 +840,9 @@ const PayrollTab = ({ selectedMonth, setSelectedMonth }: PayrollTabProps) => {
       );
 
       if (response.success) {
-        toast.success("Payment status updated successfully");
+        toast.success("Payment status updated", {
+          description: `Updated to ${paymentStatusForm.status} for ${paymentStatusDialog.payroll?.employee?.name}`,
+        });
 
         // Update the payroll in state
         setPayroll((prev) =>
@@ -989,7 +970,9 @@ const PayrollTab = ({ selectedMonth, setSelectedMonth }: PayrollTabProps) => {
       const response = await salaryStructureApi.create(salaryStructureData);
 
       if (response.success) {
-        toast.success("Salary structure added successfully");
+        toast.success("Salary structure added", {
+          description: `Structure configured for ${employee.name}`,
+        });
         setSalaryStructures((prev) => [...prev, response.data!]);
         setIsAddingStructure(false);
         resetStructureForm();
@@ -1454,29 +1437,57 @@ const PayrollTab = ({ selectedMonth, setSelectedMonth }: PayrollTabProps) => {
 
   // Get status badge
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, string> = {
-      pending: "bg-yellow-100 text-yellow-800 hover:bg-yellow-100",
-      processed: "bg-blue-100 text-blue-800 hover:bg-blue-100",
-      paid: "bg-green-100 text-green-800 hover:bg-green-100",
-      hold: "bg-red-100 text-red-800 hover:bg-red-100",
-      "part-paid": "bg-orange-100 text-orange-800 hover:bg-orange-100",
+    const statusConfig: Record<string, { 
+      label: string; 
+      bgColor: string; 
+      textColor: string;
+      borderColor: string;
+      icon?: React.ReactNode;
+    }> = {
+      pending: {
+        label: "Pending",
+        bgColor: "bg-amber-50",
+        textColor: "text-amber-800",
+        borderColor: "border-amber-200",
+      },
+      processed: {
+        label: "Processed",
+        bgColor: "bg-blue-50",
+        textColor: "text-blue-800",
+        borderColor: "border-blue-200",
+      },
+      paid: {
+        label: "Paid",
+        bgColor: "bg-green-50",
+        textColor: "text-green-800",
+        borderColor: "border-green-200",
+      },
+      hold: {
+        label: "Hold",
+        bgColor: "bg-red-50",
+        textColor: "text-red-800",
+        borderColor: "border-red-200",
+      },
+      "part-paid": {
+        label: "Part Paid",
+        bgColor: "bg-orange-50",
+        textColor: "text-orange-800",
+        borderColor: "border-orange-200",
+      },
     };
 
-    const statusLabels: Record<string, string> = {
-      pending: "Pending",
-      processed: "Processed",
-      paid: "Paid",
-      hold: "Hold",
-      "part-paid": "Part Paid",
+    const config = statusConfig[status] || {
+      label: status,
+      bgColor: "bg-gray-50",
+      textColor: "text-gray-800",
+      borderColor: "border-gray-200",
     };
 
     return (
-      <Badge
-        variant="secondary"
-        className={variants[status] || "bg-gray-100 text-gray-800"}
-      >
-        {statusLabels[status] || status}
-      </Badge>
+      <div className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium ${config.bgColor} ${config.textColor} border ${config.borderColor}`}>
+        <div className="h-2 w-2 rounded-full bg-current mr-2"></div>
+        {config.label}
+      </div>
     );
   };
 
@@ -1620,20 +1631,23 @@ const PayrollTab = ({ selectedMonth, setSelectedMonth }: PayrollTabProps) => {
     fetchAllData();
   };
 
-  if (
-    loading.employees &&
-    loading.payroll &&
-    loading.structures &&
-    loading.slips
-  ) {
+  if (loading.employees && loading.payroll && loading.structures && loading.slips) {
     return (
-      <div className="flex justify-center items-center h-96">
-        <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-lg font-medium">Loading payroll data...</p>
-          <p className="text-sm text-muted-foreground">
-            Please wait while we fetch your data
+      <div className="flex flex-col justify-center items-center h-96 space-y-4">
+        <div className="relative">
+          <div className="h-20 w-20 rounded-full border-4 border-gray-200"></div>
+          <div className="absolute top-0 left-0 h-20 w-20 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
+        </div>
+        <div className="text-center space-y-2">
+          <p className="text-lg font-medium">Loading Payroll Data</p>
+          <p className="text-sm text-muted-foreground max-w-md">
+            Fetching employees, salary structures, and payroll records...
           </p>
+          <div className="flex items-center justify-center gap-2 pt-2">
+            <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse"></div>
+            <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse delay-150"></div>
+            <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse delay-300"></div>
+          </div>
         </div>
       </div>
     );
@@ -1647,14 +1661,18 @@ const PayrollTab = ({ selectedMonth, setSelectedMonth }: PayrollTabProps) => {
         onOpenChange={(open) => setProcessDialog({ open, employee: null })}
       >
         <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5 text-green-600" />
-              Process Salary
-            </DialogTitle>
-            <DialogDescription>
-              Confirm salary processing for {processDialog.employee?.name}
-            </DialogDescription>
+          <DialogHeader className="border-b pb-4">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
+                <CheckCircle className="h-6 w-6 text-green-600" />
+              </div>
+              <div>
+                <DialogTitle className="text-xl">Process Salary</DialogTitle>
+                <DialogDescription className="mt-1">
+                  Confirm salary processing for <span className="font-semibold text-gray-900">{processDialog.employee?.name}</span>
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
 
           {processDialog.employee &&
@@ -2230,1176 +2248,1239 @@ const PayrollTab = ({ selectedMonth, setSelectedMonth }: PayrollTabProps) => {
       </AlertDialog>
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-bold">Payroll Management</h2>
-          <p className="text-muted-foreground">
-            Manage employee salaries, payroll processing, and salary slips
-          </p>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={fetchAllData}
-              disabled={loading.payroll}
-              className="flex items-center gap-2"
-            >
-              <RefreshCw className={`h-4 w-4 ${loading.payroll ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-            <Badge variant={payroll.length > 0 ? "default" : "secondary"}>
-              {payroll.length} Records
-            </Badge>
-          </div>
-          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <Calendar className="mr-2 h-4 w-4" />
-              <SelectValue placeholder="Select month" />
-            </SelectTrigger>
-            <SelectContent>
-              {monthOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            variant="outline"
-            onClick={handleExportPayrollExcel}
-            disabled={payroll.length === 0}
-          >
-            <Sheet className="mr-2 h-4 w-4" />
-            Export Excel
-          </Button>
-        </div>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <IndianRupee className="h-4 w-4" />
-              Total Payroll
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              ₹{payrollSummary.totalAmount.toLocaleString()}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {payrollSummary.totalRecords} records
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Processed</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">
-              {payrollSummary.processedCount}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              ₹{payrollSummary.totalAmount.toLocaleString()}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Paid</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {payrollSummary.paidCount}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              ₹{payrollSummary.paidAmount.toLocaleString()}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Hold</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">
-              {payrollSummary.holdCount}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              ₹{payrollSummary.holdAmount.toLocaleString()}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Part Paid</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600">
-              {payrollSummary.partPaidCount}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              ₹{payrollSummary.partPaidAmount.toLocaleString()}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Pending</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">
-              {payrollSummary.pendingCount}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              ₹{payrollSummary.pendingAmount.toLocaleString()}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Quick Stats */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Total Employees
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{employees.length}</div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {payrollSummary.activeEmployees} active
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              With Salary Structure
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {payrollSummary.employeesWithStructure}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              Ready for payroll
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              Without Structure
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">
-              {payrollSummary.employeesWithoutStructure}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">
-              Needs structure setup
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Main Tabs */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Payroll Management</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Tabs
-            value={activePayrollTab}
-            onValueChange={setActivePayrollTab}
-            className="w-full"
-          >
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="salary-slips">Salary Processing</TabsTrigger>
-              <TabsTrigger value="salary-structures">
-                Salary Structures
-              </TabsTrigger>
-              <TabsTrigger value="payroll-records">Payroll Records</TabsTrigger>
-            </TabsList>
-
-            {/* Salary Processing Tab */}
-            <TabsContent value="salary-slips" className="space-y-4">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                  <div className="relative">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search employees..."
-                      className="pl-8 w-full sm:w-[250px]"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                  </div>
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-full sm:w-[180px]">
-                      <Filter className="mr-2 h-4 w-4" />
-                      <SelectValue placeholder="Filter by status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Employees</SelectItem>
-                      <SelectItem value="with-structure">
-                        With Salary Structure
-                      </SelectItem>
-                      <SelectItem value="without-structure">
-                        Without Salary Structure
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button
-                  onClick={() => setProcessAllDialog(true)}
-                  disabled={employeesWithStructure.length === 0}
-                  className="w-full sm:w-auto"
-                >
-                  <CheckCircle className="mr-2 h-4 w-4" />
-                  Process All Payroll
-                </Button>
+      <div className="space-y-6">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+                <IndianRupee className="h-6 w-6 text-white" />
               </div>
+              <div>
+                <h1 className="text-3xl font-bold tracking-tight">Payroll Management</h1>
+                <p className="text-gray-600">
+                  Manage employee salaries, payroll processing, and salary slips for {selectedMonth}
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                  <SelectTrigger className="pl-9 w-full sm:w-[180px] bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {monthOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <Button
+                variant="outline"
+                onClick={handleRefreshData}
+                disabled={Object.values(loading).some(l => l)}
+                className="gap-2"
+              >
+                <RefreshCw className={`h-4 w-4 ${loading.payroll ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+              
+              <Button
+                variant="outline"
+                onClick={handleExportPayrollExcel}
+                disabled={payroll.length === 0}
+                className="gap-2"
+              >
+                <FileSpreadsheet className="h-4 w-4" />
+                Export
+              </Button>
+            </div>
+          </div>
+        </div>
 
-              {loading.employees ? (
-                <div className="flex justify-center items-center h-64">
-                  <Loader2 className="h-8 w-8 animate-spin" />
+        {/* Summary Cards */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card className="border-l-4 border-l-blue-500 transition-all duration-200 hover:shadow-md border">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
+                    <IndianRupee className="h-4 w-4 text-blue-600" />
+                  </div>
+                  Total Payroll
+                </span>
+                <Badge variant="outline" className="font-normal">
+                  {payrollSummary.totalRecords} rec
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                ₹{payrollSummary.totalAmount.toLocaleString()}
+              </div>
+              <div className="flex items-center gap-1 mt-1">
+                <div className="h-1.5 w-full bg-gray-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-blue-500 rounded-full" 
+                    style={{ width: `${Math.min((payrollSummary.processedCount / payrollSummary.totalEmployees) * 100, 100)}%` }}
+                  ></div>
                 </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Employee</TableHead>
-                        <TableHead>Department</TableHead>
-                        <TableHead>Salary Structure</TableHead>
-                        <TableHead>Attendance</TableHead>
-                        <TableHead>Leaves</TableHead>
-                        <TableHead>Calculated Salary</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredEmployees.length === 0 ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={7}
-                            className="text-center py-8 text-muted-foreground"
-                          >
-                            {searchTerm
-                              ? "No employees found matching your search"
-                              : "No employees found"}
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        filteredEmployees.map((employee, index) => {
-                          const structure = salaryStructures.find(
-                            (s) => s.employeeId === employee.employeeId
-                          );
-                          const payrollRecord = payroll.find(
-                            (p) =>
-                              p.employeeId === employee.employeeId &&
-                              p.month === selectedMonth
-                          );
-                          const attendance = getEmployeeAttendance(
-                            employee.employeeId
-                          );
-                          const totalLeaves = getEmployeeLeaves(
-                            employee.employeeId
-                          );
-                          const calculatedSalary = structure
-                            ? calculateSalary(employee.employeeId, structure)
-                            : 0;
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card className="border-l-4 border-l-green-500 transition-all duration-200 hover:shadow-md border">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center">
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                  </div>
+                  Processed
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">
+                {payrollSummary.processedCount}
+              </div>
+              <div className="text-sm text-muted-foreground mt-1">
+                ₹{payrollSummary.totalAmount.toLocaleString()}
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card className="border-l-4 border-l-amber-500 transition-all duration-200 hover:shadow-md border">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full bg-amber-100 flex items-center justify-center">
+                    <AlertCircle className="h-4 w-4 text-amber-600" />
+                  </div>
+                  Pending
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-amber-600">
+                {payrollSummary.pendingCount}
+              </div>
+              <div className="text-sm text-muted-foreground mt-1">
+                ₹{payrollSummary.pendingAmount.toLocaleString()}
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card className="border-l-4 border-l-red-500 transition-all duration-200 hover:shadow-md border">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full bg-red-100 flex items-center justify-center">
+                    <Users className="h-4 w-4 text-red-600" />
+                  </div>
+                  With Structure
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">
+                {payrollSummary.employeesWithStructure}
+              </div>
+              <div className="text-sm text-muted-foreground mt-1">
+                of {payrollSummary.activeEmployees} active
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-                          return (
-                            <TableRow
-                              key={
-                                employee.employeeId ||
-                                employee._id ||
-                                `employee-${index}`
-                              }
-                            >
-                              <TableCell>
-                                <div>
-                                  <div className="font-medium">
-                                    {employee.name}
-                                  </div>
-                                  <div className="text-sm text-muted-foreground">
-                                    {employee.employeeId}
-                                  </div>
-                                  <div className="text-xs text-gray-500">
-                                    {employee.accountNumber
-                                      ? `Bank: XXXX${employee.accountNumber.slice(
-                                          -4
-                                        )}`
-                                      : "No bank account"}
-                                  </div>
+        {/* Quick Stats */}
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Total Employees
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{employees.length}</div>
+              <div className="text-xs text-muted-foreground mt-1">
+                {payrollSummary.activeEmployees} active
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">
+                With Salary Structure
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">
+                {payrollSummary.employeesWithStructure}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                Ready for payroll
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">
+                Without Structure
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">
+                {payrollSummary.employeesWithoutStructure}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                Needs structure setup
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Main Tabs */}
+        <Card className="transition-all duration-200 hover:shadow-md border">
+          <CardHeader>
+            <CardTitle>Payroll Management</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Tabs
+              value={activePayrollTab}
+              onValueChange={setActivePayrollTab}
+              className="w-full"
+            >
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="salary-slips">Salary Processing</TabsTrigger>
+                <TabsTrigger value="salary-structures">
+                  Salary Structures
+                </TabsTrigger>
+                <TabsTrigger value="payroll-records">Payroll Records</TabsTrigger>
+              </TabsList>
+
+              {/* Salary Processing Tab */}
+              <TabsContent value="salary-slips" className="space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search employees..."
+                        className="pl-8 w-full sm:w-[250px]"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                      />
+                    </div>
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger className="w-full sm:w-[180px]">
+                        <Filter className="mr-2 h-4 w-4" />
+                        <SelectValue placeholder="Filter by status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Employees</SelectItem>
+                        <SelectItem value="with-structure">
+                          With Salary Structure
+                        </SelectItem>
+                        <SelectItem value="without-structure">
+                          Without Salary Structure
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    onClick={() => setProcessAllDialog(true)}
+                    disabled={employeesWithStructure.length === 0}
+                    className="w-full sm:w-auto"
+                  >
+                    <CheckCircle className="mr-2 h-4 w-4" />
+                    Process All Payroll
+                  </Button>
+                </div>
+
+                {loading.employees ? (
+                  <div className="flex justify-center items-center h-64">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Employee</TableHead>
+                          <TableHead>Department</TableHead>
+                          <TableHead>Salary Structure</TableHead>
+                          <TableHead>Attendance</TableHead>
+                          <TableHead>Leaves</TableHead>
+                          <TableHead>Calculated Salary</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredEmployees.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={7} className="py-12">
+                              <div className="flex flex-col items-center justify-center text-center space-y-4">
+                                <div className="h-16 w-16 rounded-full bg-gray-100 flex items-center justify-center">
+                                  <Users className="h-8 w-8 text-gray-400" />
                                 </div>
-                              </TableCell>
-                              <TableCell>{employee.department}</TableCell>
-                              <TableCell>
-                                {structure ? (
-                                  <Badge
-                                    variant="secondary"
-                                    className="bg-green-100 text-green-800 hover:bg-green-100"
+                                <div className="space-y-1">
+                                  <p className="font-medium text-gray-900">
+                                    {searchTerm ? "No matching employees found" : "No employees available"}
+                                  </p>
+                                  <p className="text-sm text-gray-500 max-w-sm">
+                                    {searchTerm 
+                                      ? "Try adjusting your search terms or filters"
+                                      : employees.length === 0 
+                                        ? "No employees have been added yet"
+                                        : "All employees already have salary structures configured"
+                                    }
+                                  </p>
+                                </div>
+                                {searchTerm && (
+                                  <Button 
+                                    variant="outline" 
+                                    onClick={() => {
+                                      setSearchTerm("");
+                                      setStatusFilter("all");
+                                    }}
+                                    size="sm"
                                   >
-                                    Configured
-                                  </Badge>
-                                ) : (
-                                  <Badge
-                                    variant="secondary"
-                                    className="bg-red-100 text-red-800 hover:bg-red-100"
-                                  >
-                                    Not Configured
-                                  </Badge>
+                                    Clear search
+                                  </Button>
                                 )}
-                              </TableCell>
-                              <TableCell>
-                                <div className="text-sm">
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-green-600">
-                                      P: {attendance.presentDays}
-                                    </span>
-                                    <span className="text-red-600">
-                                      A: {attendance.absentDays}
-                                    </span>
-                                    <span className="text-yellow-600">
-                                      H: {attendance.halfDays}
-                                    </span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          filteredEmployees.map((employee, index) => {
+                            const structure = salaryStructures.find(
+                              s => s.employeeId === employee.employeeId
+                            );
+                            const payrollRecord = payroll.find(
+                              p => p.employeeId === employee.employeeId && p.month === selectedMonth
+                            );
+                            const attendance = getEmployeeAttendance(
+                              employee.employeeId
+                            );
+                            const totalLeaves = getEmployeeLeaves(
+                              employee.employeeId
+                            );
+                            const calculatedSalary = structure
+                              ? calculateSalary(employee.employeeId, structure)
+                              : 0;
+
+                            return (
+                              <TableRow
+                                key={
+                                  employee.employeeId ||
+                                  employee._id ||
+                                  `employee-${index}`
+                                }
+                                className="transition-all duration-200 hover:bg-gray-50/50 border-b border-gray-100"
+                              >
+                                <TableCell>
+                                  <div className="flex items-start space-x-3">
+                                    <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                                      <span className="font-medium text-blue-700">
+                                        {employee.name?.charAt(0) || 'E'}
+                                      </span>
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-medium text-gray-900 truncate">{employee.name}</p>
+                                      <p className="text-sm text-gray-500">{employee.employeeId}</p>
+                                      <p className="text-xs text-gray-400 mt-0.5">{employee.department}</p>
+                                      {employee.accountNumber && (
+                                        <div className="flex items-center gap-1 mt-1">
+                                          <div className="h-2 w-2 rounded-full bg-green-500"></div>
+                                          <span className="text-xs text-gray-500">Bank account configured</span>
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="secondary">
-                                  {totalLeaves} days
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <div className="font-medium flex items-center">
-                                  <IndianRupee className="h-4 w-4 mr-1" />
-                                  {calculatedSalary.toFixed(2)}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex gap-2">
+                                </TableCell>
+                                <TableCell>
+                                  <div className="text-sm text-gray-700">{employee.department}</div>
+                                </TableCell>
+                                <TableCell>
                                   {structure ? (
-                                    payrollRecord ? (
-                                      <>
-                                        {getStatusBadge(payrollRecord.status)}
-                                        {payrollRecord._id && (
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() =>
-                                              handleOpenPaymentStatus(
-                                                payrollRecord
-                                              )
-                                            }
-                                          >
-                                            Status
-                                          </Button>
-                                        )}
+                                    <div className="flex items-center gap-2">
+                                      <div className="h-2 w-2 rounded-full bg-green-500"></div>
+                                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                        Configured
+                                      </Badge>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-2">
+                                      <div className="h-2 w-2 rounded-full bg-red-500"></div>
+                                      <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                                        Not Configured
+                                      </Badge>
+                                    </div>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-3">
+                                      <div className="flex items-center gap-1">
+                                        <div className="h-2 w-2 rounded-full bg-green-500"></div>
+                                        <span className="text-xs">P: {attendance.presentDays}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <div className="h-2 w-2 rounded-full bg-red-500"></div>
+                                        <span className="text-xs">A: {attendance.absentDays}</span>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                      <div className="flex items-center gap-1">
+                                        <div className="h-2 w-2 rounded-full bg-amber-500"></div>
+                                        <span className="text-xs">H: {attendance.halfDays}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="secondary" className="bg-blue-50 text-blue-700">
+                                    {totalLeaves} day{totalLeaves !== 1 ? 's' : ''}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="font-medium text-gray-900">
+                                    ₹{calculatedSalary.toFixed(2)}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex gap-2">
+                                    {structure ? (
+                                      payrollRecord ? (
+                                        <div className="flex items-center gap-2">
+                                          {getStatusBadge(payrollRecord.status)}
+                                          <div className="flex gap-1">
+                                            <Button
+                                              size="sm"
+                                              variant="ghost"
+                                              onClick={() => handleOpenPaymentStatus(payrollRecord)}
+                                              className="h-8 w-8 p-0"
+                                              title="Update payment status"
+                                            >
+                                              <Edit className="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              variant="ghost"
+                                              onClick={() => {
+                                                const payrollId = getItemId(payrollRecord);
+                                                if (!payrollId) {
+                                                  toast.error("Cannot generate slip: Payroll ID missing");
+                                                  return;
+                                                }
+                                                const slip = salarySlips.find(s => s.payrollId === payrollId);
+                                                if (slip) {
+                                                  handleViewSalarySlip(slip);
+                                                } else {
+                                                  handleGenerateSalarySlip(payrollId);
+                                                }
+                                              }}
+                                              className="h-8 w-8 p-0"
+                                              title="View salary slip"
+                                            >
+                                              <Eye className="h-4 w-4" />
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      ) : (
                                         <Button
                                           size="sm"
-                                          variant="outline"
-                                          onClick={() => {
-                                            const payrollId =
-                                              getItemId(payrollRecord);
-                                            if (!payrollId) {
-                                              toast.error(
-                                                "Cannot generate slip: Payroll ID missing"
-                                              );
-                                              return;
-                                            }
-
-                                            const slip = salarySlips.find(
-                                              (s) => s.payrollId === payrollId
-                                            );
-                                            if (slip) {
-                                              handleViewSalarySlip(slip);
-                                            } else {
-                                              handleGenerateSalarySlip(
-                                                payrollId
-                                              );
-                                            }
-                                          }}
+                                          onClick={() => setProcessDialog({ open: true, employee })}
+                                          className="bg-blue-600 hover:bg-blue-700"
                                         >
-                                          <Eye className="h-4 w-4" />
+                                          Process Salary
                                         </Button>
-                                      </>
+                                      )
                                     ) : (
                                       <Button
                                         size="sm"
-                                        onClick={() =>
-                                          setProcessDialog({
-                                            open: true,
-                                            employee,
-                                          })
-                                        }
+                                        variant="outline"
+                                        onClick={() => {
+                                          handleEmployeeSelect(employee.employeeId);
+                                          setIsAddingStructure(true);
+                                          setActivePayrollTab("salary-structures");
+                                        }}
+                                        className="border-red-200 text-red-700 hover:bg-red-50"
                                       >
-                                        Process Salary
+                                        Add Structure
                                       </Button>
-                                    )
-                                  ) : (
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* Salary Structures Tab */}
+              <TabsContent value="salary-structures" className="space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <h3 className="text-lg font-semibold">Salary Structures</h3>
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <Button
+                      onClick={() => setIsAddingStructure(true)}
+                      className="w-full sm:w-auto"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Structure
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Add/Edit Salary Structure Form */}
+                {(isAddingStructure || editingStructure) && (
+                  <Card className="border shadow-lg">
+                    <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+                      <CardTitle className="flex items-center justify-between">
+                        <span className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                            <FileText className="h-5 w-5 text-blue-600" />
+                          </div>
+                          <div>
+                            {editingStructure ? "Edit Salary Structure" : "Add Salary Structure"}
+                            <p className="text-sm font-normal text-gray-600 mt-1">
+                              Configure earnings, deductions, and allowances for employee compensation
+                            </p>
+                          </div>
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setIsAddingStructure(false);
+                            setEditingStructure(null);
+                            resetStructureForm();
+                          }}
+                          className="h-8 w-8 p-0"
+                        >
+                          ✕
+                        </Button>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="space-y-2">
+                        <Label htmlFor="employeeId">Employee *</Label>
+                        <Select
+                          value={structureForm.employeeId}
+                          onValueChange={(value) => {
+                            if (value && value !== "no-employees") {
+                              handleEmployeeSelect(value);
+                            }
+                          }}
+                          disabled={!!editingStructure}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select employee" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {employeesWithoutStructure.length > 0 ? (
+                              employeesWithoutStructure.map((employee) => (
+                                <SelectItem
+                                  key={employee.employeeId}
+                                  value={employee.employeeId}
+                                >
+                                  {employee.name} ({employee.employeeId}) -{" "}
+                                  {employee.department} - ₹
+                                  {employee.salary.toLocaleString()}
+                                </SelectItem>
+                              ))
+                            ) : (
+                              <SelectItem value="no-employees" disabled>
+                                All employees have salary structures
+                              </SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+
+                        {structureForm.employeeId &&
+                          (() => {
+                            const selectedEmployee = employees.find(
+                              (e) => e.employeeId === structureForm.employeeId
+                            );
+                            if (!selectedEmployee) return null;
+
+                            return (
+                              <div className="text-sm text-muted-foreground mt-1 p-2 bg-gray-50 rounded">
+                                <div>
+                                  Monthly Salary: ₹
+                                  {selectedEmployee.salary.toLocaleString()}
+                                </div>
+                                {selectedEmployee.accountNumber && (
+                                  <div>
+                                    Bank Account: XXXX
+                                    {selectedEmployee.accountNumber.slice(-4)}
+                                  </div>
+                                )}
+                                {selectedEmployee.providentFund && (
+                                  <div>
+                                    PF Contribution: ₹
+                                    {selectedEmployee.providentFund.toLocaleString()}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                      </div>
+
+                      {/* Earnings Section */}
+                      <div className="border rounded-lg p-4">
+                        <h3 className="font-semibold mb-4 text-lg">EARNINGS</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-3">
+                            <div className="space-y-2">
+                              <Label htmlFor="basic" className="font-medium">
+                                BASIC *
+                              </Label>
+                              <Input
+                                id="basic"
+                                type="number"
+                                placeholder="Basic Salary"
+                                value={structureForm.basicSalary}
+                                onChange={(e) =>
+                                  setStructureForm((prev) => ({
+                                    ...prev,
+                                    basicSalary: e.target.value,
+                                  }))
+                                }
+                                required
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Auto-filled from employee's monthly salary
+                              </p>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="da" className="font-medium">
+                                DA
+                              </Label>
+                              <Input
+                                id="da"
+                                type="number"
+                                placeholder="Dearness Allowance"
+                                value={structureForm.da}
+                                onChange={(e) =>
+                                  setStructureForm((prev) => ({
+                                    ...prev,
+                                    da: e.target.value,
+                                  }))
+                                }
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="hra" className="font-medium">
+                                HRA
+                              </Label>
+                              <Input
+                                id="hra"
+                                type="number"
+                                placeholder="House Rent Allowance"
+                                value={structureForm.hra}
+                                onChange={(e) =>
+                                  setStructureForm((prev) => ({
+                                    ...prev,
+                                    hra: e.target.value,
+                                  }))
+                                }
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            <div className="space-y-2">
+                              <Label htmlFor="cca" className="font-medium">
+                                CCA
+                              </Label>
+                              <Input
+                                id="cca"
+                                type="number"
+                                placeholder="City Compensatory Allowance"
+                                value={structureForm.conveyance}
+                                onChange={(e) =>
+                                  setStructureForm((prev) => ({
+                                    ...prev,
+                                    conveyance: e.target.value,
+                                  }))
+                                }
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="medical" className="font-medium">
+                                MEDICAL
+                              </Label>
+                              <Input
+                                id="medical"
+                                type="number"
+                                placeholder="Medical Allowance"
+                                value={structureForm.medicalAllowance}
+                                onChange={(e) =>
+                                  setStructureForm((prev) => ({
+                                    ...prev,
+                                    medicalAllowance: e.target.value,
+                                  }))
+                                }
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="otherAll" className="font-medium">
+                                OTHER ALL
+                              </Label>
+                              <Input
+                                id="otherAll"
+                                type="number"
+                                placeholder="Other Allowances"
+                                value={structureForm.otherAllowances}
+                                onChange={(e) =>
+                                  setStructureForm((prev) => ({
+                                    ...prev,
+                                    otherAllowances: e.target.value,
+                                  }))
+                                }
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Additional Earnings */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                          <div className="space-y-3">
+                            <div className="space-y-2">
+                              <Label htmlFor="bonus" className="font-medium">
+                                BONUS
+                              </Label>
+                              <Input
+                                id="bonus"
+                                type="number"
+                                placeholder="Bonus"
+                                value={structureForm.specialAllowance}
+                                onChange={(e) =>
+                                  setStructureForm((prev) => ({
+                                    ...prev,
+                                    specialAllowance: e.target.value,
+                                  }))
+                                }
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="leave" className="font-medium">
+                                LEAVE
+                              </Label>
+                              <Input
+                                id="leave"
+                                type="number"
+                                placeholder="Leave Encashment"
+                                value={structureForm.leaveEncashment}
+                                onChange={(e) =>
+                                  setStructureForm((prev) => ({
+                                    ...prev,
+                                    leaveEncashment: e.target.value,
+                                  }))
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-3">
+                            <div className="space-y-2">
+                              <Label htmlFor="arrears" className="font-medium">
+                                ARREARS
+                              </Label>
+                              <Input
+                                id="arrears"
+                                type="number"
+                                placeholder="Arrears"
+                                value={structureForm.arrears}
+                                onChange={(e) =>
+                                  setStructureForm((prev) => ({
+                                    ...prev,
+                                    arrears: e.target.value,
+                                  }))
+                                }
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Deductions Section */}
+                      <div className="border rounded-lg p-4">
+                        <h3 className="font-semibold mb-4 text-lg">DEDUCTIONS</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-3">
+                            <div className="space-y-2">
+                              <Label htmlFor="pf" className="font-medium">
+                                PF
+                              </Label>
+                              <Input
+                                id="pf"
+                                type="number"
+                                placeholder="Provident Fund"
+                                value={structureForm.providentFund}
+                                onChange={(e) =>
+                                  setStructureForm((prev) => ({
+                                    ...prev,
+                                    providentFund: e.target.value,
+                                  }))
+                                }
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Auto-filled from employee data if available
+                              </p>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="esic" className="font-medium">
+                                ESIC
+                              </Label>
+                              <Input
+                                id="esic"
+                                type="number"
+                                placeholder="ESIC Contribution"
+                                value={structureForm.esic}
+                                onChange={(e) =>
+                                  setStructureForm((prev) => ({
+                                    ...prev,
+                                    esic: e.target.value,
+                                  }))
+                                }
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="advance" className="font-medium">
+                                ADVANCE
+                              </Label>
+                              <Input
+                                id="advance"
+                                type="number"
+                                placeholder="Advance Deduction"
+                                value={structureForm.advance}
+                                onChange={(e) =>
+                                  setStructureForm((prev) => ({
+                                    ...prev,
+                                    advance: e.target.value,
+                                  }))
+                                }
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            <div className="space-y-2">
+                              <Label htmlFor="mlwf" className="font-medium">
+                                MLWF
+                              </Label>
+                              <Input
+                                id="mlwf"
+                                type="number"
+                                placeholder="MLWF Deduction"
+                                value={structureForm.mlwf}
+                                onChange={(e) =>
+                                  setStructureForm((prev) => ({
+                                    ...prev,
+                                    mlwf: e.target.value,
+                                  }))
+                                }
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label
+                                htmlFor="professionTax"
+                                className="font-medium"
+                              >
+                                Profession Tax
+                              </Label>
+                              <Input
+                                id="professionTax"
+                                type="number"
+                                placeholder="Professional Tax"
+                                value={structureForm.professionalTax}
+                                onChange={(e) =>
+                                  setStructureForm((prev) => ({
+                                    ...prev,
+                                    professionalTax: e.target.value,
+                                  }))
+                                }
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Auto-filled from employee data if available
+                              </p>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="incomeTax" className="font-medium">
+                                INCOME TAX
+                              </Label>
+                              <Input
+                                id="incomeTax"
+                                type="number"
+                                placeholder="Income Tax"
+                                value={structureForm.incomeTax}
+                                onChange={(e) =>
+                                  setStructureForm((prev) => ({
+                                    ...prev,
+                                    incomeTax: e.target.value,
+                                  }))
+                                }
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Summary Section */}
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <h3 className="font-semibold mb-3">Summary</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span>Total Earnings:</span>
+                              <span className="font-medium text-green-600">
+                                ₹
+                                {calculateStructureTotals().totalEarnings.toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Total Deductions:</span>
+                              <span className="font-medium text-red-600">
+                                ₹
+                                {calculateStructureTotals().totalDeductions.toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex justify-between border-t pt-2">
+                              <span className="font-semibold">Net Salary:</span>
+                              <span className="font-bold text-lg">
+                                ₹
+                                {calculateStructureTotals().netSalary.toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row gap-2 pt-4">
+                        <Button
+                          onClick={
+                            editingStructure
+                              ? handleUpdateStructure
+                              : handleAddStructure
+                          }
+                          disabled={
+                            !structureForm.basicSalary ||
+                            !structureForm.employeeId ||
+                            structureForm.employeeId === "no-employees"
+                          }
+                          className="flex-1"
+                        >
+                          {editingStructure
+                            ? "Update Structure"
+                            : "Add Structure"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setIsAddingStructure(false);
+                            setEditingStructure(null);
+                            resetStructureForm();
+                          }}
+                          className="flex-1"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Salary Structures List */}
+                {loading.structures ? (
+                  <div className="flex justify-center items-center h-64">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Employee</TableHead>
+                          <TableHead>Basic Salary</TableHead>
+                          <TableHead>Allowances</TableHead>
+                          <TableHead>Deductions</TableHead>
+                          <TableHead>Total CTC</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {salaryStructures.length === 0 ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={6}
+                              className="text-center py-8 text-muted-foreground"
+                            >
+                              No salary structures found
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          salaryStructures.map((structure, index) => {
+                            const employee = employees.find(
+                              (e) => e.employeeId === structure.employeeId
+                            );
+                            const totalAllowances =
+                              (structure.hra || 0) +
+                              (structure.da || 0) +
+                              (structure.specialAllowance || 0) +
+                              (structure.conveyance || 0) +
+                              (structure.medicalAllowance || 0) +
+                              (structure.otherAllowances || 0) +
+                              (structure.leaveEncashment || 0) +
+                              (structure.arrears || 0);
+                            const totalDeductions =
+                              (structure.providentFund || 0) +
+                              (structure.professionalTax || 0) +
+                              (structure.incomeTax || 0) +
+                              (structure.otherDeductions || 0) +
+                              (structure.esic || 0) +
+                              (structure.advance || 0) +
+                              (structure.mlwf || 0);
+                            const totalCTC =
+                              (structure.basicSalary || 0) + totalAllowances;
+
+                            if (!employee) return null;
+
+                            return (
+                              <TableRow
+                                key={
+                                  structure._id ||
+                                  structure.id ||
+                                  `structure-${index}`
+                                }
+                                className="transition-all duration-200 hover:bg-gray-50/50 border-b border-gray-100"
+                              >
+                                <TableCell>
+                                  <div className="flex items-start space-x-3">
+                                    <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                                      <span className="font-medium text-blue-700">
+                                        {employee.name?.charAt(0) || 'E'}
+                                      </span>
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-medium text-gray-900 truncate">{employee.name}</p>
+                                      <p className="text-sm text-gray-500">{employee.employeeId}</p>
+                                      <p className="text-xs text-gray-400 mt-0.5">{employee.department}</p>
+                                      {employee.accountNumber && (
+                                        <div className="flex items-center gap-1 mt-1">
+                                          <div className="h-2 w-2 rounded-full bg-green-500"></div>
+                                          <span className="text-xs text-gray-500">Bank account configured</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center">
+                                    <IndianRupee className="h-4 w-4 mr-1" />
+                                    {(
+                                      structure.basicSalary || 0
+                                    ).toLocaleString()}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    Monthly: ₹{employee.salary.toLocaleString()}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center">
+                                    <IndianRupee className="h-4 w-4 mr-1" />
+                                    {totalAllowances.toLocaleString()}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center">
+                                    <IndianRupee className="h-4 w-4 mr-1" />
+                                    {totalDeductions.toLocaleString()}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="font-medium flex items-center">
+                                    <IndianRupee className="h-4 w-4 mr-1" />
+                                    {totalCTC.toLocaleString()}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex gap-2">
                                     <Button
                                       size="sm"
                                       variant="outline"
-                                      onClick={() => {
-                                        handleEmployeeSelect(
-                                          employee.employeeId
-                                        );
-                                        setIsAddingStructure(true);
-                                        setActivePayrollTab(
-                                          "salary-structures"
-                                        );
-                                      }}
+                                      onClick={() =>
+                                        handleEditStructure(structure)
+                                      }
                                     >
-                                      Add Structure
+                                      <Edit className="h-4 w-4" />
                                     </Button>
-                                  )}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </TabsContent>
-
-            {/* Salary Structures Tab */}
-            <TabsContent value="salary-structures" className="space-y-4">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <h3 className="text-lg font-semibold">Salary Structures</h3>
-                <div className="flex gap-2 w-full sm:w-auto">
-                  <Button
-                    onClick={() => setIsAddingStructure(true)}
-                    className="w-full sm:w-auto"
-                  >
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Structure
-                  </Button>
-                </div>
-              </div>
-
-              {/* Add/Edit Salary Structure Form */}
-              {(isAddingStructure || editingStructure) && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>
-                      {editingStructure
-                        ? "Edit Salary Structure"
-                        : "Add Salary Structure"}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div className="space-y-2">
-                      <Label htmlFor="employeeId">Employee *</Label>
-                      <Select
-                        value={structureForm.employeeId}
-                        onValueChange={(value) => {
-                          if (value && value !== "no-employees") {
-                            handleEmployeeSelect(value);
-                          }
-                        }}
-                        disabled={!!editingStructure}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select employee" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {employeesWithoutStructure.length > 0 ? (
-                            employeesWithoutStructure.map((employee) => (
-                              <SelectItem
-                                key={employee.employeeId}
-                                value={employee.employeeId}
-                              >
-                                {employee.name} ({employee.employeeId}) -{" "}
-                                {employee.department} - ₹
-                                {employee.salary.toLocaleString()}
-                              </SelectItem>
-                            ))
-                          ) : (
-                            <SelectItem value="no-employees" disabled>
-                              All employees have salary structures
-                            </SelectItem>
-                          )}
-                        </SelectContent>
-                      </Select>
-
-                      {structureForm.employeeId &&
-                        (() => {
-                          const selectedEmployee = employees.find(
-                            (e) => e.employeeId === structureForm.employeeId
-                          );
-                          if (!selectedEmployee) return null;
-
-                          return (
-                            <div className="text-sm text-muted-foreground mt-1 p-2 bg-gray-50 rounded">
-                              <div>
-                                Monthly Salary: ₹
-                                {selectedEmployee.salary.toLocaleString()}
-                              </div>
-                              {selectedEmployee.accountNumber && (
-                                <div>
-                                  Bank Account: XXXX
-                                  {selectedEmployee.accountNumber.slice(-4)}
-                                </div>
-                              )}
-                              {selectedEmployee.providentFund && (
-                                <div>
-                                  PF Contribution: ₹
-                                  {selectedEmployee.providentFund.toLocaleString()}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
-                    </div>
-
-                    {/* Earnings Section */}
-                    <div className="border rounded-lg p-4">
-                      <h3 className="font-semibold mb-4 text-lg">EARNINGS</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-3">
-                          <div className="space-y-2">
-                            <Label htmlFor="basic" className="font-medium">
-                              BASIC *
-                            </Label>
-                            <Input
-                              id="basic"
-                              type="number"
-                              placeholder="Basic Salary"
-                              value={structureForm.basicSalary}
-                              onChange={(e) =>
-                                setStructureForm((prev) => ({
-                                  ...prev,
-                                  basicSalary: e.target.value,
-                                }))
-                              }
-                              required
-                            />
-                            <p className="text-xs text-muted-foreground">
-                              Auto-filled from employee's monthly salary
-                            </p>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="da" className="font-medium">
-                              DA
-                            </Label>
-                            <Input
-                              id="da"
-                              type="number"
-                              placeholder="Dearness Allowance"
-                              value={structureForm.da}
-                              onChange={(e) =>
-                                setStructureForm((prev) => ({
-                                  ...prev,
-                                  da: e.target.value,
-                                }))
-                              }
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="hra" className="font-medium">
-                              HRA
-                            </Label>
-                            <Input
-                              id="hra"
-                              type="number"
-                              placeholder="House Rent Allowance"
-                              value={structureForm.hra}
-                              onChange={(e) =>
-                                setStructureForm((prev) => ({
-                                  ...prev,
-                                  hra: e.target.value,
-                                }))
-                              }
-                            />
-                          </div>
-                        </div>
-
-                        <div className="space-y-3">
-                          <div className="space-y-2">
-                            <Label htmlFor="cca" className="font-medium">
-                              CCA
-                            </Label>
-                            <Input
-                              id="cca"
-                              type="number"
-                              placeholder="City Compensatory Allowance"
-                              value={structureForm.conveyance}
-                              onChange={(e) =>
-                                setStructureForm((prev) => ({
-                                  ...prev,
-                                  conveyance: e.target.value,
-                                }))
-                              }
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="medical" className="font-medium">
-                              MEDICAL
-                            </Label>
-                            <Input
-                              id="medical"
-                              type="number"
-                              placeholder="Medical Allowance"
-                              value={structureForm.medicalAllowance}
-                              onChange={(e) =>
-                                setStructureForm((prev) => ({
-                                  ...prev,
-                                  medicalAllowance: e.target.value,
-                                }))
-                              }
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="otherAll" className="font-medium">
-                              OTHER ALL
-                            </Label>
-                            <Input
-                              id="otherAll"
-                              type="number"
-                              placeholder="Other Allowances"
-                              value={structureForm.otherAllowances}
-                              onChange={(e) =>
-                                setStructureForm((prev) => ({
-                                  ...prev,
-                                  otherAllowances: e.target.value,
-                                }))
-                              }
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Additional Earnings */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                        <div className="space-y-3">
-                          <div className="space-y-2">
-                            <Label htmlFor="bonus" className="font-medium">
-                              BONUS
-                            </Label>
-                            <Input
-                              id="bonus"
-                              type="number"
-                              placeholder="Bonus"
-                              value={structureForm.specialAllowance}
-                              onChange={(e) =>
-                                setStructureForm((prev) => ({
-                                  ...prev,
-                                  specialAllowance: e.target.value,
-                                }))
-                              }
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="leave" className="font-medium">
-                              LEAVE
-                            </Label>
-                            <Input
-                              id="leave"
-                              type="number"
-                              placeholder="Leave Encashment"
-                              value={structureForm.leaveEncashment}
-                              onChange={(e) =>
-                                setStructureForm((prev) => ({
-                                  ...prev,
-                                  leaveEncashment: e.target.value,
-                                }))
-                              }
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-3">
-                          <div className="space-y-2">
-                            <Label htmlFor="arrears" className="font-medium">
-                              ARREARS
-                            </Label>
-                            <Input
-                              id="arrears"
-                              type="number"
-                              placeholder="Arrears"
-                              value={structureForm.arrears}
-                              onChange={(e) =>
-                                setStructureForm((prev) => ({
-                                  ...prev,
-                                  arrears: e.target.value,
-                                }))
-                              }
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Deductions Section */}
-                    <div className="border rounded-lg p-4">
-                      <h3 className="font-semibold mb-4 text-lg">DEDUCTIONS</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-3">
-                          <div className="space-y-2">
-                            <Label htmlFor="pf" className="font-medium">
-                              PF
-                            </Label>
-                            <Input
-                              id="pf"
-                              type="number"
-                              placeholder="Provident Fund"
-                              value={structureForm.providentFund}
-                              onChange={(e) =>
-                                setStructureForm((prev) => ({
-                                  ...prev,
-                                  providentFund: e.target.value,
-                                }))
-                              }
-                            />
-                            <p className="text-xs text-muted-foreground">
-                              Auto-filled from employee data if available
-                            </p>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="esic" className="font-medium">
-                              ESIC
-                            </Label>
-                            <Input
-                              id="esic"
-                              type="number"
-                              placeholder="ESIC Contribution"
-                              value={structureForm.esic}
-                              onChange={(e) =>
-                                setStructureForm((prev) => ({
-                                  ...prev,
-                                  esic: e.target.value,
-                                }))
-                              }
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="advance" className="font-medium">
-                              ADVANCE
-                            </Label>
-                            <Input
-                              id="advance"
-                              type="number"
-                              placeholder="Advance Deduction"
-                              value={structureForm.advance}
-                              onChange={(e) =>
-                                setStructureForm((prev) => ({
-                                  ...prev,
-                                  advance: e.target.value,
-                                }))
-                              }
-                            />
-                          </div>
-                        </div>
-
-                        <div className="space-y-3">
-                          <div className="space-y-2">
-                            <Label htmlFor="mlwf" className="font-medium">
-                              MLWF
-                            </Label>
-                            <Input
-                              id="mlwf"
-                              type="number"
-                              placeholder="MLWF Deduction"
-                              value={structureForm.mlwf}
-                              onChange={(e) =>
-                                setStructureForm((prev) => ({
-                                  ...prev,
-                                  mlwf: e.target.value,
-                                }))
-                              }
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label
-                              htmlFor="professionTax"
-                              className="font-medium"
-                            >
-                              Profession Tax
-                            </Label>
-                            <Input
-                              id="professionTax"
-                              type="number"
-                              placeholder="Professional Tax"
-                              value={structureForm.professionalTax}
-                              onChange={(e) =>
-                                setStructureForm((prev) => ({
-                                  ...prev,
-                                  professionalTax: e.target.value,
-                                }))
-                              }
-                            />
-                            <p className="text-xs text-muted-foreground">
-                              Auto-filled from employee data if available
-                            </p>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="incomeTax" className="font-medium">
-                              INCOME TAX
-                            </Label>
-                            <Input
-                              id="incomeTax"
-                              type="number"
-                              placeholder="Income Tax"
-                              value={structureForm.incomeTax}
-                              onChange={(e) =>
-                                setStructureForm((prev) => ({
-                                  ...prev,
-                                  incomeTax: e.target.value,
-                                }))
-                              }
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Summary Section */}
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <h3 className="font-semibold mb-3">Summary</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                        <div className="space-y-2">
-                          <div className="flex justify-between">
-                            <span>Total Earnings:</span>
-                            <span className="font-medium text-green-600">
-                              ₹
-                              {calculateStructureTotals().totalEarnings.toLocaleString()}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Total Deductions:</span>
-                            <span className="font-medium text-red-600">
-                              ₹
-                              {calculateStructureTotals().totalDeductions.toLocaleString()}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <div className="flex justify-between border-t pt-2">
-                            <span className="font-semibold">Net Salary:</span>
-                            <span className="font-bold text-lg">
-                              ₹
-                              {calculateStructureTotals().netSalary.toLocaleString()}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row gap-2 pt-4">
-                      <Button
-                        onClick={
-                          editingStructure
-                            ? handleUpdateStructure
-                            : handleAddStructure
-                        }
-                        disabled={
-                          !structureForm.basicSalary ||
-                          !structureForm.employeeId ||
-                          structureForm.employeeId === "no-employees"
-                        }
-                        className="flex-1"
-                      >
-                        {editingStructure
-                          ? "Update Structure"
-                          : "Add Structure"}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setIsAddingStructure(false);
-                          setEditingStructure(null);
-                          resetStructureForm();
-                        }}
-                        className="flex-1"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Salary Structures List */}
-              {loading.structures ? (
-                <div className="flex justify-center items-center h-64">
-                  <Loader2 className="h-8 w-8 animate-spin" />
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Employee</TableHead>
-                        <TableHead>Basic Salary</TableHead>
-                        <TableHead>Allowances</TableHead>
-                        <TableHead>Deductions</TableHead>
-                        <TableHead>Total CTC</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {salaryStructures.length === 0 ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={6}
-                            className="text-center py-8 text-muted-foreground"
-                          >
-                            No salary structures found
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        salaryStructures.map((structure, index) => {
-                          const employee = employees.find(
-                            (e) => e.employeeId === structure.employeeId
-                          );
-                          const totalAllowances =
-                            (structure.hra || 0) +
-                            (structure.da || 0) +
-                            (structure.specialAllowance || 0) +
-                            (structure.conveyance || 0) +
-                            (structure.medicalAllowance || 0) +
-                            (structure.otherAllowances || 0) +
-                            (structure.leaveEncashment || 0) +
-                            (structure.arrears || 0);
-                          const totalDeductions =
-                            (structure.providentFund || 0) +
-                            (structure.professionalTax || 0) +
-                            (structure.incomeTax || 0) +
-                            (structure.otherDeductions || 0) +
-                            (structure.esic || 0) +
-                            (structure.advance || 0) +
-                            (structure.mlwf || 0);
-                          const totalCTC =
-                            (structure.basicSalary || 0) + totalAllowances;
-
-                          if (!employee) return null;
-
-                          return (
-                            <TableRow
-                              key={
-                                structure._id ||
-                                structure.id ||
-                                `structure-${index}`
-                              }
-                            >
-                              <TableCell>
-                                <div>
-                                  <div className="font-medium">
-                                    {employee.name}
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() =>
+                                        setDeleteDialog({ open: true, structure })
+                                      }
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
                                   </div>
-                                  <div className="text-sm text-muted-foreground">
-                                    {employee.employeeId}
-                                  </div>
-                                  <div className="text-xs text-gray-500">
-                                    {employee.accountNumber
-                                      ? `Bank: XXXX${employee.accountNumber.slice(
-                                          -4
-                                        )}`
-                                      : "No bank"}
-                                  </div>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center">
-                                  <IndianRupee className="h-4 w-4 mr-1" />
-                                  {(
-                                    structure.basicSalary || 0
-                                  ).toLocaleString()}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  Monthly: ₹{employee.salary.toLocaleString()}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center">
-                                  <IndianRupee className="h-4 w-4 mr-1" />
-                                  {totalAllowances.toLocaleString()}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center">
-                                  <IndianRupee className="h-4 w-4 mr-1" />
-                                  {totalDeductions.toLocaleString()}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="font-medium flex items-center">
-                                  <IndianRupee className="h-4 w-4 mr-1" />
-                                  {totalCTC.toLocaleString()}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() =>
-                                      handleEditStructure(structure)
-                                    }
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() =>
-                                      setDeleteDialog({ open: true, structure })
-                                    }
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </TabsContent>
-
-            {/* Payroll Records Tab */}
-            <TabsContent value="payroll-records" className="space-y-4">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                  <h3 className="text-lg font-semibold">
-                    Payroll Records - {selectedMonth}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    Total Records: {payroll.length} | Total Amount: ₹
-                    {payroll
-                      .reduce((sum, p) => sum + (p.netSalary || 0), 0)
-                      .toLocaleString()}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleExportPayrollExcel}
-                    disabled={payroll.length === 0}
-                  >
-                    <FileSpreadsheet className="mr-2 h-4 w-4" />
-                    Export
-                  </Button>
-                </div>
-              </div>
-
-              {loading.payroll ? (
-                <div className="flex justify-center items-center h-64">
-                  <Loader2 className="h-8 w-8 animate-spin" />
-                </div>
-              ) : payroll.length === 0 ? (
-                <div className="text-center py-8">
-                  <AlertCircle className="h-12 w-12 mx-auto mb-4 text-yellow-500" />
-                  <p className="text-lg font-medium">No payroll records found</p>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Try selecting a different month or check your API connection
-                  </p>
-                  <Button onClick={fetchAllData} variant="outline">
-                    <Loader2 className="mr-2 h-4 w-4" />
-                    Retry Loading Data
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {/* Simple Card View */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {payroll.slice(0, 6).map((record, index) => {
-                      const employee = employees.find(e => e.employeeId === record.employeeId);
-                      return (
-                        <Card key={record._id || index}>
-                          <CardContent className="pt-6">
-                            <div className="font-medium">{employee?.name || 'Unknown'}</div>
-                            <div className="text-sm text-muted-foreground">{record.employeeId}</div>
-                            <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
-                              <div>
-                                <div className="text-gray-600">Department</div>
-                                <div className="font-medium">{employee?.department || 'N/A'}</div>
-                              </div>
-                              <div>
-                                <div className="text-gray-600">Status</div>
-                                <div>{getStatusBadge(record.status)}</div>
-                              </div>
-                            </div>
-                            <div className="mt-4 flex justify-between items-center border-t pt-4">
-                              <span className="text-gray-700">Net Salary:</span>
-                              <span className="font-bold text-lg">₹{record.netSalary?.toLocaleString()}</span>
-                            </div>
-                            <div className="mt-2 flex justify-between items-center">
-                              <span className="text-gray-700">Paid:</span>
-                              <span className="font-medium text-green-600">₹{record.paidAmount?.toLocaleString()}</span>
-                            </div>
-                            <div className="mt-4 flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="flex-1"
-                                onClick={() => handleOpenPaymentStatus(record)}
-                              >
-                                Update Status
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="flex-1"
-                                onClick={() => {
-                                  const payrollId = getItemId(record);
-                                  const slip = salarySlips.find(s => s.payrollId === payrollId);
-                                  if (slip) {
-                                    handleViewSalarySlip(slip);
-                                  } else {
-                                    handleGenerateSalarySlip(payrollId);
-                                  }
-                                }}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })
+                        )}
+                      </TableBody>
+                    </Table>
                   </div>
-                  
-                  {/* Show total count and link to full table */}
-                  <div className="text-center">
+                )}
+              </TabsContent>
+
+              {/* Payroll Records Tab */}
+              <TabsContent value="payroll-records" className="space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <h3 className="text-lg font-semibold">
+                      Payroll Records - {selectedMonth}
+                    </h3>
                     <p className="text-sm text-muted-foreground">
-                      Showing {Math.min(payroll.length, 6)} of {payroll.length} records
+                      Total Records: {payroll.length} | Total Amount: ₹
+                      {payroll
+                        .reduce((sum, p) => sum + (p.netSalary || 0), 0)
+                        .toLocaleString()}
                     </p>
-                    {payroll.length > 6 && (
-                      <Button
-                        variant="link"
-                        onClick={() => {
-                          // You can implement a full table view here
-                          toast.info("Full table view coming soon!");
-                        }}
-                        className="mt-2"
-                      >
-                        View All Records →
-                      </Button>
-                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleExportPayrollExcel}
+                      disabled={payroll.length === 0}
+                    >
+                      <FileSpreadsheet className="mr-2 h-4 w-4" />
+                      Export
+                    </Button>
                   </div>
                 </div>
-              )}
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+
+                {loading.payroll ? (
+                  <div className="flex justify-center items-center h-64">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                  </div>
+                ) : payroll.length === 0 ? (
+                  <div className="text-center py-8">
+                    <AlertCircle className="h-12 w-12 mx-auto mb-4 text-yellow-500" />
+                    <p className="text-lg font-medium">No payroll records found</p>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Try selecting a different month or check your API connection
+                    </p>
+                    <Button onClick={fetchAllData} variant="outline">
+                      <Loader2 className="mr-2 h-4 w-4" />
+                      Retry Loading Data
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Simple Card View */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {payroll.slice(0, 6).map((record, index) => {
+                        const employee = employees.find(e => e.employeeId === record.employeeId);
+                        return (
+                          <Card key={record._id || index} className="transition-all duration-200 hover:shadow-md border">
+                            <CardContent className="pt-6">
+                              <div className="font-medium">{employee?.name || 'Unknown'}</div>
+                              <div className="text-sm text-muted-foreground">{record.employeeId}</div>
+                              <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+                                <div>
+                                  <div className="text-gray-600">Department</div>
+                                  <div className="font-medium">{employee?.department || 'N/A'}</div>
+                                </div>
+                                <div>
+                                  <div className="text-gray-600">Status</div>
+                                  <div>{getStatusBadge(record.status)}</div>
+                                </div>
+                              </div>
+                              <div className="mt-4 flex justify-between items-center border-t pt-4">
+                                <span className="text-gray-700">Net Salary:</span>
+                                <span className="font-bold text-lg">₹{record.netSalary?.toLocaleString()}</span>
+                              </div>
+                              <div className="mt-2 flex justify-between items-center">
+                                <span className="text-gray-700">Paid:</span>
+                                <span className="font-medium text-green-600">₹{record.paidAmount?.toLocaleString()}</span>
+                              </div>
+                              <div className="mt-4 flex gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="flex-1"
+                                  onClick={() => handleOpenPaymentStatus(record)}
+                                >
+                                  Update Status
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="flex-1"
+                                  onClick={() => {
+                                    const payrollId = getItemId(record);
+                                    const slip = salarySlips.find(s => s.payrollId === payrollId);
+                                    if (slip) {
+                                      handleViewSalarySlip(slip);
+                                    } else {
+                                      handleGenerateSalarySlip(payrollId);
+                                    }
+                                  }}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Show total count and link to full table */}
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground">
+                        Showing {Math.min(payroll.length, 6)} of {payroll.length} records
+                      </p>
+                      {payroll.length > 6 && (
+                        <Button
+                          variant="link"
+                          onClick={() => {
+                            // You can implement a full table view here
+                            toast.info("Full table view coming soon!");
+                          }}
+                          className="mt-2"
+                        >
+                          View All Records →
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 };

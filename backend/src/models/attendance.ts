@@ -102,3 +102,4 @@ attendanceSchema.index({ createdAt: -1 });
 const Attendance: Model<IAttendance> = mongoose.model<IAttendance>('Attendance', attendanceSchema);
 
 export default Attendance;
+

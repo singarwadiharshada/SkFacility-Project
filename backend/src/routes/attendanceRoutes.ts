@@ -1,30 +1,37 @@
 import express from 'express';
-import * as attendanceController from '../controllers/attendanceController';
+import {
+  checkIn,
+  checkOut,
+  breakIn,
+  breakOut,
+  getTodayStatus,
+  getAttendanceHistory,
+  getTeamAttendance,
+  getAllAttendance,
+  updateAttendance,
+  getWeeklySummary,
+  manualAttendance
+} from '../controllers/attendanceController';
 
 const router = express.Router();
 
 // Check in/out routes
-router.post('/checkin', attendanceController.checkIn);
-router.post('/checkout', attendanceController.checkOut);
-router.post('/breakin', attendanceController.breakIn);
-router.post('/breakout', attendanceController.breakOut);
+router.post('/checkin', checkIn);
+router.post('/checkout', checkOut);
+router.post('/breakin', breakIn);
+router.post('/breakout', breakOut);
 
 // Get attendance data
-router.get('/status/:employeeId', attendanceController.getTodayStatus);
-router.get('/history', attendanceController.getAttendanceHistory);
-router.get('/team', attendanceController.getTeamAttendance);
-router.get('/', attendanceController.getAllAttendance);
-
-// NEW: Manager-specific attendance endpoint
-router.get('/manager', attendanceController.getManagerAttendance);
+router.get('/status/:employeeId', getTodayStatus);
+router.get('/history', getAttendanceHistory);
+router.get('/team', getTeamAttendance);
+router.get('/', getAllAttendance);
 
 // Update attendance (admin/supervisor)
-router.put('/:id', attendanceController.updateAttendance);
+router.put('/:id', updateAttendance);
 
 // Manual attendance entry
-router.post('/manual', attendanceController.manualAttendance);
-
-// Weekly summary
-router.get('/weekly-summary', attendanceController.getWeeklySummary);
+router.post('/manual', manualAttendance);
+router.get('/weekly-summary', getWeeklySummary);
 
 export default router;

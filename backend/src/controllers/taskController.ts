@@ -77,7 +77,7 @@ export const getTaskById = async (req: Request, res: Response) => {
   }
 };
 
-// Create new task
+// Create new task - UPDATED VERSION
 export const createTask = async (req: Request, res: Response) => {
   try {
     console.log('📝 CREATE TASK REQUEST START ============');
@@ -87,9 +87,8 @@ export const createTask = async (req: Request, res: Response) => {
     const { _id, id, __v, ...requestData } = req.body;
     console.log('🧹 After removing id fields:', JSON.stringify(requestData, null, 2));
     
-    // Clean the data
-    const cleanedData = cleanObject(requestData);
-    console.log('🧽 After cleaning:', JSON.stringify(cleanedData, null, 2));
+    // Clean the data - keep all fields including empty strings
+    const cleanedData = requestData;
     
     // Validate required fields
     const requiredFields = [
@@ -106,11 +105,15 @@ export const createTask = async (req: Request, res: Response) => {
       'createdBy'
     ];
     
-    const missingFields = requiredFields.filter(field => !cleanedData[field]);
+    const missingFields = requiredFields.filter(field => {
+      const value = cleanedData[field];
+      return value === undefined || value === null || value === '';
+    });
     
     if (missingFields.length > 0) {
       console.log(`❌ Missing required fields: ${missingFields.join(', ')}`);
       return res.status(400).json({ 
+        success: false,
         message: 'Missing required fields',
         missingFields
       });
@@ -129,7 +132,7 @@ export const createTask = async (req: Request, res: Response) => {
       siteId: String(cleanedData.siteId).trim(),
       siteName: String(cleanedData.siteName).trim(),
       clientName: String(cleanedData.clientName).trim(),
-      taskType: cleanedData.taskType || 'routine',
+      taskType: cleanedData.taskType || 'general',
       createdBy: String(cleanedData.createdBy).trim(),
       attachments: Array.isArray(cleanedData.attachments) ? cleanedData.attachments : [],
       hourlyUpdates: Array.isArray(cleanedData.hourlyUpdates) ? cleanedData.hourlyUpdates : []
@@ -137,23 +140,21 @@ export const createTask = async (req: Request, res: Response) => {
     
     console.log('📊 Final task data to save:', JSON.stringify(taskData, null, 2));
     
+    // Validate dates
+    if (isNaN(taskData.deadline.getTime()) || isNaN(taskData.dueDateTime.getTime())) {
+      console.log('❌ Invalid date format');
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid date format'
+      });
+    }
+    
     // Create new task instance
     const task = new Task(taskData);
     console.log('🏗️ Task instance created');
     
-    // Validate before saving
-    const validationError = task.validateSync();
-    if (validationError) {
-      console.log('❌ Validation error:', validationError.errors);
-      return res.status(400).json({ 
-        message: 'Validation error',
-        errors: validationError.errors 
-      });
-    }
-    
-    console.log('💾 Attempting to save task to database...');
-    
     // Save to database
+    console.log('💾 Attempting to save task to database...');
     await task.save();
     
     console.log(`✅ Task created successfully! ID: ${task._id}, Title: ${task.title}`);
@@ -627,6 +628,69 @@ export const getAssignees = async (req: Request, res: Response) => {
     console.error('❌ Error fetching assignees:', error);
     res.status(500).json({ 
       message: 'Error fetching assignees', 
+      error: error.message 
+    });
+  }
+};
+
+// Get tasks by assignee
+export const getTasksByAssignee = async (req: Request, res: Response) => {
+  try {
+    const { assigneeId } = req.params;
+    console.log(`📋 Fetching tasks for assignee: ${assigneeId}`);
+    
+    const tasks = await Task.find({ assignedTo: assigneeId })
+      .sort({ createdAt: -1 })
+      .lean();
+    
+    console.log(`✅ Found ${tasks.length} tasks for assignee ${assigneeId}`);
+    res.status(200).json(tasks);
+  } catch (error: any) {
+    console.error('❌ Error fetching tasks by assignee:', error);
+    res.status(500).json({ 
+      message: 'Error fetching tasks by assignee', 
+      error: error.message 
+    });
+  }
+};
+
+// Get tasks by creator
+export const getTasksByCreator = async (req: Request, res: Response) => {
+  try {
+    const { creatorId } = req.params;
+    console.log(`📋 Fetching tasks created by: ${creatorId}`);
+    
+    const tasks = await Task.find({ createdBy: creatorId })
+      .sort({ createdAt: -1 })
+      .lean();
+    
+    console.log(`✅ Found ${tasks.length} tasks created by ${creatorId}`);
+    res.status(200).json(tasks);
+  } catch (error: any) {
+    console.error('❌ Error fetching tasks by creator:', error);
+    res.status(500).json({ 
+      message: 'Error fetching tasks by creator', 
+      error: error.message 
+    });
+  }
+};
+
+// Get tasks by site
+export const getTasksBySite = async (req: Request, res: Response) => {
+  try {
+    const { siteName } = req.params;
+    console.log(`📋 Fetching tasks for site: ${siteName}`);
+    
+    const tasks = await Task.find({ siteName: siteName })
+      .sort({ createdAt: -1 })
+      .lean();
+    
+    console.log(`✅ Found ${tasks.length} tasks for site ${siteName}`);
+    res.status(200).json(tasks);
+  } catch (error: any) {
+    console.error('❌ Error fetching tasks by site:', error);
+    res.status(500).json({ 
+      message: 'Error fetching tasks by site', 
       error: error.message 
     });
   }

@@ -5,6 +5,7 @@ import {
   CardTitle,
   CardContent,
   CardDescription,
+  CardFooter,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,6 +63,24 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
+  Server,
+  Database,
+  Filter,
+  MoreVertical,
+  ChevronRight,
+  FileText,
+  UploadCloud,
+  DownloadCloud,
+  Sun,
+  Moon,
+  Bell,
+  Loader2,
+  ArrowUpRight,
+  ArrowDownRight,
+  DollarSign,
+  Users,
+  MessageSquare,
+  Target,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -69,6 +88,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { inventoryService, type FrontendInventoryItem } from '@/services/inventoryService';
 import { machineService, type FrontendMachine, type MachineStats, type MaintenanceRecordDTO } from '@/services/machineService';
+import { motion, AnimatePresence } from "framer-motion";
 
 // Types
 interface Site {
@@ -86,6 +106,7 @@ interface InventoryStats {
   totalItems: number;
   lowStockItems: number;
   totalValue: number;
+  itemsValueChange: number;
 }
 
 // Use the FrontendInventoryItem type from service
@@ -106,12 +127,17 @@ const InventoryPage = () => {
   const [itemDialogOpen, setItemDialogOpen] = useState(false);
   const [changeHistoryDialogOpen, setChangeHistoryDialogOpen] = useState<string | null>(null);
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState({
+    items: true,
+    machines: true,
+    stats: true
+  });
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState<InventoryStats>({
     totalItems: 0,
     lowStockItems: 0,
     totalValue: 0,
+    itemsValueChange: 0,
   });
   
   // Machine states
@@ -126,6 +152,10 @@ const InventoryPage = () => {
   
   // Track active tab
   const [activeTab, setActiveTab] = useState("inventory");
+  
+  // New state for tracking data source
+  const [usingLocalMachineStats, setUsingLocalMachineStats] = useState(false);
+  const [backendConnected, setBackendConnected] = useState(true);
   
   // New item form state
   const [newItem, setNewItem] = useState<Partial<InventoryItem>>({
@@ -219,17 +249,18 @@ const InventoryPage = () => {
     return {
       totalItems,
       lowStockItems,
-      totalValue
+      totalValue,
+      itemsValueChange: 0 // We can implement change tracking later
     };
   };
 
-  // Format currency - CHANGED TO INDIAN RUPEES
+  // Format currency - INDIAN RUPEES
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
       minimumFractionDigits: 0,
-      maximumFractionDigits: 2
+      maximumFractionDigits: 0
     }).format(amount);
   };
 
@@ -255,11 +286,18 @@ const InventoryPage = () => {
     // Count machines needing maintenance soon (within next 30 days)
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+    const today = new Date();
     
-    const upcomingMaintenanceCount = machines.filter(machine => 
-      machine.nextMaintenanceDate && 
-      new Date(machine.nextMaintenanceDate) <= thirtyDaysFromNow
-    ).length;
+    const upcomingMaintenanceCount = machines.filter(machine => {
+      if (!machine.nextMaintenanceDate) return false;
+      try {
+        const nextMaintenanceDate = new Date(machine.nextMaintenanceDate);
+        return nextMaintenanceDate <= thirtyDaysFromNow && nextMaintenanceDate >= today;
+      } catch (error) {
+        console.error('Error parsing maintenance date:', machine.nextMaintenanceDate, error);
+        return false;
+      }
+    }).length;
 
     // Calculate machines by department
     const machinesByDepartment = machines.reduce((acc, machine) => {
@@ -295,7 +333,13 @@ const InventoryPage = () => {
 
   const fetchData = async () => {
     try {
-      setLoading(true);
+      setLoading({
+        items: true,
+        machines: true,
+        stats: true
+      });
+      setUsingLocalMachineStats(false);
+      setBackendConnected(true);
       
       // Fetch items and machines in parallel
       const [itemsData, machinesData] = await Promise.all([
@@ -306,14 +350,25 @@ const InventoryPage = () => {
       setItems(itemsData || []);
       setMachines(machinesData || []);
       
-      // Try to fetch machine stats, fall back to local calculation
+      // Try to fetch machine stats
       try {
         const statsData = await machineService.getMachineStats();
         setMachineStats(statsData);
-      } catch (statsError) {
-        console.warn('Failed to fetch machine stats from API, calculating locally:', statsError);
-        const localStats = calculateLocalMachineStats();
-        setMachineStats(localStats);
+        setUsingLocalMachineStats(false);
+      } catch (statsError: any) {
+        // Check if it's a stats endpoint error
+        if (statsError.isStatsEndpointError) {
+          console.warn('Stats endpoint unavailable, using local calculation');
+          setUsingLocalMachineStats(true);
+          const localStats = calculateLocalMachineStats();
+          setMachineStats(localStats);
+        } else {
+          // Other errors
+          console.error('Error fetching machine stats:', statsError);
+          setUsingLocalMachineStats(true);
+          const localStats = calculateLocalMachineStats();
+          setMachineStats(localStats);
+        }
       }
       
       // Calculate inventory stats locally
@@ -322,16 +377,27 @@ const InventoryPage = () => {
       
     } catch (error) {
       console.error('Failed to fetch data from backend:', error);
-      // Error toast is shown by service interceptors
+      setBackendConnected(false);
       
       // Set empty arrays if backend fails
       setItems([]);
       setMachines([]);
+      setUsingLocalMachineStats(true);
+      
       // Calculate local machine stats even if machines array is empty
       setMachineStats(calculateLocalMachineStats());
-      setStats({ totalItems: 0, lowStockItems: 0, totalValue: 0 });
+      setStats({ totalItems: 0, lowStockItems: 0, totalValue: 0, itemsValueChange: 0 });
+      
+      // Show warning toast
+      toast.warning("Backend connection issue. Using local data.", {
+        description: "Some features may be limited."
+      });
     } finally {
-      setLoading(false);
+      setLoading({
+        items: false,
+        machines: false,
+        stats: false
+      });
     }
   };
 
@@ -438,8 +504,10 @@ const InventoryPage = () => {
       
       setItemDialogOpen(false);
       resetNewItemForm();
+      toast.success("Item added successfully!");
     } catch (error) {
       console.error('Failed to add item:', error);
+      toast.error("Failed to add item");
     }
   };
 
@@ -477,8 +545,10 @@ const InventoryPage = () => {
       
       setEditItem(null);
       setItemDialogOpen(false);
+      toast.success("Item updated successfully!");
     } catch (error) {
       console.error('Failed to update item:', error);
+      toast.error("Failed to update item");
     }
   };
 
@@ -523,8 +593,15 @@ const InventoryPage = () => {
       }
 
       // Refresh machine stats
-      const statsData = await machineService.getMachineStats().catch(() => calculateLocalMachineStats());
-      setMachineStats(statsData);
+      try {
+        const statsData = await machineService.getMachineStats();
+        setMachineStats(statsData);
+        setUsingLocalMachineStats(false);
+      } catch (statsError) {
+        setUsingLocalMachineStats(true);
+        const localStats = calculateLocalMachineStats();
+        setMachineStats(localStats);
+      }
       
       setMachineDialogOpen(false);
       resetNewMachineForm();
@@ -573,8 +650,15 @@ const InventoryPage = () => {
       setMachines(updatedMachines);
       
       // Refresh machine stats
-      const statsData = await machineService.getMachineStats().catch(() => calculateLocalMachineStats());
-      setMachineStats(statsData);
+      try {
+        const statsData = await machineService.getMachineStats();
+        setMachineStats(statsData);
+        setUsingLocalMachineStats(false);
+      } catch (statsError) {
+        setUsingLocalMachineStats(true);
+        const localStats = calculateLocalMachineStats();
+        setMachineStats(localStats);
+      }
       
       toast.success("Machine deleted successfully!");
     } catch (error) {
@@ -603,8 +687,15 @@ const InventoryPage = () => {
       setMachines(updatedMachines);
       
       // Refresh machine stats
-      const statsData = await machineService.getMachineStats().catch(() => calculateLocalMachineStats());
-      setMachineStats(statsData);
+      try {
+        const statsData = await machineService.getMachineStats();
+        setMachineStats(statsData);
+        setUsingLocalMachineStats(false);
+      } catch (statsError) {
+        setUsingLocalMachineStats(true);
+        const localStats = calculateLocalMachineStats();
+        setMachineStats(localStats);
+      }
       
       // Reset form
       setMaintenanceRecord({
@@ -663,75 +754,7 @@ const InventoryPage = () => {
     setItemDialogOpen(true);
   };
 
-  // Handle import
-  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const text = await file.text();
-      const lines = text.split('\n');
-      
-      // Skip header row
-      const dataLines = lines.slice(1);
-      
-      let importedCount = 0;
-      let failedCount = 0;
-      
-      for (const line of dataLines) {
-        if (!line.trim()) continue;
-        
-        const columns = line.split(',');
-        if (columns.length < 10) {
-          failedCount++;
-          continue;
-        }
-        
-        try {
-          const itemData: Omit<InventoryItem, 'id' | '_id' | 'createdAt' | 'updatedAt'> = {
-            sku: columns[0].trim().toUpperCase(),
-            name: columns[1].trim(),
-            department: columns[2].trim().toLowerCase(),
-            category: columns[3].trim(),
-            site: columns[4].trim(),
-            assignedManager: columns[5].trim(),
-            quantity: parseInt(columns[6].trim()) || 0,
-            price: parseFloat(columns[7].trim()) || 0,
-            costPrice: parseFloat(columns[8].trim()) || 0,
-            supplier: columns[9].trim(),
-            reorderLevel: parseInt(columns[10]?.trim()) || 10,
-            description: columns[11]?.trim() || "",
-            changeHistory: [{
-              date: new Date().toISOString().split('T')[0],
-              change: "Created",
-              user: "Supervisor",
-              quantity: parseInt(columns[6].trim()) || 0
-            }]
-          };
-          
-          await inventoryService.createItem(itemData);
-          importedCount++;
-          
-        } catch (error) {
-          failedCount++;
-          console.error('Failed to import row:', line, error);
-        }
-      }
-      
-      toast.success(`Imported ${importedCount} items successfully!`);
-      if (failedCount > 0) {
-        toast.error(`${failedCount} items failed to import`);
-      }
-      
-      setImportDialogOpen(false);
-      await fetchData(); // Refresh data
-      
-    } catch (error) {
-      console.error('Failed to parse CSV:', error);
-      toast.error("Failed to import items. Check CSV format.");
-    }
-  };
-
+  // Handle export
   const handleExport = () => {
     if (items.length === 0) {
       toast.error("No items to export");
@@ -805,20 +828,6 @@ const InventoryPage = () => {
     }
   };
 
-  // Import machines from CSV
-  const handleImportMachines = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      toast.info("Machine import functionality coming soon!");
-      // For now, just show a message and refresh
-      await fetchData();
-    } catch (error) {
-      console.error('Failed to import machines:', error);
-    }
-  };
-
   // Calculate machine age
   const calculateMachineAge = (purchaseDate: string) => {
     const purchase = new Date(purchaseDate);
@@ -831,911 +840,1192 @@ const InventoryPage = () => {
   // Get machine stats for display
   const machineStatsDisplay = machineStats || calculateLocalMachineStats();
 
-  // Loading state
-  if (loading) {
-    return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-center h-96">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-            <p className="mt-4 text-muted-foreground">Loading data from backend...</p>
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="sticky top-0 z-50 bg-white border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Inventory Management</h1>
+            <p className="text-sm text-gray-500 mt-1">Manage inventory, machinery, and equipment across sites</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search inventory, machines..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 w-64 rounded-full border-gray-300 bg-gray-100 focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <button className="w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                <Bell className="h-5 w-5 text-gray-600" />
+              </button>
+              <button className="w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
+                <Sun className="h-5 w-5 text-gray-600" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    );
-  }
 
-  return (
-    <div className="container mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold">Inventory Management</h1>
-          <p className="text-muted-foreground">Manage and track your inventory and machinery across all sites</p>
+      <div className="p-6 space-y-6">
+        {/* Stats Cards - Animated like CRM */}
+        <div className="grid gap-6 md:grid-cols-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            whileHover={{ y: -4, transition: { duration: 0.2 } }}
+          >
+            <Card className="border-0 shadow-lg rounded-2xl bg-gradient-to-br from-white to-blue-50 hover:shadow-xl transition-shadow duration-300">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
+                    <Package className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-gray-500 mb-1">Total Items</p>
+                    <p className="text-3xl font-bold text-gray-900">
+                      {loading.stats ? <Loader2 className="h-7 w-7 animate-spin text-blue-500" /> : stats.totalItems}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+            whileHover={{ y: -4, transition: { duration: 0.2 } }}
+          >
+            <Card className="border-0 shadow-lg rounded-2xl bg-gradient-to-br from-white to-amber-50 hover:shadow-xl transition-shadow duration-300">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center">
+                    <AlertTriangle className="h-6 w-6 text-amber-600" />
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-gray-500 mb-1">Low Stock</p>
+                    <p className="text-3xl font-bold text-amber-600">
+                      {loading.stats ? <Loader2 className="h-7 w-7 animate-spin text-amber-500" /> : stats.lowStockItems}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.2 }}
+            whileHover={{ y: -4, transition: { duration: 0.2 } }}
+          >
+            <Card className="border-0 shadow-lg rounded-2xl bg-gradient-to-br from-white to-green-50 hover:shadow-xl transition-shadow duration-300">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center">
+                    <DollarSign className="h-6 w-6 text-green-600" />
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-gray-500 mb-1">Total Value</p>
+                    <p className="text-3xl font-bold text-gray-900">
+                      {loading.stats ? <Loader2 className="h-7 w-7 animate-spin text-green-500" /> : formatCurrency(stats.totalValue)}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.3 }}
+            whileHover={{ y: -4, transition: { duration: 0.2 } }}
+          >
+            <Card className="border-0 shadow-lg rounded-2xl bg-gradient-to-br from-white to-purple-50 hover:shadow-xl transition-shadow duration-300">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center">
+                    <Cpu className="h-6 w-6 text-purple-600" />
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-gray-500 mb-1">Machines</p>
+                    <p className="text-3xl font-bold text-gray-900">
+                      {loading.stats ? <Loader2 className="h-7 w-7 animate-spin text-purple-500" /> : machineStatsDisplay.totalMachines}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button 
-            variant="outline" 
-            onClick={refreshData}
-            disabled={refreshing}
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button 
-            variant="outline" 
-            onClick={handleExport}
-            disabled={items.length === 0}
-          >
-            <Download className="mr-2 h-4 w-4" />
-            Export
-          </Button>
-          <Button 
-            variant="outline" 
-            onClick={() => setImportDialogOpen(true)}
-          >
-            <Upload className="mr-2 h-4 w-4" />
-            Import
-          </Button>
-        </div>
-      </div>
 
-      {/* Stats Cards - CHANGED TO INDIAN RUPEES */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Items</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalItems}</div>
-            <p className="text-xs text-muted-foreground">Across all departments</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Low Stock</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-amber-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-amber-600">{stats.lowStockItems}</div>
-            <p className="text-xs text-muted-foreground">Need reordering</p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Value</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.totalValue)}</div>
-            <p className="text-xs text-muted-foreground">Current inventory value</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="flex items-center justify-between mb-4">
-        <Tabs defaultValue="inventory" className="flex-1" onValueChange={setActiveTab}>
-          <div className="flex items-center justify-between">
-            <TabsList>
-              <TabsTrigger value="inventory">
-                <Package className="mr-2 h-4 w-4" />
-                Inventory ({items.length})
-              </TabsTrigger>
-              <TabsTrigger value="low-stock">
-                <AlertTriangle className="mr-2 h-4 w-4" />
-                Low Stock ({stats.lowStockItems})
-              </TabsTrigger>
-              <TabsTrigger value="machine-statistics">
-                <Cpu className="mr-2 h-4 w-4" />
-                Machine Statistics ({machines.length})
-              </TabsTrigger>
-              <TabsTrigger value="categories">
-                <Tag className="mr-2 h-4 w-4" />
-                Categories
-              </TabsTrigger>
-            </TabsList>
-            
-            {/* Add Item Button - ONLY VISIBLE IN INVENTORY TAB */}
-            {activeTab === "inventory" && (
-              <Button 
-                onClick={() => {
-                  setEditItem(null);
-                  setItemDialogOpen(true);
-                }}
-                className="ml-4"
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Add Item
-              </Button>
-            )}
-            
-            {/* Add Machine Button - ONLY VISIBLE IN MACHINE STATISTICS TAB */}
-            {activeTab === "machine-statistics" && (
-              <div className="flex items-center gap-2 ml-4">
-                <Button 
-                  variant="outline" 
-                  onClick={handleExportMachines}
-                  disabled={machines.length === 0}
+        {/* Tabs Section */}
+        <div className="space-y-6">
+          <div className="border-b border-gray-200">
+            <Tabs defaultValue="inventory" className="w-full" onValueChange={setActiveTab}>
+              <TabsList className="inline-flex h-12 items-center justify-start rounded-lg bg-transparent p-0">
+                <TabsTrigger 
+                  value="inventory" 
+                  className="relative px-6 py-3 text-sm font-medium text-gray-600 hover:text-gray-900 data-[state=active]:text-blue-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 transition-all"
                 >
-                  <Download className="mr-2 h-4 w-4" />
-                  Export Machines
-                </Button>
-                <Button onClick={() => {
-                  setEditMachine(null);
-                  resetNewMachineForm();
-                  setMachineDialogOpen(true);
-                }}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Machine
-                </Button>
-              </div>
-            )}
+                  <Package className="mr-2 h-4 w-4" />
+                  Inventory ({items.length})
+                  {activeTab === "inventory" && (
+                    <motion.div
+                      layoutId="activeTab"
+                      className="absolute inset-0 z-[-1]"
+                      initial={false}
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    />
+                  )}
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="low-stock" 
+                  className="relative px-6 py-3 text-sm font-medium text-gray-600 hover:text-gray-900 data-[state=active]:text-blue-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 transition-all"
+                >
+                  <AlertTriangle className="mr-2 h-4 w-4" />
+                  Low Stock ({stats.lowStockItems})
+                  {activeTab === "low-stock" && (
+                    <motion.div
+                      layoutId="activeTab"
+                      className="absolute inset-0 z-[-1]"
+                      initial={false}
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    />
+                  )}
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="machines" 
+                  className="relative px-6 py-3 text-sm font-medium text-gray-600 hover:text-gray-900 data-[state=active]:text-blue-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 transition-all"
+                >
+                  <Cpu className="mr-2 h-4 w-4" />
+                  Machines ({machines.length})
+                  {activeTab === "machines" && (
+                    <motion.div
+                      layoutId="activeTab"
+                      className="absolute inset-0 z-[-1]"
+                      initial={false}
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    />
+                  )}
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="categories" 
+                  className="relative px-6 py-3 text-sm font-medium text-gray-600 hover:text-gray-900 data-[state=active]:text-blue-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 transition-all"
+                >
+                  <Tag className="mr-2 h-4 w-4" />
+                  Categories
+                  {activeTab === "categories" && (
+                    <motion.div
+                      layoutId="activeTab"
+                      className="absolute inset-0 z-[-1]"
+                      initial={false}
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    />
+                  )}
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
 
           {/* INVENTORY TAB */}
-          <TabsContent value="inventory">
-            <Card>
-              <CardContent className="pt-6">
-                {/* Filters */}
-                <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search items..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                  
-                  <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="All Departments" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Departments</SelectItem>
-                      {departments.map(dept => {
-                        const Icon = dept.icon;
-                        return (
-                          <SelectItem key={dept.value} value={dept.value}>
-                            <div className="flex items-center gap-2">
-                              <Icon className="h-4 w-4" />
-                              {dept.label}
-                            </div>
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
-                  
-                  <Select 
-                    value={selectedCategory} 
-                    onValueChange={setSelectedCategory}
-                    disabled={selectedDepartment === "all"}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="All Categories" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Categories</SelectItem>
-                      {selectedDepartment !== "all" && 
-                        getCategoriesForDepartment(selectedDepartment).map(cat => (
-                          <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                        ))
-                      }
-                    </SelectContent>
-                  </Select>
-                </div>
+          <AnimatePresence mode="wait">
+            {activeTab === "inventory" && (
+              <motion.div
+                key="inventory"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
+                  <CardHeader className="bg-white border-b border-gray-200 px-6 py-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-xl font-bold text-gray-900">Inventory Items</CardTitle>
+                        <p className="text-sm text-gray-500 mt-1">Manage all inventory items across departments</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Button 
+                          variant="outline"
+                          onClick={() => setImportDialogOpen(true)}
+                          className="border-gray-300 text-gray-700 hover:bg-gray-50 rounded-xl"
+                        >
+                          <Upload className="mr-2 h-4 w-4" />
+                          Import Items
+                        </Button>
+                        <Button 
+                          variant="outline"
+                          onClick={refreshData}
+                          disabled={refreshing}
+                          className="border-gray-300 text-gray-700 hover:bg-gray-50 rounded-xl"
+                        >
+                          <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                          Refresh
+                        </Button>
+                        <Button 
+                          onClick={() => {
+                            setEditItem(null);
+                            setItemDialogOpen(true);
+                          }}
+                          className="bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm hover:shadow"
+                        >
+                          <Plus className="mr-2 h-4 w-4" />
+                          Add Item
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {/* Filters */}
+                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                          <Input
+                            placeholder="Search items..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-10 rounded-lg border-gray-300 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+                        
+                        <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
+                          <SelectTrigger className="rounded-lg border-gray-300 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                            <SelectValue placeholder="All Departments" />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-lg">
+                            <SelectItem value="all">All Departments</SelectItem>
+                            {departments.map(dept => {
+                              const Icon = dept.icon;
+                              return (
+                                <SelectItem key={dept.value} value={dept.value} className="rounded-md">
+                                  <div className="flex items-center gap-2">
+                                    <Icon className="h-4 w-4 text-blue-500" />
+                                    {dept.label}
+                                  </div>
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                        
+                        <Select 
+                          value={selectedCategory} 
+                          onValueChange={setSelectedCategory}
+                          disabled={selectedDepartment === "all"}
+                        >
+                          <SelectTrigger className="rounded-lg border-gray-300 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                            <SelectValue placeholder="All Categories" />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-lg">
+                            <SelectItem value="all">All Categories</SelectItem>
+                            {selectedDepartment !== "all" && 
+                              getCategoriesForDepartment(selectedDepartment).map(cat => (
+                                <SelectItem key={cat} value={cat} className="rounded-md">{cat}</SelectItem>
+                              ))
+                            }
+                          </SelectContent>
+                        </Select>
+                        
+                        <Select value={selectedSite} onValueChange={setSelectedSite}>
+                          <SelectTrigger className="rounded-lg border-gray-300 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                            <SelectValue placeholder="All Sites" />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-lg">
+                            <SelectItem value="all">All Sites</SelectItem>
+                            {sites.map(site => (
+                              <SelectItem key={site.id} value={site.id} className="rounded-md">{site.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
 
-                {/* Table */}
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>SKU</TableHead>
-                        <TableHead>Item Name</TableHead>
-                        <TableHead>Department</TableHead>
-                        <TableHead>Manager</TableHead>
-                        <TableHead>Quantity</TableHead>
-                        <TableHead>Price</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredItems.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={8} className="text-center py-8">
-                            <Package className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
-                            <p className="text-lg font-medium">No items found</p>
-                            <p className="text-muted-foreground">
-                              {items.length === 0 
-                                ? "No items in database. Add your first item!" 
-                                : "Try adjusting your search or filters"}
-                            </p>
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        filteredItems.map((item) => {
-                          const DeptIcon = getDepartmentIcon(item.department);
-                          const isLowStock = item.quantity <= item.reorderLevel;
-                          
-                          return (
-                            <TableRow key={item.id}>
-                              <TableCell className="font-mono font-medium">{item.sku}</TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  <Package className="h-4 w-4 text-muted-foreground" />
-                                  <span className="font-medium">{item.name}</span>
-                                </div>
-                                {item.description && (
-                                  <p className="text-xs text-muted-foreground truncate max-w-[200px]">
-                                    {item.description}
-                                  </p>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="outline" className="flex items-center gap-1 w-fit">
-                                  <DeptIcon className="h-3 w-3" />
-                                  {departments.find(d => d.value === item.department)?.label}
-                                </Badge>
-                                <div className="text-xs text-muted-foreground mt-1">{item.category}</div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-1">
-                                  <UserCheck className="h-3 w-3" />
-                                  {item.assignedManager}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  <span className={`font-medium ${isLowStock ? 'text-amber-600' : ''}`}>
-                                    {item.quantity}
-                                  </span>
-                                  {isLowStock && (
-                                    <Badge variant="outline" className="text-xs border-amber-200 bg-amber-50 text-amber-700">
-                                      <AlertTriangle className="h-3 w-3 mr-1" />
-                                      Low
+                    {/* Table */}
+                    {loading.items ? (
+                      <div className="flex justify-center items-center py-12">
+                        <div className="text-center">
+                          <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-500" />
+                          <p className="text-gray-500 mt-3">Loading inventory items...</p>
+                        </div>
+                      </div>
+                    ) : filteredItems.length === 0 ? (
+                      <div className="text-center py-12">
+                        <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                          <Package className="h-8 w-8 text-gray-400" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-gray-900">No items found</h3>
+                        <p className="text-gray-500 mt-2">
+                          Add your first item or import from CSV to get started
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="overflow-hidden">
+                        <Table>
+                          <TableHeader className="bg-gray-50">
+                            <TableRow className="hover:bg-gray-50">
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Item</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">SKU</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Department</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Quantity</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Value</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider text-right">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredItems.map((item, index) => {
+                              const DeptIcon = getDepartmentIcon(item.department);
+                              const isLowStock = item.quantity <= item.reorderLevel;
+                              
+                              return (
+                                <TableRow 
+                                  key={item.id} 
+                                  className={`hover:bg-blue-50/50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                                >
+                                  <TableCell className="py-4 px-6">
+                                    <div className="flex items-center">
+                                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-3">
+                                        <span className="text-blue-600 font-semibold">{item.name.charAt(0)}</span>
+                                      </div>
+                                      <div>
+                                        <div className="font-medium text-gray-900">{item.name}</div>
+                                        <div className="text-sm text-gray-500">{item.supplier}</div>
+                                      </div>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="py-4 px-6">
+                                    <div className="font-mono text-sm text-blue-600">{item.sku}</div>
+                                  </TableCell>
+                                  <TableCell className="py-4 px-6">
+                                    <Badge variant="outline" className="flex items-center gap-1 w-fit border-gray-300 bg-gray-50 text-gray-700">
+                                      <DeptIcon className="h-3 w-3" />
+                                      {departments.find(d => d.value === item.department)?.label}
                                     </Badge>
-                                  )}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  Reorder: {item.reorderLevel}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="font-medium">{formatCurrency(item.price)}</div>
-                                <div className="text-xs text-muted-foreground">
-                                  Cost: {formatCurrency(item.costPrice)}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                {isLowStock ? (
-                                  <Badge variant="destructive" className="text-xs">
-                                    Low Stock
-                                  </Badge>
-                                ) : (
-                                  <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
-                                    In Stock
-                                  </Badge>
-                                )}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => openEditDialog(item)}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                  
-                                  <Dialog>
-                                    <DialogTrigger asChild>
-                                      <Button variant="ghost" size="icon">
-                                        <Eye className="h-4 w-4" />
+                                    <div className="text-xs text-gray-500 mt-1">{item.category}</div>
+                                  </TableCell>
+                                  <TableCell className="py-4 px-6">
+                                    <div className="flex items-center gap-2">
+                                      <span className={`font-medium ${isLowStock ? 'text-amber-600' : 'text-blue-600'}`}>
+                                        {item.quantity}
+                                      </span>
+                                      <div className="text-xs text-gray-500">
+                                        Reorder: {item.reorderLevel}
+                                      </div>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="py-4 px-6">
+                                    <div className="font-medium text-blue-600">{formatCurrency(item.price)}</div>
+                                    <div className="text-xs text-gray-500">
+                                      Cost: {formatCurrency(item.costPrice)}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="py-4 px-6">
+                                    {isLowStock ? (
+                                      <Badge className="bg-amber-100 text-amber-800 border-amber-200">
+                                        Low Stock
+                                      </Badge>
+                                    ) : (
+                                      <Badge className="bg-green-100 text-green-800 border-green-200">
+                                        In Stock
+                                      </Badge>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="py-4 px-6 text-right">
+                                    <div className="flex items-center justify-end gap-2">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => openEditDialog(item)}
+                                        className="w-8 h-8 p-0 rounded-full hover:bg-blue-100 hover:text-blue-600"
+                                        title="Edit"
+                                      >
+                                        <Edit className="h-4 w-4" />
                                       </Button>
-                                    </DialogTrigger>
-                                    <DialogContent className="max-w-2xl">
-                                      <DialogHeader>
-                                        <DialogTitle>Item Details</DialogTitle>
-                                      </DialogHeader>
-                                      <div className="space-y-4">
-                                        <div className="grid grid-cols-2 gap-4">
-                                          <div><strong>SKU:</strong> {item.sku}</div>
-                                          <div><strong>Name:</strong> {item.name}</div>
-                                          <div><strong>Department:</strong> {departments.find(d => d.value === item.department)?.label}</div>
-                                          <div><strong>Category:</strong> {item.category}</div>
-                                          <div><strong>Quantity:</strong> {item.quantity}</div>
-                                          <div><strong>Price:</strong> {formatCurrency(item.price)}</div>
-                                          <div><strong>Cost Price:</strong> {formatCurrency(item.costPrice)}</div>
-                                          <div><strong>Supplier:</strong> {item.supplier}</div>
-                                          <div><strong>Reorder Level:</strong> {item.reorderLevel}</div>
-                                          <div><strong>Manager:</strong> {item.assignedManager}</div>
-                                          {item.description && (
-                                            <div className="col-span-2">
-                                              <strong>Description:</strong> {item.description}
+                                      
+                                      <Dialog>
+                                        <DialogTrigger asChild>
+                                          <Button 
+                                            variant="ghost" 
+                                            size="sm"
+                                            className="w-8 h-8 p-0 rounded-full hover:bg-blue-100 hover:text-blue-600"
+                                            title="View Details"
+                                          >
+                                            <Eye className="h-4 w-4" />
+                                          </Button>
+                                        </DialogTrigger>
+                                        <DialogContent className="max-w-2xl border-gray-200 rounded-2xl">
+                                          <DialogHeader>
+                                            <DialogTitle className="text-lg font-semibold text-gray-900">Item Details</DialogTitle>
+                                          </DialogHeader>
+                                          <div className="space-y-6">
+                                            <div className="flex items-center gap-4">
+                                              <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center">
+                                                <span className="text-blue-600 font-bold text-xl">{item.name.charAt(0)}</span>
+                                              </div>
+                                              <div>
+                                                <h3 className="text-xl font-bold text-gray-900">{item.name}</h3>
+                                                <p className="text-gray-500">{item.sku}</p>
+                                              </div>
                                             </div>
-                                          )}
-                                        </div>
-                                        
-                                        {/* Change History */}
-                                        <div>
-                                          <h4 className="font-semibold mb-2">Change History</h4>
-                                          <div className="space-y-2 max-h-40 overflow-y-auto">
-                                            {item.changeHistory && item.changeHistory.length > 0 ? (
-                                              item.changeHistory.map((change, index) => (
-                                                <div key={index} className="flex items-center justify-between text-sm p-2 bg-muted/50 rounded">
-                                                  <span>{change.date}</span>
-                                                  <span>{change.change}</span>
-                                                  <span>by {change.user}</span>
-                                                  <span className={`font-medium ${change.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                    {change.quantity > 0 ? '+' : ''}{change.quantity}
-                                                  </span>
+                                            
+                                            <div className="grid grid-cols-2 gap-6">
+                                              <div className="space-y-4">
+                                                <div>
+                                                  <Label className="text-xs text-gray-500 uppercase font-medium">Department</Label>
+                                                  <div className="flex items-center gap-2 text-gray-900">
+                                                    <DeptIcon className="h-4 w-4 text-gray-400" />
+                                                    {departments.find(d => d.value === item.department)?.label}
+                                                  </div>
                                                 </div>
-                                              ))
-                                            ) : (
-                                              <p className="text-sm text-muted-foreground text-center py-2">
-                                                No change history available
-                                              </p>
+                                                <div>
+                                                  <Label className="text-xs text-gray-500 uppercase font-medium">Category</Label>
+                                                  <p className="text-gray-900">{item.category}</p>
+                                                </div>
+                                                <div>
+                                                  <Label className="text-xs text-gray-500 uppercase font-medium">Manager</Label>
+                                                  <p className="text-gray-900">{item.assignedManager}</p>
+                                                </div>
+                                              </div>
+                                              <div className="space-y-4">
+                                                <div>
+                                                  <Label className="text-xs text-gray-500 uppercase font-medium">Quantity</Label>
+                                                  <p className="text-lg font-bold text-blue-600">{item.quantity}</p>
+                                                </div>
+                                                <div>
+                                                  <Label className="text-xs text-gray-500 uppercase font-medium">Price</Label>
+                                                  <p className="text-lg font-bold text-green-600">{formatCurrency(item.price)}</p>
+                                                </div>
+                                                <div>
+                                                  <Label className="text-xs text-gray-500 uppercase font-medium">Status</Label>
+                                                  <Badge 
+                                                    className={`px-3 py-1 rounded-full ${
+                                                      isLowStock
+                                                        ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                                        : 'bg-green-100 text-green-800 border-green-200'
+                                                    }`}
+                                                  >
+                                                    {isLowStock ? 'Low Stock' : 'In Stock'}
+                                                  </Badge>
+                                                </div>
+                                              </div>
+                                            </div>
+                                            
+                                            {item.description && (
+                                              <div>
+                                                <Label className="text-xs text-gray-500 uppercase font-medium">Description</Label>
+                                                <div className="mt-2 p-3 bg-gray-50 rounded-lg">
+                                                  <p className="text-gray-900">{item.description}</p>
+                                                </div>
+                                              </div>
                                             )}
+                                            
+                                            <div className="flex items-center justify-between text-sm text-gray-500 pt-4 border-t">
+                                              <span>Supplier: {item.supplier}</span>
+                                              <span>Reorder Level: {item.reorderLevel}</span>
+                                            </div>
                                           </div>
+                                        </DialogContent>
+                                      </Dialog>
+                                      
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setChangeHistoryDialogOpen(item.id)}
+                                        className="w-8 h-8 p-0 rounded-full hover:bg-blue-100 hover:text-blue-600"
+                                        title="History"
+                                      >
+                                        <History className="h-4 w-4" />
+                                      </Button>
+                                      
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleDeleteItem(item.id)}
+                                        className="w-8 h-8 p-0 rounded-full hover:bg-red-100 hover:text-red-600"
+                                        title="Delete"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* LOW STOCK TAB */}
+          <AnimatePresence mode="wait">
+            {activeTab === "low-stock" && (
+              <motion.div
+                key="low-stock"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
+                  <CardHeader className="bg-white border-b border-gray-200 px-6 py-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-xl font-bold text-gray-900">Low Stock Items</CardTitle>
+                        <p className="text-sm text-gray-500 mt-1">Items that need immediate reordering</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Button 
+                          variant="outline"
+                          onClick={handleExport}
+                          disabled={stats.lowStockItems === 0}
+                          className="border-gray-300 text-gray-700 hover:bg-gray-50 rounded-xl"
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          Export Report
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {stats.lowStockItems === 0 ? (
+                      <div className="text-center py-12">
+                        <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                          <AlertTriangle className="h-8 w-8 text-green-600" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-gray-900">All items are in stock!</h3>
+                        <p className="text-gray-500 mt-2">No items need reordering at this time.</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-hidden">
+                        <Table>
+                          <TableHeader className="bg-amber-50">
+                            <TableRow className="hover:bg-amber-50">
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Item</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Current Stock</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Reorder Level</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Deficit</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Urgency</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider text-right">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {items
+                              .filter(item => item.quantity <= item.reorderLevel)
+                              .map((item, index) => {
+                                const deficit = item.reorderLevel - item.quantity;
+                                const urgency = deficit >= 10 ? 'High' : deficit >= 5 ? 'Medium' : 'Low';
+                                
+                                return (
+                                  <TableRow 
+                                    key={item.id} 
+                                    className={`hover:bg-amber-50/50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-amber-50/30'}`}
+                                  >
+                                    <TableCell className="py-4 px-6">
+                                      <div className="flex items-center">
+                                        <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center mr-3">
+                                          <span className="text-amber-600 font-semibold">{item.name.charAt(0)}</span>
+                                        </div>
+                                        <div>
+                                          <div className="font-medium text-gray-900">{item.name}</div>
+                                          <div className="text-sm text-gray-500">{item.sku}</div>
                                         </div>
                                       </div>
-                                    </DialogContent>
-                                  </Dialog>
-                                  
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => setChangeHistoryDialogOpen(item.id)}
-                                  >
-                                    <History className="h-4 w-4" />
-                                  </Button>
-                                  
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => handleDeleteItem(item.id)}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-          
-          {/* LOW STOCK TAB */}
-          <TabsContent value="low-stock">
-            <Card>
-              <CardHeader>
-                <CardTitle>Low Stock Items</CardTitle>
-                <CardDescription>Items that need reordering</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {stats.lowStockItems === 0 ? (
-                  <div className="text-center py-8">
-                    <AlertTriangle className="h-12 w-12 mx-auto text-green-500 mb-2" />
-                    <p className="text-lg font-medium">All items are in stock!</p>
-                    <p className="text-muted-foreground">No items need reordering at this time.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {items
-                      .filter(item => item.quantity <= item.reorderLevel)
-                      .map(item => (
-                        <div key={item.id} className="flex items-center justify-between p-4 border rounded-lg">
-                          <div className="flex items-center gap-3">
-                            <Package className="h-5 w-5" />
-                            <div>
-                              <div className="font-medium">{item.name}</div>
-                              <div className="text-sm text-muted-foreground">{item.sku}</div>
-                              <div className="text-sm">{item.supplier}</div>
-                            </div>
-                          </div>
-                          <div className="text-amber-600 font-medium">
-                            {item.quantity} / {item.reorderLevel}
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* MACHINE STATISTICS TAB */}
-          <TabsContent value="machine-statistics">
-            <Card>
-              <CardHeader>
-                <div>
-                  <CardTitle>Machine Statistics</CardTitle>
-                  <CardDescription>Manage and track machinery equipment</CardDescription>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {/* Machine Stats Cards - CHANGED TO INDIAN RUPEES */}
-                <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Total Machines</CardTitle>
-                      <Cpu className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{machineStatsDisplay.totalMachines}</div>
-                      <p className="text-xs text-muted-foreground">Across all locations</p>
-                    </CardContent>
-                  </Card>
-                  
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Total Value</CardTitle>
-                      <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{formatCurrency(machineStatsDisplay.totalMachineValue)}</div>
-                      <p className="text-xs text-muted-foreground">Machinery value</p>
-                    </CardContent>
-                  </Card>
-                  
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Operational</CardTitle>
-                      <div className="h-4 w-4 rounded-full bg-green-500" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-green-600">{machineStatsDisplay.operationalMachines}</div>
-                      <p className="text-xs text-muted-foreground">Ready for use</p>
-                    </CardContent>
-                  </Card>
-                  
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Under Maintenance</CardTitle>
-                      <div className="h-4 w-4 rounded-full bg-yellow-500" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-yellow-600">{machineStatsDisplay.maintenanceMachines}</div>
-                      <p className="text-xs text-muted-foreground">Currently in maintenance</p>
-                    </CardContent>
-                  </Card>
-                  
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Out of Service</CardTitle>
-                      <div className="h-4 w-4 rounded-full bg-red-500" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-red-600">{machineStatsDisplay.outOfServiceMachines}</div>
-                      <p className="text-xs text-muted-foreground">Not operational</p>
-                    </CardContent>
-                  </Card>
-                  
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Maintenance Due</CardTitle>
-                      <div className="h-4 w-4 rounded-full bg-orange-500" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold text-orange-600">{machineStatsDisplay.upcomingMaintenanceCount}</div>
-                      <p className="text-xs text-muted-foreground">Within 30 days</p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Machine Search and Actions */}
-                <div className="flex flex-col md:flex-row gap-4 mb-6">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search machines by name, manufacturer, model, or location..."
-                      value={machineSearchQuery}
-                      onChange={(e) => setMachineSearchQuery(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setMaintenanceDialogOpen(true)}
-                    disabled={machines.length === 0}
-                  >
-                    <Wrench className="mr-2 h-4 w-4" />
-                    Add Maintenance
-                  </Button>
-                </div>
-
-                {/* Machines Table - CHANGED TO INDIAN RUPEES */}
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Machine Name</TableHead>
-                        <TableHead>Model</TableHead>
-                        <TableHead>Quantity</TableHead>
-                        <TableHead>Cost</TableHead>
-                        <TableHead>Purchase Date</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredMachines.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={7} className="text-center py-8">
-                            <Cpu className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
-                            <p className="text-lg font-medium">No machines found</p>
-                            <p className="text-muted-foreground">
-                              {machines.length === 0 
-                                ? "No machines in database. Add your first machine!" 
-                                : "Try adjusting your search"}
-                            </p>
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        filteredMachines.map((machine) => {
-                          const statusOption = machineStatusOptions.find(s => s.value === machine.status);
-                          const StatusIcon = statusOption?.icon || CheckCircle;
-                          const machineAge = calculateMachineAge(machine.purchaseDate);
-                          
-                          return (
-                            <TableRow key={machine.id}>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  <Cpu className="h-4 w-4 text-muted-foreground" />
-                                  <div>
-                                    <span className="font-medium">{machine.name}</span>
-                                    {machine.manufacturer && (
-                                      <div className="text-xs text-muted-foreground">{machine.manufacturer}</div>
-                                    )}
-                                  </div>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div>{machine.model || 'N/A'}</div>
-                                {machine.serialNumber && (
-                                  <div className="text-xs text-muted-foreground">SN: {machine.serialNumber}</div>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                <div className="font-medium">{machine.quantity}</div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="font-medium">{formatCurrency(machine.cost)}</div>
-                                <div className="text-xs text-muted-foreground">
-                                  Total: {formatCurrency(machine.cost * machine.quantity)}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-1">
-                                  <Calendar className="h-3 w-3 text-muted-foreground" />
-                                  {formatDate(machine.purchaseDate)}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  Age: {machineAge} year{machineAge !== 1 ? 's' : ''}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <Badge className={`${statusOption?.color} border-0 flex items-center gap-1`}>
-                                  <StatusIcon className="h-3 w-3" />
-                                  {statusOption?.label}
-                                </Badge>
-                                {machine.nextMaintenanceDate && (
-                                  <div className="text-xs text-muted-foreground mt-1">
-                                    Next: {formatDate(machine.nextMaintenanceDate)}
-                                  </div>
-                                )}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => handleViewMachine(machine.id)}
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                  
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => handleEditMachine(machine)}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                  
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => {
-                                      setSelectedMachineForMaintenance(machine.id);
-                                      setMaintenanceDialogOpen(true);
-                                    }}
-                                  >
-                                    <Wrench className="h-4 w-4" />
-                                  </Button>
-                                  
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => handleDeleteMachine(machine.id)}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-          
-          {/* CATEGORIES TAB */}
-          <TabsContent value="categories">
-            <Card>
-              <CardHeader>
-                <CardTitle>Categories</CardTitle>
-                <CardDescription>Item categories by department</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {departments.map(dept => {
-                    const Icon = dept.icon;
-                    const deptItems = items.filter(item => item.department === dept.value);
-                    const deptCategories = [...new Set(deptItems.map(item => item.category))];
-                    
-                    return (
-                      <Card key={dept.value}>
-                        <CardHeader className="pb-2">
-                          <div className="flex items-center gap-2">
-                            <Icon className="h-5 w-5" />
-                            <CardTitle className="text-lg">{dept.label}</CardTitle>
-                          </div>
-                          <CardDescription>
-                            {deptItems.length} items • {deptCategories.length} categories
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-2">
-                            {deptCategories.length > 0 ? (
-                              deptCategories.map(category => {
-                                const categoryItems = deptItems.filter(item => item.category === category);
-                                return (
-                                  <div key={category} className="flex justify-between items-center">
-                                    <span>{category}</span>
-                                    <Badge variant="secondary">{categoryItems.length}</Badge>
-                                  </div>
+                                    </TableCell>
+                                    <TableCell className="py-4 px-6">
+                                      <div className="text-lg font-bold text-amber-600">{item.quantity}</div>
+                                    </TableCell>
+                                    <TableCell className="py-4 px-6">
+                                      <div className="text-gray-700">{item.reorderLevel}</div>
+                                    </TableCell>
+                                    <TableCell className="py-4 px-6">
+                                      <div className="font-bold text-red-600">-{deficit}</div>
+                                    </TableCell>
+                                    <TableCell className="py-4 px-6">
+                                      <Badge 
+                                        className={`${
+                                          urgency === 'High' 
+                                            ? 'bg-red-100 text-red-800 border-red-200'
+                                            : urgency === 'Medium'
+                                            ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                            : 'bg-blue-100 text-blue-800 border-blue-200'
+                                        } border-0`}
+                                      >
+                                        {urgency} Priority
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell className="py-4 px-6 text-right">
+                                      <div className="flex items-center justify-end gap-2">
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => openEditDialog(item)}
+                                          className="w-8 h-8 p-0 rounded-full hover:bg-blue-100 hover:text-blue-600"
+                                          title="Edit"
+                                        >
+                                          <Edit className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => setChangeHistoryDialogOpen(item.id)}
+                                          className="w-8 h-8 p-0 rounded-full hover:bg-blue-100 hover:text-blue-600"
+                                          title="History"
+                                        >
+                                          <History className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
                                 );
-                              })
-                            ) : (
-                              <p className="text-sm text-muted-foreground">No items in this department</p>
-                            )}
+                              })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* MACHINES TAB */}
+          <AnimatePresence mode="wait">
+            {activeTab === "machines" && (
+              <motion.div
+                key="machines"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
+                  <CardHeader className="bg-white border-b border-gray-200 px-6 py-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-xl font-bold text-gray-900">Machinery & Equipment</CardTitle>
+                        <p className="text-sm text-gray-500 mt-1">Manage all machinery and equipment across sites</p>
+                        {usingLocalMachineStats && (
+                          <div className="mt-2">
+                            <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200 text-xs">
+                              <Database className="h-3 w-3 mr-1" />
+                              Using locally calculated statistics
+                            </Badge>
                           </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Button 
+                          variant="outline"
+                          onClick={handleExportMachines}
+                          disabled={machines.length === 0}
+                          className="border-gray-300 text-gray-700 hover:bg-gray-50 rounded-xl"
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          Export Machines
+                        </Button>
+                        <Button 
+                          variant="outline"
+                          onClick={() => setMaintenanceDialogOpen(true)}
+                          disabled={machines.length === 0}
+                          className="border-gray-300 text-gray-700 hover:bg-gray-50 rounded-xl"
+                        >
+                          <Wrench className="mr-2 h-4 w-4" />
+                          Add Maintenance
+                        </Button>
+                        <Button 
+                          onClick={() => {
+                            setEditMachine(null);
+                            resetNewMachineForm();
+                            setMachineDialogOpen(true);
+                          }}
+                          className="bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm hover:shadow"
+                        >
+                          <Plus className="mr-2 h-4 w-4" />
+                          Add Machine
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {/* Machine Search */}
+                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input
+                          placeholder="Search machines by name, model, manufacturer, or location..."
+                          value={machineSearchQuery}
+                          onChange={(e) => setMachineSearchQuery(e.target.value)}
+                          className="pl-10 rounded-lg border-gray-300 bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Machines Table */}
+                    {loading.machines ? (
+                      <div className="flex justify-center items-center py-12">
+                        <div className="text-center">
+                          <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-500" />
+                          <p className="text-gray-500 mt-3">Loading machines...</p>
+                        </div>
+                      </div>
+                    ) : filteredMachines.length === 0 ? (
+                      <div className="text-center py-12">
+                        <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                          <Cpu className="h-8 w-8 text-gray-400" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-gray-900">No machines found</h3>
+                        <p className="text-gray-500 mt-2">
+                          {machines.length === 0 
+                            ? "No machines in database. Add your first machine!" 
+                            : "Try adjusting your search"}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="overflow-hidden">
+                        <Table>
+                          <TableHeader className="bg-gray-50">
+                            <TableRow className="hover:bg-gray-50">
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Machine</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Model & Serial</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Cost</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Purchase Date</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</TableHead>
+                              <TableHead className="py-3 px-6 text-xs font-semibold text-gray-700 uppercase tracking-wider text-right">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredMachines.map((machine, index) => {
+                              const statusOption = machineStatusOptions.find(s => s.value === machine.status);
+                              const StatusIcon = statusOption?.icon || CheckCircle;
+                              const machineAge = calculateMachineAge(machine.purchaseDate);
+                              
+                              return (
+                                <TableRow 
+                                  key={machine.id} 
+                                  className={`hover:bg-blue-50/50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                                >
+                                  <TableCell className="py-4 px-6">
+                                    <div className="flex items-center">
+                                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-3">
+                                        <span className="text-blue-600 font-semibold">{machine.name.charAt(0)}</span>
+                                      </div>
+                                      <div>
+                                        <div className="font-medium text-gray-900">{machine.name}</div>
+                                        <div className="text-sm text-gray-500">{machine.manufacturer}</div>
+                                      </div>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="py-4 px-6">
+                                    <div className="text-gray-700">{machine.model || 'N/A'}</div>
+                                    {machine.serialNumber && (
+                                      <div className="text-xs text-gray-500">SN: {machine.serialNumber}</div>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="py-4 px-6">
+                                    <div className="font-medium text-blue-600">{formatCurrency(machine.cost)}</div>
+                                    <div className="text-xs text-gray-500">
+                                      Total: {formatCurrency(machine.cost * machine.quantity)}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="py-4 px-6">
+                                    <div className="flex items-center gap-1">
+                                      <Calendar className="h-4 w-4 text-gray-400" />
+                                      <span className="text-gray-700">{formatDate(machine.purchaseDate)}</span>
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      Age: {machineAge} year{machineAge !== 1 ? 's' : ''}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="py-4 px-6">
+                                    <Badge className={`${statusOption?.color} border-0 flex items-center gap-1`}>
+                                      <StatusIcon className="h-3 w-3" />
+                                      {statusOption?.label}
+                                    </Badge>
+                                    {machine.nextMaintenanceDate && (
+                                      <div className="text-xs text-gray-500 mt-1">
+                                        Next: {formatDate(machine.nextMaintenanceDate)}
+                                      </div>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="py-4 px-6 text-right">
+                                    <div className="flex items-center justify-end gap-2">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleViewMachine(machine.id)}
+                                        className="w-8 h-8 p-0 rounded-full hover:bg-blue-100 hover:text-blue-600"
+                                        title="View Details"
+                                      >
+                                        <Eye className="h-4 w-4" />
+                                      </Button>
+                                      
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleEditMachine(machine)}
+                                        className="w-8 h-8 p-0 rounded-full hover:bg-blue-100 hover:text-blue-600"
+                                        title="Edit"
+                                      >
+                                        <Edit className="h-4 w-4" />
+                                      </Button>
+                                      
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                          setSelectedMachineForMaintenance(machine.id);
+                                          setMaintenanceDialogOpen(true);
+                                        }}
+                                        className="w-8 h-8 p-0 rounded-full hover:bg-blue-100 hover:text-blue-600"
+                                        title="Maintenance"
+                                      >
+                                        <Wrench className="h-4 w-4" />
+                                      </Button>
+                                      
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleDeleteMachine(machine.id)}
+                                        className="w-8 h-8 p-0 rounded-full hover:bg-red-100 hover:text-red-600"
+                                        title="Delete"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* CATEGORIES TAB */}
+          <AnimatePresence mode="wait">
+            {activeTab === "categories" && (
+              <motion.div
+                key="categories"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
+                  <CardHeader className="bg-white border-b border-gray-200 px-6 py-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-xl font-bold text-gray-900">Categories & Departments</CardTitle>
+                        <p className="text-sm text-gray-500 mt-1">Browse inventory by categories and departments</p>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {departments.map(dept => {
+                        const Icon = dept.icon;
+                        const deptItems = items.filter(item => item.department === dept.value);
+                        const deptCategories = [...new Set(deptItems.map(item => item.category))];
+                        const deptValue = deptItems.reduce((sum, item) => sum + (item.quantity * item.costPrice), 0);
+                        
+                        return (
+                          <Card key={dept.value} className="border-0 shadow-sm hover:shadow-md transition-shadow duration-300">
+                            <CardHeader className="pb-3">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                                  <Icon className="h-5 w-5 text-blue-600" />
+                                </div>
+                                <div>
+                                  <CardTitle className="text-lg text-gray-900">{dept.label}</CardTitle>
+                                  <CardDescription>
+                                    {deptItems.length} items • {deptCategories.length} categories
+                                  </CardDescription>
+                                </div>
+                              </div>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="space-y-3">
+                                <div className="flex justify-between items-center text-sm">
+                                  <span className="text-gray-600">Total Value:</span>
+                                  <span className="font-semibold text-blue-600">{formatCurrency(deptValue)}</span>
+                                </div>
+                                <div className="space-y-2">
+                                  <div className="text-sm font-medium text-gray-700">Categories:</div>
+                                  {deptCategories.length > 0 ? (
+                                    <div className="flex flex-wrap gap-2">
+                                      {deptCategories.map(category => {
+                                        const categoryItems = deptItems.filter(item => item.category === category);
+                                        return (
+                                          <Badge key={category} variant="outline" className="bg-gray-50 text-gray-700">
+                                            {category} ({categoryItems.length})
+                                          </Badge>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm text-gray-500">No items in this department</p>
+                                  )}
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
       {/* ADD/EDIT ITEM DIALOG */}
-      <Dialog open={itemDialogOpen} onOpenChange={setItemDialogOpen}>
-        <DialogContent className="max-w-2xl">
+      <Dialog open={itemDialogOpen} onOpenChange={(open) => {
+        setItemDialogOpen(open);
+        if (!open) {
+          setEditItem(null);
+          resetNewItemForm();
+        }
+      }}>
+        <DialogContent className="max-w-2xl bg-white rounded-2xl">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="text-lg font-semibold text-gray-900">
               {editItem ? 'Edit Item' : 'Add New Item'}
             </DialogTitle>
           </DialogHeader>
           
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Item Name *</Label>
-              <Input
-                id="name"
-                value={editItem ? editItem.name : newItem.name}
-                onChange={(e) => 
-                  editItem 
-                    ? setEditItem({...editItem, name: e.target.value})
-                    : setNewItem({...newItem, name: e.target.value})
-                }
-                placeholder="Enter item name"
-                required
-              />
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            editItem ? handleEditItem() : handleAddItem();
+          }} className="space-y-5">
+            <div className="grid grid-cols-2 gap-5">
+              <div className="space-y-2">
+                <Label htmlFor="name" className="text-sm font-medium text-gray-700">Item Name *</Label>
+                <Input
+                  id="name"
+                  value={editItem ? editItem.name : newItem.name}
+                  onChange={(e) => 
+                    editItem 
+                      ? setEditItem({...editItem, name: e.target.value})
+                      : setNewItem({...newItem, name: e.target.value})
+                  }
+                  placeholder="Enter item name"
+                  required
+                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="sku" className="text-sm font-medium text-gray-700">SKU *</Label>
+                <Input
+                  id="sku"
+                  value={editItem ? editItem.sku : newItem.sku}
+                  onChange={(e) => 
+                    editItem 
+                      ? setEditItem({...editItem, sku: e.target.value.toUpperCase()})
+                      : setNewItem({...newItem, sku: e.target.value.toUpperCase()})
+                  }
+                  placeholder="Enter SKU (e.g., INV-001)"
+                  required
+                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-5">
+              <div className="space-y-2">
+                <Label htmlFor="department" className="text-sm font-medium text-gray-700">Department *</Label>
+                <Select
+                  value={editItem ? editItem.department : newItem.department}
+                  onValueChange={(value) => 
+                    editItem 
+                      ? setEditItem({...editItem, department: value, category: ''})
+                      : setNewItem({...newItem, department: value, category: ''})
+                  }
+                >
+                  <SelectTrigger className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                    <SelectValue placeholder="Select department" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-lg">
+                    {departments.map(dept => {
+                      const Icon = dept.icon;
+                      return (
+                        <SelectItem key={dept.value} value={dept.value} className="rounded-md">
+                          <div className="flex items-center gap-2">
+                            <Icon className="h-4 w-4 text-blue-500" />
+                            {dept.label}
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="category" className="text-sm font-medium text-gray-700">Category *</Label>
+                <Select
+                  value={editItem ? editItem.category : newItem.category}
+                  onValueChange={(value) => 
+                    editItem 
+                      ? setEditItem({...editItem, category: value})
+                      : setNewItem({...newItem, category: value})
+                  }
+                  disabled={!editItem?.department && !newItem.department}
+                >
+                  <SelectTrigger className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-lg">
+                    {(editItem ? getCategoriesForDepartment(editItem.department) : 
+                      getCategoriesForDepartment(newItem.department || '')).map(cat => (
+                      <SelectItem key={cat} value={cat} className="rounded-md">{cat}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-5">
+              <div className="space-y-2">
+                <Label htmlFor="quantity" className="text-sm font-medium text-gray-700">Quantity *</Label>
+                <Input
+                  id="quantity"
+                  type="number"
+                  min="0"
+                  value={editItem ? editItem.quantity : newItem.quantity}
+                  onChange={(e) => 
+                    editItem 
+                      ? setEditItem({...editItem, quantity: parseInt(e.target.value) || 0})
+                      : setNewItem({...newItem, quantity: parseInt(e.target.value) || 0})
+                  }
+                  placeholder="Enter quantity"
+                  required
+                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="reorderLevel" className="text-sm font-medium text-gray-700">Reorder Level *</Label>
+                <Input
+                  id="reorderLevel"
+                  type="number"
+                  min="0"
+                  value={editItem ? editItem.reorderLevel : newItem.reorderLevel}
+                  onChange={(e) => 
+                    editItem 
+                      ? setEditItem({...editItem, reorderLevel: parseInt(e.target.value) || 0})
+                      : setNewItem({...newItem, reorderLevel: parseInt(e.target.value) || 0})
+                  }
+                  placeholder="Enter reorder level"
+                  required
+                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-5">
+              <div className="space-y-2">
+                <Label htmlFor="price" className="text-sm font-medium text-gray-700">Price *</Label>
+                <Input
+                  id="price"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={editItem ? editItem.price : newItem.price}
+                  onChange={(e) => 
+                    editItem 
+                      ? setEditItem({...editItem, price: parseFloat(e.target.value) || 0})
+                      : setNewItem({...newItem, price: parseFloat(e.target.value) || 0})
+                  }
+                  placeholder="Enter price"
+                  required
+                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="costPrice" className="text-sm font-medium text-gray-700">Cost Price *</Label>
+                <Input
+                  id="costPrice"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={editItem ? editItem.costPrice : newItem.costPrice}
+                  onChange={(e) => 
+                    editItem 
+                      ? setEditItem({...editItem, costPrice: parseFloat(e.target.value) || 0})
+                      : setNewItem({...newItem, costPrice: parseFloat(e.target.value) || 0})
+                  }
+                  placeholder="Enter cost price"
+                  required
+                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-5">
+              <div className="space-y-2">
+                <Label htmlFor="assignedManager" className="text-sm font-medium text-gray-700">Assigned Manager</Label>
+                <Select
+                  value={editItem ? editItem.assignedManager : newItem.assignedManager}
+                  onValueChange={(value) => 
+                    editItem 
+                      ? setEditItem({...editItem, assignedManager: value})
+                      : setNewItem({...newItem, assignedManager: value})
+                  }
+                >
+                  <SelectTrigger className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                    <SelectValue placeholder="Select manager" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-lg">
+                    {managers.map(manager => (
+                      <SelectItem key={manager} value={manager} className="rounded-md">{manager}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="supplier" className="text-sm font-medium text-gray-700">Supplier *</Label>
+                <Input
+                  id="supplier"
+                  value={editItem ? editItem.supplier : newItem.supplier}
+                  onChange={(e) => 
+                    editItem 
+                      ? setEditItem({...editItem, supplier: e.target.value})
+                      : setNewItem({...newItem, supplier: e.target.value})
+                  }
+                  placeholder="Enter supplier name"
+                  required
+                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="sku">SKU *</Label>
-              <Input
-                id="sku"
-                value={editItem ? editItem.sku : newItem.sku}
-                onChange={(e) => 
-                  editItem 
-                    ? setEditItem({...editItem, sku: e.target.value.toUpperCase()})
-                    : setNewItem({...newItem, sku: e.target.value.toUpperCase()})
-                }
-                placeholder="Enter SKU (e.g., INV-001)"
-                required
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="department">Department *</Label>
-              <Select
-                value={editItem ? editItem.department : newItem.department}
-                onValueChange={(value) => 
-                  editItem 
-                    ? setEditItem({...editItem, department: value, category: ''})
-                    : setNewItem({...newItem, department: value, category: ''})
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select department" />
-                </SelectTrigger>
-                <SelectContent>
-                  {departments.map(dept => {
-                    const Icon = dept.icon;
-                    return (
-                      <SelectItem key={dept.value} value={dept.value}>
-                        <div className="flex items-center gap-2">
-                          <Icon className="h-4 w-4" />
-                          {dept.label}
-                        </div>
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="category">Category *</Label>
-              <Select
-                value={editItem ? editItem.category : newItem.category}
-                onValueChange={(value) => 
-                  editItem 
-                    ? setEditItem({...editItem, category: value})
-                    : setNewItem({...newItem, category: value})
-                }
-                disabled={!editItem?.department && !newItem.department}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(editItem ? getCategoriesForDepartment(editItem.department) : 
-                    getCategoriesForDepartment(newItem.department || '')).map(cat => (
-                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="assignedManager">Assigned Manager *</Label>
-              <Select
-                value={editItem ? editItem.assignedManager : newItem.assignedManager}
-                onValueChange={(value) => 
-                  editItem 
-                    ? setEditItem({...editItem, assignedManager: value})
-                    : setNewItem({...newItem, assignedManager: value})
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select manager" />
-                </SelectTrigger>
-                <SelectContent>
-                  {managers.map(manager => (
-                    <SelectItem key={manager} value={manager}>{manager}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="quantity">Quantity *</Label>
-              <Input
-                id="quantity"
-                type="number"
-                min="0"
-                value={editItem ? editItem.quantity : newItem.quantity}
-                onChange={(e) => 
-                  editItem 
-                    ? setEditItem({...editItem, quantity: parseInt(e.target.value) || 0})
-                    : setNewItem({...newItem, quantity: parseInt(e.target.value) || 0})
-                }
-                placeholder="Enter quantity"
-                required
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="reorderLevel">Reorder Level *</Label>
-              <Input
-                id="reorderLevel"
-                type="number"
-                min="0"
-                value={editItem ? editItem.reorderLevel : newItem.reorderLevel}
-                onChange={(e) => 
-                  editItem 
-                    ? setEditItem({...editItem, reorderLevel: parseInt(e.target.value) || 0})
-                    : setNewItem({...newItem, reorderLevel: parseInt(e.target.value) || 0})
-                }
-                placeholder="Enter reorder level"
-                required
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="price">Price *</Label>
-              <Input
-                id="price"
-                type="number"
-                step="0.01"
-                min="0"
-                value={editItem ? editItem.price : newItem.price}
-                onChange={(e) => 
-                  editItem 
-                    ? setEditItem({...editItem, price: parseFloat(e.target.value) || 0})
-                    : setNewItem({...newItem, price: parseFloat(e.target.value) || 0})
-                }
-                placeholder="Enter price"
-                required
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="costPrice">Cost Price *</Label>
-              <Input
-                id="costPrice"
-                type="number"
-                step="0.01"
-                min="0"
-                value={editItem ? editItem.costPrice : newItem.costPrice}
-                onChange={(e) => 
-                  editItem 
-                    ? setEditItem({...editItem, costPrice: parseFloat(e.target.value) || 0})
-                    : setNewItem({...newItem, costPrice: parseFloat(e.target.value) || 0})
-                }
-                placeholder="Enter cost price"
-                required
-              />
-            </div>
-            
-            <div className="space-y-2 col-span-2">
-              <Label htmlFor="supplier">Supplier *</Label>
-              <Input
-                id="supplier"
-                value={editItem ? editItem.supplier : newItem.supplier}
-                onChange={(e) => 
-                  editItem 
-                    ? setEditItem({...editItem, supplier: e.target.value})
-                    : setNewItem({...newItem, supplier: e.target.value})
-                }
-                placeholder="Enter supplier name"
-                required
-              />
-            </div>
-            
-            <div className="space-y-2 col-span-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description" className="text-sm font-medium text-gray-700">Description</Label>
               <Textarea
                 id="description"
                 value={editItem ? editItem.description : newItem.description}
@@ -1746,22 +2036,31 @@ const InventoryPage = () => {
                 }
                 placeholder="Enter item description"
                 rows={3}
+                className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               />
             </div>
-          </div>
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              setItemDialogOpen(false);
-              setEditItem(null);
-              resetNewItemForm();
-            }}>
-              Cancel
-            </Button>
-            <Button onClick={editItem ? handleEditItem : handleAddItem}>
-              {editItem ? 'Update Item' : 'Add Item'}
-            </Button>
-          </DialogFooter>
+            
+            <DialogFooter>
+              <Button 
+                type="button"
+                variant="outline" 
+                onClick={() => {
+                  setItemDialogOpen(false);
+                  setEditItem(null);
+                  resetNewItemForm();
+                }}
+                className="border-gray-300 text-gray-700 hover:bg-gray-50 rounded-xl"
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit"
+                className="bg-blue-600 hover:bg-blue-700 rounded-xl"
+              >
+                {editItem ? 'Update Item' : 'Add Item'}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -1773,246 +2072,287 @@ const InventoryPage = () => {
           resetNewMachineForm();
         }
       }}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl bg-white rounded-2xl">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="text-lg font-semibold text-gray-900">
               {editMachine ? 'Edit Machine' : 'Add New Machine'}
             </DialogTitle>
           </DialogHeader>
           
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="machineName">Machine Name *</Label>
-              <Input
-                id="machineName"
-                value={newMachine.name}
-                onChange={(e) => setNewMachine({...newMachine, name: e.target.value})}
-                placeholder="Enter machine name"
-                required
-              />
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            handleAddMachine();
+          }} className="space-y-5">
+            <div className="grid grid-cols-2 gap-5">
+              <div className="space-y-2">
+                <Label htmlFor="machineName" className="text-sm font-medium text-gray-700">Machine Name *</Label>
+                <Input
+                  id="machineName"
+                  value={newMachine.name}
+                  onChange={(e) => setNewMachine({...newMachine, name: e.target.value})}
+                  placeholder="Enter machine name"
+                  required
+                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="machineCost" className="text-sm font-medium text-gray-700">Cost/Price *</Label>
+                <Input
+                  id="machineCost"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={newMachine.cost}
+                  onChange={(e) => setNewMachine({...newMachine, cost: parseFloat(e.target.value) || 0})}
+                  placeholder="Enter cost"
+                  required
+                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-5">
+              <div className="space-y-2">
+                <Label htmlFor="purchaseDate" className="text-sm font-medium text-gray-700">Purchase Date *</Label>
+                <Input
+                  id="purchaseDate"
+                  type="date"
+                  value={newMachine.purchaseDate}
+                  onChange={(e) => setNewMachine({...newMachine, purchaseDate: e.target.value})}
+                  required
+                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="machineQuantity" className="text-sm font-medium text-gray-700">Quantity *</Label>
+                <Input
+                  id="machineQuantity"
+                  type="number"
+                  min="1"
+                  value={newMachine.quantity}
+                  onChange={(e) => setNewMachine({...newMachine, quantity: parseInt(e.target.value) || 1})}
+                  placeholder="Enter quantity"
+                  required
+                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-5">
+              <div className="space-y-2">
+                <Label htmlFor="machineStatus" className="text-sm font-medium text-gray-700">Status *</Label>
+                <Select
+                  value={newMachine.status}
+                  onValueChange={(value: 'operational' | 'maintenance' | 'out-of-service') => 
+                    setNewMachine({...newMachine, status: value})
+                  }
+                >
+                  <SelectTrigger className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-lg">
+                    {machineStatusOptions.map(status => (
+                      <SelectItem key={status.value} value={status.value} className="rounded-md">
+                        {status.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="machineLocation" className="text-sm font-medium text-gray-700">Location</Label>
+                <Input
+                  id="machineLocation"
+                  value={newMachine.location}
+                  onChange={(e) => setNewMachine({...newMachine, location: e.target.value})}
+                  placeholder="Enter location"
+                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-5">
+              <div className="space-y-2">
+                <Label htmlFor="manufacturer" className="text-sm font-medium text-gray-700">Manufacturer</Label>
+                <Input
+                  id="manufacturer"
+                  value={newMachine.manufacturer}
+                  onChange={(e) => setNewMachine({...newMachine, manufacturer: e.target.value})}
+                  placeholder="Enter manufacturer"
+                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="model" className="text-sm font-medium text-gray-700">Model</Label>
+                <Input
+                  id="model"
+                  value={newMachine.model} 
+                  onChange={(e) => setNewMachine({...newMachine, model: e.target.value})} 
+                  placeholder="Enter model"
+                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-5">
+              <div className="space-y-2">
+                <Label htmlFor="serialNumber" className="text-sm font-medium text-gray-700">Serial Number</Label>
+                <Input
+                  id="serialNumber"
+                  value={newMachine.serialNumber}
+                  onChange={(e) => setNewMachine({...newMachine, serialNumber: e.target.value})}
+                  placeholder="Enter serial number"
+                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="department" className="text-sm font-medium text-gray-700">Department</Label>
+                <Input
+                  id="department"
+                  value={newMachine.department}
+                  onChange={(e) => setNewMachine({...newMachine, department: e.target.value})}
+                  placeholder="Enter department"
+                  className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="model">Model</Label>
-              <Input
-                id="model"
-                value={newMachine.model} 
-                onChange={(e) => setNewMachine({...newMachine, model: e.target.value})} 
-                placeholder="Enter model"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="manufacturer">Manufacturer</Label>
-              <Input
-                id="manufacturer"
-                value={newMachine.manufacturer}
-                onChange={(e) => setNewMachine({...newMachine, manufacturer: e.target.value})}
-                placeholder="Enter manufacturer"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="serialNumber">Serial Number</Label>
-              <Input
-                id="serialNumber"
-                value={newMachine.serialNumber}
-                onChange={(e) => setNewMachine({...newMachine, serialNumber: e.target.value})}
-                placeholder="Enter serial number"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="machineCost">Cost/Price *</Label>
-              <Input
-                id="machineCost"
-                type="number"
-                step="0.01"
-                min="0"
-                value={newMachine.cost}
-                onChange={(e) => setNewMachine({...newMachine, cost: parseFloat(e.target.value) || 0})}
-                placeholder="Enter cost"
-                required
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="purchaseDate">Purchase Date *</Label>
-              <Input
-                id="purchaseDate"
-                type="date"
-                value={newMachine.purchaseDate}
-                onChange={(e) => setNewMachine({...newMachine, purchaseDate: e.target.value})}
-                required
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="machineQuantity">Quantity *</Label>
-              <Input
-                id="machineQuantity"
-                type="number"
-                min="1"
-                value={newMachine.quantity}
-                onChange={(e) => setNewMachine({...newMachine, quantity: parseInt(e.target.value) || 1})}
-                placeholder="Enter quantity"
-                required
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="machineStatus">Status *</Label>
-              <Select
-                value={newMachine.status}
-                onValueChange={(value: 'operational' | 'maintenance' | 'out-of-service') => 
-                  setNewMachine({...newMachine, status: value})
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                  {machineStatusOptions.map(status => (
-                    <SelectItem key={status.value} value={status.value}>
-                      {status.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="department">Department</Label>
-              <Input
-                id="department"
-                value={newMachine.department}
-                onChange={(e) => setNewMachine({...newMachine, department: e.target.value})}
-                placeholder="Enter department"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="machineLocation">Location</Label>
-              <Input
-                id="machineLocation"
-                value={newMachine.location}
-                onChange={(e) => setNewMachine({...newMachine, location: e.target.value})}
-                placeholder="Enter location"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="assignedTo">Assigned To</Label>
-              <Input
-                id="assignedTo"
-                value={newMachine.assignedTo}
-                onChange={(e) => setNewMachine({...newMachine, assignedTo: e.target.value})}
-                placeholder="Enter assigned person"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="lastMaintenanceDate">Last Maintenance Date</Label>
-              <Input
-                id="lastMaintenanceDate"
-                type="date"
-                value={newMachine.lastMaintenanceDate}
-                onChange={(e) => setNewMachine({...newMachine, lastMaintenanceDate: e.target.value})}
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="nextMaintenanceDate">Next Maintenance Date</Label>
-              <Input
-                id="nextMaintenanceDate"
-                type="date"
-                value={newMachine.nextMaintenanceDate}
-                onChange={(e) => setNewMachine({...newMachine, nextMaintenanceDate: e.target.value})}
-              />
-            </div>
-            
-            <div className="space-y-2 col-span-2">
-              <Label htmlFor="machineDescription">Description</Label>
+              <Label htmlFor="machineDescription" className="text-sm font-medium text-gray-700">Description</Label>
               <Textarea
                 id="machineDescription"
                 value={newMachine.description}
                 onChange={(e) => setNewMachine({...newMachine, description: e.target.value})}
                 placeholder="Enter machine description"
                 rows={3}
+                className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               />
             </div>
-          </div>
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              setMachineDialogOpen(false);
-              setEditMachine(null);
-              resetNewMachineForm();
-            }}>
-              Cancel
-            </Button>
-            <Button onClick={handleAddMachine}>
-              {editMachine ? 'Update Machine' : 'Add Machine'}
-            </Button>
-          </DialogFooter>
+            
+            <DialogFooter>
+              <Button 
+                type="button"
+                variant="outline" 
+                onClick={() => {
+                  setMachineDialogOpen(false);
+                  setEditMachine(null);
+                  resetNewMachineForm();
+                }}
+                className="border-gray-300 text-gray-700 hover:bg-gray-50 rounded-xl"
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit"
+                className="bg-blue-600 hover:bg-blue-700 rounded-xl"
+              >
+                {editMachine ? 'Update Machine' : 'Add Machine'}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
       {/* VIEW MACHINE DETAILS DIALOG */}
       <Dialog open={!!viewMachine} onOpenChange={() => setViewMachine(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl bg-white rounded-2xl">
           <DialogHeader>
-            <DialogTitle>Machine Details</DialogTitle>
+            <DialogTitle className="text-lg font-semibold text-gray-900">Machine Details</DialogTitle>
           </DialogHeader>
           {viewMachine && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div><strong>Machine Name:</strong> {viewMachine.name}</div>
-                <div><strong>Status:</strong> 
-                  <Badge className={`ml-2 ${machineStatusOptions.find(s => s.value === viewMachine.status)?.color} border-0`}>
-                    {machineStatusOptions.find(s => s.value === viewMachine.status)?.label}
-                  </Badge>
+            <div className="space-y-6">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center">
+                  <span className="text-blue-600 font-bold text-xl">{viewMachine.name.charAt(0)}</span>
                 </div>
-                <div><strong>Manufacturer:</strong> {viewMachine.manufacturer || 'N/A'}</div>
-                <div><strong>Model:</strong> {viewMachine.model || 'N/A'}</div>
-                <div><strong>Serial Number:</strong> {viewMachine.serialNumber || 'N/A'}</div>
-                <div><strong>Cost:</strong> {formatCurrency(viewMachine.cost)}</div>
-                <div><strong>Total Value:</strong> {formatCurrency(viewMachine.cost * viewMachine.quantity)}</div>
-                <div><strong>Quantity:</strong> {viewMachine.quantity}</div>
-                <div><strong>Purchase Date:</strong> {formatDate(viewMachine.purchaseDate)}</div>
-                <div><strong>Age:</strong> {calculateMachineAge(viewMachine.purchaseDate)} years</div>
-                {viewMachine.location && <div><strong>Location:</strong> {viewMachine.location}</div>}
-                {viewMachine.department && <div><strong>Department:</strong> {viewMachine.department}</div>}
-                {viewMachine.assignedTo && <div><strong>Assigned To:</strong> {viewMachine.assignedTo}</div>}
-                {viewMachine.lastMaintenanceDate && (
-                  <div><strong>Last Maintenance:</strong> {formatDate(viewMachine.lastMaintenanceDate)}</div>
-                )}
-                {viewMachine.nextMaintenanceDate && (
-                  <div><strong>Next Maintenance:</strong> {formatDate(viewMachine.nextMaintenanceDate)}</div>
-                )}
-                {viewMachine.description && (
-                  <div className="col-span-2">
-                    <strong>Description:</strong>
-                    <p className="mt-1 text-sm text-muted-foreground">{viewMachine.description}</p>
-                  </div>
-                )}
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">{viewMachine.name}</h3>
+                  <p className="text-gray-500">{viewMachine.manufacturer} • {viewMachine.model}</p>
+                </div>
               </div>
+              
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-xs text-gray-500 uppercase font-medium">Cost</Label>
+                    <p className="text-lg font-bold text-blue-600">{formatCurrency(viewMachine.cost)}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500 uppercase font-medium">Total Value</Label>
+                    <p className="text-lg font-bold text-green-600">{formatCurrency(viewMachine.cost * viewMachine.quantity)}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500 uppercase font-medium">Quantity</Label>
+                    <p className="text-gray-900">{viewMachine.quantity}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500 uppercase font-medium">Purchase Date</Label>
+                    <div className="flex items-center gap-1">
+                      <Calendar className="h-4 w-4 text-gray-400" />
+                      <span className="text-gray-900">{formatDate(viewMachine.purchaseDate)}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-xs text-gray-500 uppercase font-medium">Status</Label>
+                    <Badge className={`${machineStatusOptions.find(s => s.value === viewMachine.status)?.color} border-0`}>
+                      {machineStatusOptions.find(s => s.value === viewMachine.status)?.label}
+                    </Badge>
+                  </div>
+                  {viewMachine.location && (
+                    <div>
+                      <Label className="text-xs text-gray-500 uppercase font-medium">Location</Label>
+                      <div className="flex items-center gap-1">
+                        <MapPin className="h-4 w-4 text-gray-400" />
+                        <span className="text-gray-900">{viewMachine.location}</span>
+                      </div>
+                    </div>
+                  )}
+                  {viewMachine.department && (
+                    <div>
+                      <Label className="text-xs text-gray-500 uppercase font-medium">Department</Label>
+                      <p className="text-gray-900">{viewMachine.department}</p>
+                    </div>
+                  )}
+                  {viewMachine.assignedTo && (
+                    <div>
+                      <Label className="text-xs text-gray-500 uppercase font-medium">Assigned To</Label>
+                      <p className="text-gray-900">{viewMachine.assignedTo}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              {viewMachine.description && (
+                <div>
+                  <Label className="text-xs text-gray-500 uppercase font-medium">Description</Label>
+                  <div className="mt-2 p-3 bg-gray-50 rounded-lg">
+                    <p className="text-gray-900">{viewMachine.description}</p>
+                  </div>
+                </div>
+              )}
               
               {/* Maintenance History */}
               {viewMachine.maintenanceHistory && viewMachine.maintenanceHistory.length > 0 && (
                 <div>
-                  <h4 className="font-semibold mb-2">Maintenance History</h4>
+                  <h4 className="font-semibold mb-2 text-gray-900">Maintenance History</h4>
                   <div className="space-y-2 max-h-40 overflow-y-auto">
                     {viewMachine.maintenanceHistory.map((record, index) => (
-                      <div key={index} className="flex flex-col p-2 bg-muted/50 rounded text-sm">
+                      <div key={index} className="flex flex-col p-3 bg-gray-50 rounded-lg border border-gray-100 text-sm">
                         <div className="flex justify-between">
-                          <span className="font-medium">{record.type}</span>
-                          <span>{formatDate(record.date)}</span>
+                          <span className="font-medium text-blue-700">{record.type}</span>
+                          <span className="text-blue-600">{formatDate(record.date)}</span>
                         </div>
-                        <div className="text-muted-foreground">{record.description}</div>
-                        <div className="flex justify-between text-xs mt-1">
-                          <span>Performed by: {record.performedBy}</span>
-                          <span>Cost: {formatCurrency(record.cost)}</span>
+                        <div className="text-gray-600 mt-1">{record.description}</div>
+                        <div className="flex justify-between text-xs mt-2">
+                          <span className="text-gray-500">Performed by: {record.performedBy}</span>
+                          <span className="text-blue-600">Cost: {formatCurrency(record.cost)}</span>
                         </div>
                       </div>
                     ))}
@@ -2037,24 +2377,27 @@ const InventoryPage = () => {
           });
         }
       }}>
-        <DialogContent>
+        <DialogContent className="bg-white rounded-2xl">
           <DialogHeader>
-            <DialogTitle>Add Maintenance Record</DialogTitle>
+            <DialogTitle className="text-lg font-semibold text-gray-900">Add Maintenance Record</DialogTitle>
           </DialogHeader>
           
-          <div className="space-y-4">
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            handleAddMaintenance();
+          }} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="maintenanceMachine">Select Machine</Label>
+              <Label htmlFor="maintenanceMachine" className="text-sm font-medium text-gray-700">Select Machine</Label>
               <Select
                 value={selectedMachineForMaintenance || ""}
                 onValueChange={setSelectedMachineForMaintenance}
               >
-                <SelectTrigger>
+                <SelectTrigger className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
                   <SelectValue placeholder="Select machine" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="rounded-lg">
                   {machines.map(machine => (
-                    <SelectItem key={machine.id} value={machine.id}>
+                    <SelectItem key={machine.id} value={machine.id} className="rounded-md">
                       {machine.name} {machine.model ? `(${machine.model})` : ''}
                     </SelectItem>
                   ))}
@@ -2065,131 +2408,157 @@ const InventoryPage = () => {
             {selectedMachineForMaintenance && (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="maintenanceType">Maintenance Type *</Label>
+                  <Label htmlFor="maintenanceType" className="text-sm font-medium text-gray-700">Maintenance Type *</Label>
                   <Select
                     value={maintenanceRecord.type}
                     onValueChange={(value) => setMaintenanceRecord({...maintenanceRecord, type: value})}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="rounded-lg">
                       {maintenanceTypes.map(type => (
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                        <SelectItem key={type} value={type} className="rounded-md">{type}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="maintenanceDescription">Description *</Label>
+                  <Label htmlFor="maintenanceDescription" className="text-sm font-medium text-gray-700">Description *</Label>
                   <Textarea
                     id="maintenanceDescription"
                     value={maintenanceRecord.description}
                     onChange={(e) => setMaintenanceRecord({...maintenanceRecord, description: e.target.value})}
                     placeholder="Describe the maintenance performed"
                     rows={3}
+                    className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
                 
-                <div className="space-y-2">
-                  <Label htmlFor="maintenanceCost">Cost</Label>
-                  <Input
-                    id="maintenanceCost"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={maintenanceRecord.cost}
-                    onChange={(e) => setMaintenanceRecord({...maintenanceRecord, cost: parseFloat(e.target.value) || 0})}
-                    placeholder="Enter maintenance cost"
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="performedBy">Performed By *</Label>
-                  <Input
-                    id="performedBy"
-                    value={maintenanceRecord.performedBy}
-                    onChange={(e) => setMaintenanceRecord({...maintenanceRecord, performedBy: e.target.value})}
-                    placeholder="Enter technician name"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="maintenanceCost" className="text-sm font-medium text-gray-700">Cost</Label>
+                    <Input
+                      id="maintenanceCost"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={maintenanceRecord.cost}
+                      onChange={(e) => setMaintenanceRecord({...maintenanceRecord, cost: parseFloat(e.target.value) || 0})}
+                      placeholder="Enter maintenance cost"
+                      className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="performedBy" className="text-sm font-medium text-gray-700">Performed By *</Label>
+                    <Input
+                      id="performedBy"
+                      value={maintenanceRecord.performedBy}
+                      onChange={(e) => setMaintenanceRecord({...maintenanceRecord, performedBy: e.target.value})}
+                      placeholder="Enter technician name"
+                      className="rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
                 </div>
               </>
             )}
-          </div>
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setMaintenanceDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleAddMaintenance}
-              disabled={!selectedMachineForMaintenance || maintenanceLoading}
-            >
-              {maintenanceLoading ? "Adding..." : "Add Maintenance"}
-            </Button>
-          </DialogFooter>
+            
+            <DialogFooter>
+              <Button 
+                type="button"
+                variant="outline" 
+                onClick={() => setMaintenanceDialogOpen(false)}
+                className="border-gray-300 text-gray-700 hover:bg-gray-50 rounded-xl"
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit"
+                disabled={!selectedMachineForMaintenance || maintenanceLoading}
+                className="bg-blue-600 hover:bg-blue-700 rounded-xl"
+              >
+                {maintenanceLoading ? "Adding..." : "Add Maintenance"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
       {/* IMPORT DIALOG */}
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-md bg-white rounded-2xl">
           <DialogHeader>
-            <DialogTitle>Import Data</DialogTitle>
+            <DialogTitle className="text-lg font-semibold text-gray-900">Import Data from CSV</DialogTitle>
           </DialogHeader>
-          
-          <Tabs defaultValue="inventory">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="inventory">Inventory</TabsTrigger>
-              <TabsTrigger value="machines">Machines</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="inventory" className="space-y-4">
-              <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center">
-                <Upload className="h-12 w-12 mx-auto text-muted-foreground" />
-                <p className="mt-4">Drop your CSV file here or click to browse</p>
-                <p className="text-sm text-muted-foreground">Supports .csv files with item data</p>
-                <Input
-                  type="file"
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="csv-file" className="text-sm font-medium text-gray-700">Upload CSV File</Label>
+              <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-400 transition-colors bg-gray-50">
+                <Input 
+                  id="csv-file"
+                  type="file" 
                   accept=".csv"
-                  onChange={handleImport}
-                  className="mt-4 mx-auto max-w-xs"
+                  className="hidden"
                 />
+                <Label htmlFor="csv-file" className="cursor-pointer">
+                  <UploadCloud className="h-10 w-10 mx-auto mb-3 text-gray-400" />
+                  <p className="text-sm font-medium text-gray-700">Drag & drop or click to upload</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Supports .csv files
+                  </p>
+                </Label>
               </div>
-              <div className="text-sm text-muted-foreground">
-                <p className="font-semibold">CSV Format:</p>
-                <p>SKU,Name,Department,Category,Site,AssignedManager,Quantity,Price,CostPrice,Supplier,ReorderLevel</p>
-                <p className="mt-2 text-xs">Note: SKU must be unique</p>
-              </div>
-            </TabsContent>
+            </div>
             
-            <TabsContent value="machines" className="space-y-4">
-              <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center">
-                <Upload className="h-12 w-12 mx-auto text-muted-foreground" />
-                <p className="mt-4">Drop your CSV file here or click to browse</p>
-                <p className="text-sm text-muted-foreground">Supports .csv files with machine data</p>
-                <Input
-                  type="file"
-                  accept=".csv"
-                  onChange={handleImportMachines}
-                  className="mt-4 mx-auto max-w-xs"
-                />
+            <div className="p-4 border border-gray-200 rounded-xl bg-gray-50">
+              <h4 className="font-medium text-gray-900 mb-2">CSV Format (Inventory)</h4>
+              <div className="text-sm space-y-2 text-gray-600">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-3 w-3 text-green-500" />
+                  <span>Required fields: SKU, Name, Department, Category</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  <div><span className="font-medium">SKU</span> <span className="text-red-500">*</span></div>
+                  <div><span className="font-medium">Name</span> <span className="text-red-500">*</span></div>
+                  <div><span className="font-medium">Department</span> <span className="text-red-500">*</span></div>
+                  <div><span className="font-medium">Category</span> <span className="text-red-500">*</span></div>
+                </div>
               </div>
-              <div className="text-sm text-muted-foreground">
-                <p className="font-semibold">CSV Format:</p>
-                <p>Name,Cost,PurchaseDate,Quantity,Description,Status,Location,Manufacturer,Model,SerialNumber,Department,AssignedTo</p>
-              </div>
-            </TabsContent>
-          </Tabs>
+            </div>
+            
+            <div className="flex gap-3">
+              <Button 
+                onClick={handleExport}
+                disabled={items.length === 0}
+                variant="outline"
+                className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50 rounded-xl"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Export Template
+              </Button>
+              
+              <Button 
+                disabled={true}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 rounded-xl"
+              >
+                Import Data
+              </Button>
+            </div>
+            
+            <p className="text-xs text-gray-500 text-center">
+              Note: Import functionality is under development
+            </p>
+          </div>
         </DialogContent>
       </Dialog>
 
       {/* CHANGE HISTORY DIALOG */}
       <Dialog open={!!changeHistoryDialogOpen} onOpenChange={() => setChangeHistoryDialogOpen(null)}>
-        <DialogContent>
+        <DialogContent className="bg-white rounded-2xl">
           <DialogHeader>
-            <DialogTitle>Change History</DialogTitle>
+            <DialogTitle className="text-lg font-semibold text-gray-900">Change History</DialogTitle>
           </DialogHeader>
           {changeHistoryDialogOpen && (
             <div className="space-y-2 max-h-60 overflow-y-auto">
@@ -2197,17 +2566,17 @@ const InventoryPage = () => {
                 const item = items.find(item => item.id === changeHistoryDialogOpen);
                 return item?.changeHistory && item.changeHistory.length > 0 ? (
                   item.changeHistory.map((change, index) => (
-                    <div key={index} className="flex items-center justify-between text-sm p-2 bg-muted/50 rounded">
-                      <span>{change.date}</span>
-                      <span>{change.change}</span>
-                      <span>by {change.user}</span>
+                    <div key={index} className="flex items-center justify-between text-sm p-3 bg-gray-50/50 rounded-lg border border-gray-100">
+                      <span className="text-blue-600">{change.date}</span>
+                      <span className="text-gray-700">{change.change}</span>
+                      <span className="text-gray-600">by {change.user}</span>
                       <span className={`font-medium ${change.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {change.quantity > 0 ? '+' : ''}{change.quantity}
                       </span>
                     </div>
                   ))
                 ) : (
-                  <p className="text-sm text-muted-foreground text-center py-4">
+                  <p className="text-sm text-gray-500 text-center py-4">
                     No change history available for this item
                   </p>
                 );

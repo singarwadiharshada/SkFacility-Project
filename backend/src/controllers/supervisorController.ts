@@ -41,7 +41,7 @@ export const createSupervisor = async (req: Request, res: Response) => {
       phone,
       password,
       department = "Operations",
-      site = "Mumbai Office",
+      // site = "Mumbai Office",
       reportsTo
     }: CreateSupervisorData = req.body;
 
@@ -60,7 +60,7 @@ export const createSupervisor = async (req: Request, res: Response) => {
       email,
       phone,
       department,
-      site,
+      // site,
       reportsTo,
       isActive: true,
       employees: 0,
@@ -86,7 +86,7 @@ export const createSupervisor = async (req: Request, res: Response) => {
         lastName,
         name,
         department,
-        site,
+        // site,
         reportsTo,
         isActive: true
       });

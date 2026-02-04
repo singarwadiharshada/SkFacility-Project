@@ -1,6 +1,7 @@
-
 import { Request, Response } from 'express';
 import Client from '../models/Client';
+import Lead from '../models/Lead';
+import Communication from '../models/Communication';
 
 // Get all clients
 export const getAllClients = async (req: Request, res: Response) => {
@@ -333,3 +334,86 @@ export const getClientStats = async (req: Request, res: Response) => {
   }
 };
 
+// Get CRM dashboard statistics
+// Get CRM dashboard statistics - SIMPLIFIED VERSION
+export const getCRMStats = async (req: Request, res: Response) => {
+  try {
+    console.log('=== Starting getCRMStats function ===');
+    
+    // Try simple counts first
+    let totalClients = 0;
+    let activeLeads = 0;
+    let totalCommunications = 0;
+    
+    try {
+      totalClients = await Client.countDocuments();
+      console.log('Total clients count successful:', totalClients);
+    } catch (clientError) {
+      console.error('Error counting clients:', clientError);
+    }
+    
+    try {
+      activeLeads = await Lead.countDocuments({
+        status: { $nin: ['closed-won', 'closed-lost'] }
+      });
+      console.log('Active leads count successful:', activeLeads);
+    } catch (leadError) {
+      console.error('Error counting leads:', leadError);
+    }
+    
+    try {
+      totalCommunications = await Communication.countDocuments();
+      console.log('Total communications count successful:', totalCommunications);
+    } catch (commError) {
+      console.error('Error counting communications:', commError);
+    }
+    
+    // Calculate total value - simplified
+    let totalValue = 0;
+    try {
+      const activeClients = await Client.find({ status: 'active' }).select('value');
+      console.log('Found active clients:', activeClients.length);
+      
+      for (const client of activeClients) {
+        // Simple value extraction
+        if (client.value) {
+          // Remove currency symbols and commas
+          const cleanValue = client.value.toString().replace(/[₹$,]/g, '');
+          const numValue = parseFloat(cleanValue);
+          if (!isNaN(numValue)) {
+            totalValue += numValue;
+          }
+        }
+      }
+    } catch (valueError) {
+      console.error('Error calculating total value:', valueError);
+    }
+    
+    const formattedTotalValue = `₹${totalValue.toLocaleString('en-IN')}`;
+    
+    console.log('=== getCRMStats completed successfully ===');
+    console.log('Final stats:', { totalClients, activeLeads, totalCommunications, totalValue: formattedTotalValue });
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        totalClients,
+        activeLeads,
+        totalCommunications,
+        totalValue: formattedTotalValue
+      }
+    });
+    
+  } catch (error: any) {
+    console.error('=== ERROR in getCRMStats ===');
+    console.error('Full error:', error);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    
+    res.status(500).json({ 
+      success: false,
+      message: 'Error fetching CRM statistics', 
+      error: error.message 
+    });
+  }
+};

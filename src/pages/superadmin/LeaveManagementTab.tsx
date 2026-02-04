@@ -1,4 +1,3 @@
-// src/components/hrms/tabs/LeaveManagementTab.tsx
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -71,6 +70,12 @@ interface ApiLeaveRequest {
   attachmentUrl?: string;
   requestType?: 'employee' | 'supervisor' | 'manager' | 'admin-leave';
   isManagerLeave?: boolean;
+  managerId?: string;
+  managerName?: string;
+  managerDepartment?: string;
+  managerContact?: string;
+  managerEmail?: string;
+  managerPosition?: string;
 }
 
 interface ApiAdminLeaveRequest {
@@ -99,6 +104,32 @@ interface ApiAdminLeaveRequest {
   isManagerLeave?: boolean;
 }
 
+interface ApiManagerLeaveRequest {
+  _id: string;
+  id?: string;
+  managerId: string;
+  managerName: string;
+  managerDepartment: string;
+  managerPosition: string;
+  managerEmail: string;
+  managerContact: string;
+  leaveType: string;
+  fromDate: string;
+  toDate: string;
+  totalDays: number;
+  reason: string;
+  appliedBy: string;
+  appliedDate: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  superadminRemarks?: string;
+  approvedBy?: string;
+  rejectedBy?: string;
+  approvedAt?: string;
+  rejectedAt?: string;
+  requestType: 'manager-leave';
+  isManagerLeave?: boolean;
+}
+
 const API_URL = `http://${window.location.hostname}:5001/api`;
 
 const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagementTabProps) => {
@@ -115,7 +146,7 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
   });
   
   // For manager/admin leaves
-  const [managerAdminLeaves, setManagerAdminLeaves] = useState<(ApiLeaveRequest | ApiAdminLeaveRequest)[]>([]);
+  const [managerAdminLeaves, setManagerAdminLeaves] = useState<(ApiManagerLeaveRequest | ApiAdminLeaveRequest)[]>([]);
   const [managerAdminStats, setManagerAdminStats] = useState({
     total: 0,
     pending: 0,
@@ -125,7 +156,7 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
   });
 
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedLeave, setSelectedLeave] = useState<(ApiLeaveRequest | ApiAdminLeaveRequest) | null>(null);
+  const [selectedLeave, setSelectedLeave] = useState<(ApiLeaveRequest | ApiManagerLeaveRequest | ApiAdminLeaveRequest) | null>(null);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [remarks, setRemarks] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
@@ -146,7 +177,7 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
     try {
       setIsLoading(true);
       
-      // Fetch ALL leaves first
+      // Fetch ALL leaves from regular endpoint
       const response = await fetch(`${API_URL}/leaves`);
       
       if (!response.ok) {
@@ -155,15 +186,11 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
       
       const allLeaves = await response.json();
       
-      // Filter client-side for supervisor/employee leaves
+      // Filter client-side for supervisor/employee leaves (NOT manager leaves)
       const filteredLeaves = allLeaves.filter((leave: any) => {
-        // Exclude admin leaves (they have requestType = 'admin-leave')
-        if (leave.requestType === 'admin-leave') return false;
-        
-        // Exclude manager leaves (they have isManagerLeave = true OR appliedBy includes 'Manager')
-        const isManager = leave.isManagerLeave === true || 
-                          (leave.appliedBy && leave.appliedBy.toLowerCase().includes('manager'));
-        if (isManager) return false;
+        // Exclude manager leaves
+        if (leave.isManagerLeave === true) return false;
+        if (leave.requestType === 'manager-leave') return false;
         
         // Apply status filter
         if (statusFilter !== 'all' && leave.status !== statusFilter) return false;
@@ -211,89 +238,126 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
     }
   };
 
-  // SIMPLIFIED: Fetch manager and admin leaves
-  const fetchManagerAdminLeaves = async (page = 1) => {
-    try {
-      setIsLoading(true);
-      
-      // Fetch manager leaves from regular leaves endpoint (filter for manager leaves)
-      const leavesResponse = await fetch(`${API_URL}/leaves`);
-      const allLeaves = leavesResponse.ok ? await leavesResponse.json() : [];
-      
-      // Filter for manager leaves
-      const managerLeaves = allLeaves.filter((leave: any) => 
-        leave.isManagerLeave === true || 
-        (leave.appliedBy && leave.appliedBy.toLowerCase().includes('manager'))
-      );
-      
-      // Fetch admin leaves
-      const adminResponse = await fetch(`${API_URL}/admin-leaves`);
-      let adminLeaves = [];
-      
-      if (adminResponse.ok) {
-        const adminData = await adminResponse.json();
-        adminLeaves = adminData.leaves || adminData || [];
-      }
-      
-      // Combine and filter
-      let combinedLeaves = [
-        ...managerLeaves.map((leave: any) => ({ ...leave, type: 'manager' })),
-        ...adminLeaves.map((leave: any) => ({ 
-          ...leave, 
-          type: 'admin',
+// In LeaveManagementTab.tsx - update the fetchManagerAdminLeaves function:
+const fetchManagerAdminLeaves = async (page = 1) => {
+  try {
+    setIsLoading(true);
+    
+    // Fetch manager leaves from the correct endpoint
+    let managerLeaves: ApiManagerLeaveRequest[] = [];
+    const managerResponse = await fetch(
+      `${API_URL}/manager-leaves/superadmin/all?status=${
+        statusFilter === 'all' ? '' : statusFilter
+      }&page=${page}&limit=${itemsPerPage}`
+    );
+    
+    if (managerResponse.ok) {
+      const managerData = await managerResponse.json();
+      console.log("📋 Manager leaves data:", managerData);
+      if (managerData.success) {
+        managerLeaves = managerData.leaves.map((leave: any) => ({
+          ...leave,
+          type: 'manager',
           // Ensure required fields exist
           appliedDate: leave.appliedDate || leave.createdAt,
-          contactNumber: leave.contactNumber || 'N/A'
-        }))
-      ];
-      
-      // Apply filters client-side
-      if (statusFilter !== 'all') {
-        combinedLeaves = combinedLeaves.filter((leave: any) => leave.status === statusFilter);
+          contactNumber: leave.managerContact || leave.contactNumber || 'N/A',
+          employeeId: leave.managerId || leave.employeeId,
+          employeeName: leave.managerName || leave.employeeName,
+          department: leave.managerDepartment || leave.department
+        }));
       }
-      
-      if (searchQuery) {
-        combinedLeaves = combinedLeaves.filter((leave: any) => 
-          leave.employeeName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          leave.managerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          leave.employeeId?.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-      }
-      
-      // Apply pagination client-side
-      const startIndex = (page - 1) * itemsPerPage;
-      const endIndex = startIndex + itemsPerPage;
-      const paginatedLeaves = combinedLeaves.slice(startIndex, endIndex);
-      
-      setManagerAdminLeaves(paginatedLeaves);
-      
-      // Calculate stats
-      const stats = {
-        total: combinedLeaves.length,
-        pending: combinedLeaves.filter((l: any) => l.status === 'pending').length,
-        approved: combinedLeaves.filter((l: any) => l.status === 'approved').length,
-        rejected: combinedLeaves.filter((l: any) => l.status === 'rejected').length,
-        cancelled: combinedLeaves.filter((l: any) => l.status === 'cancelled').length
-      };
-      
-      setManagerAdminStats(stats);
-      setTotalItems(combinedLeaves.length);
-      setTotalPages(Math.ceil(combinedLeaves.length / itemsPerPage));
-      setCurrentPage(page);
-      
-    } catch (error) {
-      console.error("Error fetching manager/admin leaves:", error);
-      toast.error("Failed to load manager/admin leaves");
-      setManagerAdminLeaves([]);
-    } finally {
-      setIsLoading(false);
+    } else {
+      console.warn("Could not fetch manager leaves, trying fallback...");
+      // Fallback: Try to get manager leaves from regular leaves endpoint
+      const leavesResponse = await fetch(`${API_URL}/leaves`);
+      const allLeaves = leavesResponse.ok ? await leavesResponse.json() : [];
+      managerLeaves = allLeaves
+        .filter((leave: any) => leave.isManagerLeave === true)
+        .map((leave: any) => ({
+          ...leave,
+          type: 'manager',
+          managerId: leave.managerId || leave.employeeId,
+          managerName: leave.managerName || leave.employeeName,
+          managerDepartment: leave.managerDepartment || leave.department,
+          managerContact: leave.managerContact || leave.contactNumber || 'N/A',
+          appliedDate: leave.appliedDate || leave.createdAt
+        }));
     }
-  };
+    
+    // Fetch admin leaves
+    let adminLeaves: ApiAdminLeaveRequest[] = [];
+    const adminResponse = await fetch(`${API_URL}/admin-leaves`);
+    
+    if (adminResponse.ok) {
+      const adminData = await adminResponse.json();
+      adminLeaves = (adminData.leaves || adminData || []).map((leave: any) => ({ 
+        ...leave, 
+        type: 'admin',
+        appliedDate: leave.appliedDate || leave.createdAt,
+        contactNumber: leave.contactNumber || 'N/A'
+      }));
+    }
+    
+    // Combine manager and admin leaves
+    let combinedLeaves = [
+      ...managerLeaves,
+      ...adminLeaves
+    ];
+    
+    // Apply search filter client-side
+    if (searchQuery) {
+      combinedLeaves = combinedLeaves.filter((leave: any) => 
+        leave.employeeName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        leave.managerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        leave.employeeId?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        leave.managerId?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    
+    // Apply department filter for manager leaves
+    if (departmentFilter !== 'all') {
+      combinedLeaves = combinedLeaves.filter((leave: any) => {
+        if (leave.type === 'manager') {
+          return leave.managerDepartment === departmentFilter || leave.department === departmentFilter;
+        }
+        return true; // Admin leaves don't have departments
+      });
+    }
+    
+    // Calculate stats
+    const stats = {
+      total: combinedLeaves.length,
+      pending: combinedLeaves.filter((l: any) => l.status === 'pending').length,
+      approved: combinedLeaves.filter((l: any) => l.status === 'approved').length,
+      rejected: combinedLeaves.filter((l: any) => l.status === 'rejected').length,
+      cancelled: combinedLeaves.filter((l: any) => l.status === 'cancelled').length
+    };
+    
+    setManagerAdminLeaves(combinedLeaves);
+    setManagerAdminStats(stats);
+    setTotalItems(combinedLeaves.length);
+    setTotalPages(Math.ceil(combinedLeaves.length / itemsPerPage));
+    setCurrentPage(page);
+    
+  } catch (error) {
+    console.error("Error fetching manager/admin leaves:", error);
+    toast.error("Failed to load manager/admin leaves");
+    setManagerAdminLeaves([]);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // Helper function to determine if a leave is from a manager
-  const isManagerLeave = (leave: ApiLeaveRequest | ApiAdminLeaveRequest): boolean => {
+  const isManagerLeave = (leave: ApiLeaveRequest | ApiManagerLeaveRequest | ApiAdminLeaveRequest): boolean => {
+    if ('requestType' in leave && leave.requestType === 'manager-leave') {
+      return true;
+    }
+    
     return (
       leave.isManagerLeave === true ||
+      ('managerName' in leave && leave.managerName) ||
+      ('managerId' in leave && leave.managerId) ||
       (leave.appliedBy && leave.appliedBy.toLowerCase().includes('manager')) ||
       (leave.employeeName && leave.employeeName.toLowerCase().includes('manager')) ||
       (leave.department && leave.department.toLowerCase().includes('management'))
@@ -301,7 +365,7 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
   };
 
   // Helper function to determine if a leave is from an admin
-  const isAdminLeave = (leave: ApiLeaveRequest | ApiAdminLeaveRequest): boolean => {
+  const isAdminLeave = (leave: ApiLeaveRequest | ApiManagerLeaveRequest | ApiAdminLeaveRequest): boolean => {
     return 'requestType' in leave && leave.requestType === 'admin-leave';
   };
 
@@ -323,7 +387,7 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
     }
   };
 
-  const handleLeaveAction = async (leave: ApiLeaveRequest | ApiAdminLeaveRequest, action: "approved" | "rejected") => {
+  const handleLeaveAction = async (leave: ApiLeaveRequest | ApiManagerLeaveRequest | ApiAdminLeaveRequest, action: "approved" | "rejected") => {
     try {
       setIsUpdating(true);
       setSelectedLeave(leave);
@@ -343,8 +407,16 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
           [action === 'approved' ? 'approvedBy' : 'rejectedBy']: 'Super Admin',
           superadminRemarks: remarks || `${action} by super admin`
         };
+      } else if (isManagerLeave(leave)) {
+        // This is a manager leave
+        endpoint = `${API_URL}/manager-leaves/superadmin/${leaveId}/status`;
+        requestBody = {
+          status: action,
+          [action === 'approved' ? 'approvedBy' : 'rejectedBy']: 'Super Admin',
+          superadminRemarks: remarks || `${action} by super admin`
+        };
       } else {
-        // This is a regular or manager leave
+        // This is a regular employee/supervisor leave
         endpoint = `${API_URL}/leaves/${leaveId}/status`;
         requestBody = { 
           status: action,
@@ -353,6 +425,8 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
         };
       }
 
+      console.log(`Updating leave at ${endpoint}`, requestBody);
+      
       response = await fetch(endpoint, {
         method: 'PUT',
         headers: {
@@ -426,6 +500,8 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
               // Add remarks based on leave type
               if (isAdminLeave(l)) {
                 (updatedLeave as ApiAdminLeaveRequest).superadminRemarks = remarks || `${action} by super admin`;
+              } else if (isManagerLeave(l)) {
+                (updatedLeave as ApiManagerLeaveRequest).superadminRemarks = remarks || `${action} by super admin`;
               } else {
                 (updatedLeave as ApiLeaveRequest).remarks = remarks || `${action} by super admin`;
               }
@@ -479,7 +555,7 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
     }
   };
 
-  const getRequestTypeBadge = (leave: ApiLeaveRequest | ApiAdminLeaveRequest) => {
+  const getRequestTypeBadge = (leave: ApiLeaveRequest | ApiManagerLeaveRequest | ApiAdminLeaveRequest) => {
     if (isAdminLeave(leave)) {
       return (
         <Badge variant="default" className="bg-purple-600">
@@ -492,7 +568,7 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
     if (isManagerLeave(leave)) {
       return (
         <Badge variant="default" className="bg-blue-600">
-          <User className="h-3 w-3 mr-1" />
+          <Shield className="h-3 w-3 mr-1" />
           Manager
         </Badge>
       );
@@ -500,7 +576,8 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
     
     // Check if it's a supervisor
     const isSupervisor = 
-      (leave.appliedBy && leave.appliedBy.toLowerCase().includes('supervisor'));
+      (leave.appliedBy && leave.appliedBy.toLowerCase().includes('supervisor')) ||
+      (leave.employeeName && leave.employeeName.toLowerCase().includes('supervisor'));
     
     if (isSupervisor) {
       return (
@@ -533,11 +610,13 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
     }
   };
 
-  const handleViewDetails = (leave: ApiLeaveRequest | ApiAdminLeaveRequest) => {
+  const handleViewDetails = (leave: ApiLeaveRequest | ApiManagerLeaveRequest | ApiAdminLeaveRequest) => {
     setSelectedLeave(leave);
     setRemarks(
       isAdminLeave(leave) 
         ? (leave as ApiAdminLeaveRequest).superadminRemarks || "" 
+        : isManagerLeave(leave)
+        ? (leave as ApiManagerLeaveRequest).superadminRemarks || ""
         : (leave as ApiLeaveRequest).remarks || ""
     );
     setViewDialogOpen(true);
@@ -589,6 +668,30 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
       return managerAdminStats;
     }
     return { total: 0, pending: 0, approved: 0, rejected: 0, cancelled: 0 };
+  };
+
+  // Get display name for leave
+  const getDisplayName = (leave: ApiLeaveRequest | ApiManagerLeaveRequest | ApiAdminLeaveRequest) => {
+    if (isManagerLeave(leave) && 'managerName' in leave) {
+      return leave.managerName;
+    }
+    return leave.employeeName || 'N/A';
+  };
+
+  // Get display ID for leave
+  const getDisplayId = (leave: ApiLeaveRequest | ApiManagerLeaveRequest | ApiAdminLeaveRequest) => {
+    if (isManagerLeave(leave) && 'managerId' in leave) {
+      return leave.managerId;
+    }
+    return leave.employeeId || 'N/A';
+  };
+
+  // Get display department for leave
+  const getDisplayDepartment = (leave: ApiLeaveRequest | ApiManagerLeaveRequest | ApiAdminLeaveRequest) => {
+    if (isManagerLeave(leave) && 'managerDepartment' in leave) {
+      return leave.managerDepartment;
+    }
+    return leave.department || 'N/A';
   };
 
   return (
@@ -758,6 +861,26 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
                 </div>
               )}
 
+              {activeTab === "manager-admin" && (
+                <div className="space-y-2">
+                  <Label htmlFor="department">Manager Department</Label>
+                  <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All Departments" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Departments</SelectItem>
+                      <SelectItem value="Consumables Management">Consumables Management</SelectItem>
+                      <SelectItem value="Housekeeping Management">Housekeeping Management</SelectItem>
+                      <SelectItem value="Security Management">Security Management</SelectItem>
+                      <SelectItem value="Administration">Administration</SelectItem>
+                      <SelectItem value="HR">HR</SelectItem>
+                      <SelectItem value="IT">IT</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label htmlFor="status">Status</Label>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -828,9 +951,9 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col">
-                            <span className="font-medium">{leave.employeeName || leave.managerName || 'N/A'}</span>
+                            <span className="font-medium">{getDisplayName(leave)}</span>
                             <span className="text-xs text-muted-foreground">
-                              ID: {leave.employeeId || leave.managerId || 'N/A'}
+                              ID: {getDisplayId(leave)}
                             </span>
                             <span className="text-xs text-muted-foreground">
                               Applied by: {leave.appliedBy || 'N/A'}
@@ -850,7 +973,7 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <Building className="h-4 w-4 text-muted-foreground" />
-                            {leave.department || leave.managerDepartment || 'N/A'}
+                            {getDisplayDepartment(leave)}
                           </div>
                         </TableCell>
                         <TableCell>
@@ -962,7 +1085,7 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-4 bg-muted/50 rounded-lg">
                 <div className="space-y-1">
                   <div className="flex items-center gap-3">
-                    <h3 className="font-medium text-lg">{selectedLeave.employeeName || selectedLeave.managerName || 'N/A'}</h3>
+                    <h3 className="font-medium text-lg">{getDisplayName(selectedLeave)}</h3>
                     {getRequestTypeBadge(selectedLeave)}
                     <Badge variant={getStatusColor(selectedLeave.status)} className="capitalize">
                       {selectedLeave.status}
@@ -979,8 +1102,8 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
                     )}
                   </div>
                   <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                    <span>ID: {selectedLeave.employeeId || selectedLeave.managerId || 'N/A'}</span>
-                    <span>Dept: {selectedLeave.department || selectedLeave.managerDepartment || 'N/A'}</span>
+                    <span>ID: {getDisplayId(selectedLeave)}</span>
+                    <span>Dept: {getDisplayDepartment(selectedLeave)}</span>
                     <span>Applied by: {selectedLeave.appliedBy || 'N/A'}</span>
                   </div>
                 </div>
@@ -1007,8 +1130,37 @@ const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagement
                         <span className="text-muted-foreground">Total Days:</span>
                         <span className="font-medium">{selectedLeave.totalDays} days</span>
                       </div>
+                      {'appliedDate' in selectedLeave && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Applied Date:</span>
+                          <span className="font-medium">{formatDate(selectedLeave.appliedDate)}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
+
+                  {/* Manager Specific Info */}
+                  {isManagerLeave(selectedLeave) && (
+                    <div className="bg-blue-50 p-4 rounded-lg">
+                      <h4 className="font-medium text-blue-800 mb-2">Manager Information</h4>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-blue-700">Manager ID:</span>
+                          <span className="font-medium">{getDisplayId(selectedLeave)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-blue-700">Position:</span>
+                          <span className="font-medium">{'managerPosition' in selectedLeave ? selectedLeave.managerPosition : 'Manager'}</span>
+                        </div>
+                        {'managerContact' in selectedLeave && (
+                          <div className="flex justify-between">
+                            <span className="text-blue-700">Contact:</span>
+                            <span className="font-medium">{selectedLeave.managerContact}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-4">

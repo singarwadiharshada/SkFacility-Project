@@ -138,52 +138,15 @@ const SupervisorEmployees = () => {
   const [debugMode, setDebugMode] = useState(false);
   const [allEmployeesDebug, setAllEmployeesDebug] = useState<any[]>([]);
 
-  // Helper function to normalize site names for comparison - FIXED ERROR #1
+  // Helper function to normalize site names for comparison
   const normalizeSiteName = (siteName: string | null | undefined): string => {
     if (!siteName) return '';
     return siteName
-      .toString() // Ensure it's a string
+      .toString()
       .toLowerCase()
       .trim()
-      .replace(/\s+/g, ' ') // Replace multiple spaces with single space
-      .replace(/[^a-z0-9\s]/g, ''); // Remove special characters
-  };
-
-  // Debug function to fetch all employees without filtering
-  const fetchAllEmployeesDebug = async () => {
-    try {
-      const response = await fetch('/api/employees');
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.employees) {
-          setAllEmployeesDebug(result.employees);
-          console.log("DEBUG - All employees in system:", result.employees);
-          console.log("Employee sites:", [...new Set(result.employees.map((e: any) => e.site || e.siteName))]);
-          
-          toast.info(`Found ${result.employees.length} total employees in system`);
-          
-          // Show a breakdown by site
-          const siteCounts: Record<string, number> = {};
-          result.employees.forEach((emp: any) => {
-            const site = emp.site || emp.siteName || 'Unknown';
-            siteCounts[site] = (siteCounts[site] || 0) + 1;
-          });
-          
-          console.log("Employees by site:", siteCounts);
-          
-          // Also check task service
-          try {
-            const allAssignees = await taskService.getAllAssignees();
-            console.log("DEBUG - All assignees from task service:", allAssignees);
-          } catch (error) {
-            console.log("Could not fetch from task service:", error);
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Debug fetch error:", error);
-      toast.error("Debug fetch failed");
-    }
+      .replace(/\s+/g, ' ')
+      .replace(/[^a-z0-9\s]/g, '');
   };
 
   // Fetch supervisor's assigned sites
@@ -239,13 +202,6 @@ const SupervisorEmployees = () => {
       }
       
       console.log("Supervisor's filtered sites:", supervisorSites);
-      console.log("Supervisor info:", {
-        name: currentUser.name,
-        email: currentUser.email,
-        role: currentUser.role,
-        site: currentUser.site
-      });
-      
       setSites(supervisorSites);
       setFilteredSites(supervisorSites);
       
@@ -261,252 +217,329 @@ const SupervisorEmployees = () => {
     }
   };
 
-  // Fetch employees under supervisor's sites
-  const fetchEmployeesBySite = async () => {
-    if (!currentUser) {
-      console.log("No current user");
-      return;
-    }
+  // Fetch employees under supervisor's sites - UPDATED WITH BETTER FILTERING
+// Updated fetchEmployeesBySite function in SupervisorEmployees.tsx
+
+// Fetch employees under supervisor's sites - IMPROVED VERSION
+const fetchEmployeesBySite = async () => {
+  if (!currentUser) {
+    console.log("No current user");
+    return;
+  }
+  
+  if (sites.length === 0) {
+    console.log("No sites available for supervisor");
+    await fetchSupervisorSites();
+    if (sites.length === 0) return;
+  }
+  
+  try {
+    setLoading(prev => ({ ...prev, employees: true }));
     
-    if (sites.length === 0) {
-      console.log("No sites available for supervisor");
-      toast.warning("No sites available. Fetching sites first...");
-      await fetchSupervisorSites();
-      if (sites.length === 0) return;
-    }
+    let fetchedEmployees: Employee[] = [];
     
-    try {
-      setLoading(prev => ({ ...prev, employees: true }));
-      
-      let fetchedEmployees: Employee[] = [];
-      
-      // Debug: Log supervisor info
-      console.log("=== DEBUG: Supervisor Employee Fetch ===");
-      console.log("Supervisor:", {
-        name: currentUser.name,
-        site: currentUser.site,
-        sitesCount: sites.length,
-        sitesList: sites.map(s => ({ id: s._id, name: s.name, normalizedName: s.normalizedName }))
-      });
-      
-      // Method 1: Try to fetch from employee API
+    // Method 1: Try multiple API endpoints
+    const apiEndpoints = [
+      '/api/employees',
+      'http://localhost:5001/api/employees',
+      `${window.location.origin}/api/employees`
+    ];
+    
+    let apiSuccess = false;
+    
+    for (const endpoint of apiEndpoints) {
       try {
-        const response = await fetch('/api/employees');
-        if (response.ok) {
-          const result = await response.json();
-          console.log("API response success:", result.success);
-          
-          if (result.success && result.employees) {
-            console.log(`Total employees in system: ${result.employees.length}`);
-            
-            // Get all unique site names from employees
-            const allEmployeeSites = [...new Set(result.employees.map((e: any) => e.site || e.siteName || 'Unknown'))];
-            console.log("All employee sites in system:", allEmployeeSites);
-            
-            // Filter employees by supervisor's sites
-            const supervisorSiteNames = sites.map(site => site.name);
-            const supervisorSiteNormalizedNames = sites.map(site => site.normalizedName);
-            const supervisorSiteIds = sites.map(site => site._id);
-            
-            console.log("Supervisor sites to match:", {
-              names: supervisorSiteNames,
-              normalized: supervisorSiteNormalizedNames,
-              ids: supervisorSiteIds
-            });
-            
-            // Enhanced filtering with better matching
-            fetchedEmployees = result.employees
-              .filter((emp: any) => {
-                const employeeSite = emp.site || emp.siteName || '';
-                const employeeSiteId = emp.siteId;
-                const employeeSiteNormalized = normalizeSiteName(employeeSite);
-                
-                // Check multiple matching strategies
-                const matchesExactName = supervisorSiteNames.includes(employeeSite);
-                const matchesNormalizedName = supervisorSiteNormalizedNames.includes(employeeSiteNormalized);
-                const matchesSiteId = supervisorSiteIds.includes(employeeSiteId);
-                const matchesCurrentUserSite = currentUser.site && 
-                  (employeeSite === currentUser.site || 
-                   employeeSiteId === currentUser.site ||
-                   employeeSiteNormalized === normalizeSiteName(currentUser.site));
-                
-                // Also check partial matches for common site patterns
-                const matchesPartial = supervisorSiteNormalizedNames.some(siteNorm => 
-                  employeeSiteNormalized.includes(siteNorm) || 
-                  siteNorm.includes(employeeSiteNormalized)
-                );
-                
-                const matches = matchesExactName || matchesNormalizedName || matchesSiteId || matchesCurrentUserSite || matchesPartial;
-                
-                if (debugMode && employeeSite) {
-                  console.log(`Employee ${emp.name}:`, {
-                    site: employeeSite,
-                    normalized: employeeSiteNormalized,
-                    matchesExactName,
-                    matchesNormalizedName,
-                    matchesSiteId,
-                    matchesCurrentUserSite,
-                    matchesPartial,
-                    matches
-                  });
-                }
-                
-                return matches;
-              })
-              .map((emp: any): Employee => ({
-                _id: emp._id || emp.id?.toString() || Date.now().toString(),
-                employeeId: emp.employeeId || `EMP${emp._id || emp.id || Date.now()}`,
-                name: emp.name,
-                email: emp.email || '',
-                phone: emp.phone || '',
-                aadharNumber: emp.aadharNumber || '',
-                department: emp.department || 'General',
-                position: emp.position || emp.role || 'Staff',
-                joinDate: emp.dateOfJoining || emp.joinDate || new Date().toISOString().split('T')[0],
-                dateOfJoining: emp.dateOfJoining || emp.joinDate || new Date().toISOString().split('T')[0],
-                status: (emp.status || 'active') as "active" | "inactive" | "left",
-                salary: emp.salary || 0,
-                uanNumber: emp.uanNumber || emp.uan || '',
-                esicNumber: emp.esicNumber || '',
-                panNumber: emp.panNumber || '',
-                siteName: emp.site || emp.siteName || 'Unknown',
-                // Add other optional fields
-                photo: emp.photo,
-                dateOfBirth: emp.dateOfBirth,
-                bloodGroup: emp.bloodGroup,
-                gender: emp.gender,
-                maritalStatus: emp.maritalStatus,
-                permanentAddress: emp.permanentAddress,
-                permanentPincode: emp.permanentPincode,
-                localAddress: emp.localAddress,
-                localPincode: emp.localPincode,
-                bankName: emp.bankName,
-                accountNumber: emp.accountNumber,
-                ifscCode: emp.ifscCode,
-                branchName: emp.branchName,
-                fatherName: emp.fatherName,
-                motherName: emp.motherName,
-                spouseName: emp.spouseName,
-                numberOfChildren: emp.numberOfChildren,
-                emergencyContactName: emp.emergencyContactName,
-                emergencyContactPhone: emp.emergencyContactPhone,
-                emergencyContactRelation: emp.emergencyContactRelation,
-                nomineeName: emp.nomineeName,
-                nomineeRelation: emp.nomineeRelation,
-                pantSize: emp.pantSize,
-                shirtSize: emp.shirtSize,
-                capSize: emp.capSize,
-                idCardIssued: emp.idCardIssued || false,
-                westcoatIssued: emp.westcoatIssued || false,
-                apronIssued: emp.apronIssued || false,
-                employeeSignature: emp.employeeSignature,
-                authorizedSignature: emp.authorizedSignature,
-                createdAt: emp.createdAt,
-                updatedAt: emp.updatedAt
-              }));
-            
-            console.log(`Filtered employees: ${fetchedEmployees.length} out of ${result.employees.length}`);
-            
-            if (fetchedEmployees.length === 0 && result.employees.length > 0) {
-              console.warn("No employees matched the filter! Details:");
-              console.log("All employee sites:", allEmployeeSites);
-              console.log("Supervisor sites:", supervisorSiteNames);
-              
-              // Show which employees have which sites
-              result.employees.forEach((emp: any) => {
-                console.log(`- ${emp.name}: site="${emp.site || emp.siteName || 'None'}"`);
-              });
-              
-              toast.warning(`No employees found for your sites. Total employees in system: ${result.employees.length}`);
-            }
-          } else {
-            console.log("No employees data in API response");
+        console.log(`Trying to fetch from: ${endpoint}`);
+        const response = await fetch(endpoint, {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
           }
-        } else {
-          console.error("API response not OK:", response.status);
+        });
+        
+        if (response.ok) {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const result = await response.json();
+            console.log(`Success from ${endpoint}:`, result);
+            
+            if (result && (result.employees || result.data)) {
+              const employeesData = result.employees || result.data || [];
+              apiSuccess = true;
+              
+              // Filter employees by site
+              const supervisorSiteNames = sites.map(site => site.name);
+              const supervisorSiteNormalizedNames = sites.map(site => site.normalizedName);
+              
+              console.log(`Total employees from API: ${employeesData.length}`);
+              console.log("Supervisor site names:", supervisorSiteNames);
+              
+              fetchedEmployees = employeesData
+                .filter((emp: any) => {
+                  const employeeSite = emp.siteName || emp.site || emp.assignedSite || '';
+                  const employeeSiteNormalized = normalizeSiteName(employeeSite);
+                  
+                  // Check if employee is assigned to supervisor's site
+                  const matchesExactName = supervisorSiteNames.includes(employeeSite);
+                  const matchesNormalizedName = supervisorSiteNormalizedNames.includes(employeeSiteNormalized);
+                  const matchesPartial = supervisorSiteNormalizedNames.some(siteNorm => 
+                    employeeSiteNormalized.includes(siteNorm) || 
+                    siteNorm.includes(employeeSiteNormalized)
+                  );
+                  
+                  const matches = matchesExactName || matchesNormalizedName || matchesPartial;
+                  
+                  if (debugMode) {
+                    console.log(`Employee ${emp.name}:`, {
+                      employeeSite,
+                      employeeSiteNormalized,
+                      matchesExactName,
+                      matchesNormalizedName,
+                      matchesPartial,
+                      matches
+                    });
+                  }
+                  
+                  return matches;
+                })
+                .map((emp: any): Employee => ({
+                  _id: emp._id || emp.id?.toString() || Date.now().toString(),
+                  employeeId: emp.employeeId || emp.empId || `EMP${emp._id || emp.id || Date.now()}`,
+                  name: emp.name || emp.fullName || 'Unknown',
+                  email: emp.email || '',
+                  phone: emp.phone || emp.mobile || '',
+                  aadharNumber: emp.aadharNumber || emp.aadhar || '',
+                  department: emp.department || 'General',
+                  position: emp.position || emp.role || 'Staff',
+                  joinDate: emp.dateOfJoining || emp.joinDate || emp.createdAt || new Date().toISOString().split('T')[0],
+                  dateOfJoining: emp.dateOfJoining || emp.joinDate || new Date().toISOString().split('T')[0],
+                  status: (emp.status || 'active') as "active" | "inactive" | "left",
+                  salary: emp.salary || emp.basicSalary || 0,
+                  uanNumber: emp.uanNumber || emp.uan || '',
+                  esicNumber: emp.esicNumber || emp.esic || '',
+                  panNumber: emp.panNumber || emp.pan || '',
+                  siteName: emp.siteName || emp.site || emp.assignedSite || 'Unknown',
+                  photo: emp.photo || emp.profilePicture,
+                  dateOfBirth: emp.dateOfBirth || emp.dob,
+                  bloodGroup: emp.bloodGroup,
+                  gender: emp.gender,
+                  maritalStatus: emp.maritalStatus,
+                  permanentAddress: emp.permanentAddress,
+                  permanentPincode: emp.permanentPincode,
+                  localAddress: emp.localAddress,
+                  localPincode: emp.localPincode,
+                  bankName: emp.bankName,
+                  accountNumber: emp.accountNumber || emp.bankAccountNumber,
+                  ifscCode: emp.ifscCode,
+                  branchName: emp.branchName,
+                  fatherName: emp.fatherName,
+                  motherName: emp.motherName,
+                  spouseName: emp.spouseName,
+                  numberOfChildren: emp.numberOfChildren,
+                  emergencyContactName: emp.emergencyContactName,
+                  emergencyContactPhone: emp.emergencyContactPhone,
+                  emergencyContactRelation: emp.emergencyContactRelation,
+                  nomineeName: emp.nomineeName,
+                  nomineeRelation: emp.nomineeRelation,
+                  pantSize: emp.pantSize,
+                  shirtSize: emp.shirtSize,
+                  capSize: emp.capSize,
+                  idCardIssued: emp.idCardIssued || false,
+                  westcoatIssued: emp.westcoatIssued || false,
+                  apronIssued: emp.apronIssued || false,
+                  createdAt: emp.createdAt,
+                  updatedAt: emp.updatedAt
+                }));
+              
+              console.log(`Filtered employees for supervisor: ${fetchedEmployees.length}`);
+              break; // Exit loop if successful
+            }
+          }
         }
       } catch (apiError) {
-        console.log("Could not fetch from employee API:", apiError);
-        
-        // Method 2: Try task service as fallback
-        try {
-          console.log("Trying task service as fallback...");
-          const allAssignees = await taskService.getAllAssignees();
-          console.log("Task service assignees count:", allAssignees?.length || 0);
-          
-          if (allAssignees && Array.isArray(allAssignees)) {
-            // Filter employees (not managers/supervisors)
-            const employeeAssignees = allAssignees.filter((assignee: any) => {
-              const role = assignee.role?.toLowerCase();
-              return role === 'employee' || role === 'staff' || !role;
-            });
-            
-            console.log("Employee assignees from task service:", employeeAssignees.length);
-            
-            // Filter by supervisor's sites
-            const supervisorSiteNames = sites.map(site => site.name);
-            const supervisorSiteNormalizedNames = sites.map(site => site.normalizedName);
-            
-            fetchedEmployees = employeeAssignees
-              .filter((emp: any) => {
-                const employeeSite = emp.site || emp.siteName || '';
-                const employeeSiteNormalized = normalizeSiteName(employeeSite);
-                
-                const matchesExactName = supervisorSiteNames.includes(employeeSite);
-                const matchesNormalizedName = supervisorSiteNormalizedNames.includes(employeeSiteNormalized);
-                const matchesPartial = supervisorSiteNormalizedNames.some(siteNorm => 
-                  employeeSiteNormalized.includes(siteNorm) || 
-                  siteNorm.includes(employeeSiteNormalized)
-                );
-                
-                return matchesExactName || matchesNormalizedName || matchesPartial;
-              })
-              .map((emp: any): Employee => ({
-                _id: emp._id || emp.id.toString(),
-                employeeId: emp.employeeId || `EMP${emp._id || emp.id}`,
-                name: emp.name,
-                email: emp.email || '',
-                phone: emp.phone || '',
-                aadharNumber: emp.aadharNumber || '',
-                department: emp.department || 'General',
-                position: emp.position || emp.role || 'Staff',
-                joinDate: emp.dateOfJoining || emp.joinDate || new Date().toISOString().split('T')[0],
-                dateOfJoining: emp.dateOfJoining || emp.joinDate || new Date().toISOString().split('T')[0],
-                status: (emp.status || 'active') as "active" | "inactive" | "left",
-                salary: emp.salary || 0,
-                uanNumber: emp.uanNumber || emp.uan || '',
-                esicNumber: emp.esicNumber || '',
-                panNumber: emp.panNumber || '',
-                siteName: emp.site || emp.siteName || 'Unknown',
-                // Add minimal other fields
-                photo: emp.photo,
-                gender: emp.gender
-              }));
-            
-            console.log("Task service filtered employees:", fetchedEmployees.length);
-          }
-        } catch (taskServiceError) {
-          console.error("Error from task service:", taskServiceError);
-        }
+        console.log(`Failed to fetch from ${endpoint}:`, apiError);
+        continue; // Try next endpoint
       }
-      
-      setEmployees(fetchedEmployees);
-      
-      // REMOVED MOCK DATA - Only show real data
-      if (fetchedEmployees.length === 0) {
-        console.log("No employees found for supervisor's sites");
-        toast.info("No employees found for your assigned sites.");
-      } else {
-        toast.success(`Loaded ${fetchedEmployees.length} employees`);
-      }
-      
-    } catch (error: any) {
-      console.error('Error fetching employees:', error);
-      toast.error(`Failed to load employees: ${error.message}`);
-    } finally {
-      setLoading(prev => ({ ...prev, employees: false }));
     }
-  };
+    
+    // Method 2: If API fails, try task service
+    if (!apiSuccess) {
+      console.log("Trying task service as fallback...");
+      try {
+        const allAssignees = await taskService.getAllAssignees();
+        
+        if (allAssignees && Array.isArray(allAssignees)) {
+          // Filter for employees only (not supervisors/managers)
+          const employeeAssignees = allAssignees.filter((assignee: any) => {
+            const role = assignee.role?.toLowerCase();
+            return role === 'employee' || role === 'staff' || (!role && assignee._id !== currentUser._id);
+          });
+          
+          console.log(`Task service assignees (employees): ${employeeAssignees.length}`);
+          
+          // Filter by site
+          const supervisorSiteNames = sites.map(site => site.name);
+          const supervisorSiteNormalizedNames = sites.map(site => site.normalizedName);
+          
+          fetchedEmployees = employeeAssignees
+            .filter((emp: any) => {
+              const employeeSite = emp.siteName || emp.site || '';
+              const employeeSiteNormalized = normalizeSiteName(employeeSite);
+              
+              const matchesExactName = supervisorSiteNames.includes(employeeSite);
+              const matchesNormalizedName = supervisorSiteNormalizedNames.includes(employeeSiteNormalized);
+              const matchesPartial = supervisorSiteNormalizedNames.some(siteNorm => 
+                employeeSiteNormalized.includes(siteNorm) || 
+                siteNorm.includes(employeeSiteNormalized)
+              );
+              
+              return matchesExactName || matchesNormalizedName || matchesPartial;
+            })
+            .map((emp: any): Employee => ({
+              _id: emp._id || emp.id?.toString() || Date.now().toString(),
+              employeeId: emp.employeeId || emp.empId || `EMP${emp._id || emp.id || Date.now()}`,
+              name: emp.name || 'Unknown',
+              email: emp.email || '',
+              phone: emp.phone || '',
+              aadharNumber: emp.aadharNumber || '',
+              department: emp.department || 'General',
+              position: emp.position || emp.role || 'Staff',
+              joinDate: emp.dateOfJoining || new Date().toISOString().split('T')[0],
+              dateOfJoining: emp.dateOfJoining || new Date().toISOString().split('T')[0],
+              status: (emp.status || 'active') as "active" | "inactive" | "left",
+              salary: emp.salary || 0,
+              uanNumber: emp.uanNumber || '',
+              esicNumber: emp.esicNumber || '',
+              panNumber: emp.panNumber || '',
+              siteName: emp.siteName || emp.site || 'Unknown',
+              photo: emp.photo,
+              gender: emp.gender,
+              createdAt: emp.createdAt
+            }));
+        }
+      } catch (taskServiceError) {
+        console.error("Error from task service:", taskServiceError);
+      }
+    }
+    
+    // Method 3: If still no employees, check localStorage or use demo data
+    if (fetchedEmployees.length === 0) {
+      console.log("No employees found from APIs, checking localStorage...");
+      
+      try {
+        // Try to get from localStorage (for offline/demo)
+        const savedEmployees = localStorage.getItem('supervisor_employees');
+        if (savedEmployees) {
+          const parsedEmployees = JSON.parse(savedEmployees);
+          
+          // Filter by supervisor's sites
+          const supervisorSiteNames = sites.map(site => site.name);
+          
+          fetchedEmployees = parsedEmployees
+            .filter((emp: any) => {
+              const employeeSite = emp.siteName || emp.site || '';
+              return supervisorSiteNames.includes(employeeSite);
+            })
+            .slice(0, 5); // Limit to 5 for demo
+          
+          console.log(`Loaded ${fetchedEmployees.length} employees from localStorage`);
+        }
+      } catch (localStorageError) {
+        console.log("No localStorage data found");
+      }
+    }
+    
+    // Method 4: Create demo employees as last resort
+    if (fetchedEmployees.length === 0 && sites.length > 0) {
+      console.log("Creating demo employees...");
+      
+      const demoDepartments = [
+        "Housekeeping", "Security", "Parking", "Waste Management", 
+        "STP Tank Cleaning", "Administration"
+      ];
+      
+      fetchedEmployees = [
+        {
+          _id: "emp_demo_1",
+          employeeId: "SKEMP001",
+          name: "Rajesh Kumar",
+          email: "rajesh@example.com",
+          phone: "9876543210",
+          aadharNumber: "123456789012",
+          department: demoDepartments[Math.floor(Math.random() * demoDepartments.length)],
+          position: "Staff",
+          joinDate: new Date().toISOString().split('T')[0],
+          dateOfJoining: new Date().toISOString().split('T')[0],
+          status: "active",
+          salary: 15000,
+          uanNumber: "",
+          esicNumber: "",
+          panNumber: "",
+          siteName: sites[0].name,
+          gender: "Male"
+        },
+        {
+          _id: "emp_demo_2",
+          employeeId: "SKEMP002",
+          name: "Priya Sharma",
+          email: "priya@example.com",
+          phone: "9876543211",
+          aadharNumber: "234567890123",
+          department: demoDepartments[Math.floor(Math.random() * demoDepartments.length)],
+          position: "Supervisor",
+          joinDate: new Date().toISOString().split('T')[0],
+          dateOfJoining: new Date().toISOString().split('T')[0],
+          status: "active",
+          salary: 20000,
+          uanNumber: "",
+          esicNumber: "",
+          panNumber: "",
+          siteName: sites[0].name,
+          gender: "Female"
+        },
+        {
+          _id: "emp_demo_3",
+          employeeId: "SKEMP003",
+          name: "Amit Patel",
+          email: "amit@example.com",
+          phone: "9876543212",
+          aadharNumber: "345678901234",
+          department: demoDepartments[Math.floor(Math.random() * demoDepartments.length)],
+          position: "Staff",
+          joinDate: new Date().toISOString().split('T')[0],
+          dateOfJoining: new Date().toISOString().split('T')[0],
+          status: "active",
+          salary: 14000,
+          uanNumber: "",
+          esicNumber: "",
+          panNumber: "",
+          siteName: sites[0].name,
+          gender: "Male"
+        }
+      ];
+      
+      console.log("Created demo employees for site:", sites[0].name);
+      toast.info("Showing demo data. Please check your employee API endpoint.");
+    }
+    
+    setEmployees(fetchedEmployees);
+    
+    if (fetchedEmployees.length > 0) {
+      toast.success(`Loaded ${fetchedEmployees.length} employees`);
+    } else {
+      toast.warning("No employees found. Please check if employees are assigned to your sites.");
+    }
+    
+  } catch (error: any) {
+    console.error('Error fetching employees:', error);
+    toast.error(`Failed to load employees: ${error.message}`);
+    
+    // Set empty array to prevent crashes
+    setEmployees([]);
+  } finally {
+    setLoading(prev => ({ ...prev, employees: false }));
+  }
+};
 
   // Initialize data
   useEffect(() => {
@@ -523,41 +556,6 @@ const SupervisorEmployees = () => {
       fetchEmployeesBySite();
     }
   }, [sites, currentUser]);
-
-  // Load employees from localStorage as fallback (only if we have real data)
-  useEffect(() => {
-    const savedEmployees = localStorage.getItem('supervisor_employees');
-    if (savedEmployees) {
-      try {
-        const parsedEmployees = JSON.parse(savedEmployees);
-        // Only use localStorage if we have no real data
-        if (employees.length === 0 && parsedEmployees.length > 0) {
-          // Filter localStorage employees by supervisor's site
-          if (currentUser?.site && sites.length > 0) {
-            const filtered = parsedEmployees.filter((emp: Employee) => {
-              const employeeSiteNormalized = normalizeSiteName(emp.siteName || '');
-              return sites.some(site => 
-                normalizeSiteName(site.name) === employeeSiteNormalized
-              );
-            });
-            if (filtered.length > 0) {
-              setEmployees(filtered);
-              console.log("Loaded from localStorage:", filtered.length, "employees");
-            }
-          }
-        }
-      } catch (error) {
-        console.error("Error parsing localStorage employees:", error);
-      }
-    }
-  }, [currentUser, sites, employees.length]);
-
-  // Save real employees to localStorage
-  useEffect(() => {
-    if (employees.length > 0) {
-      localStorage.setItem('supervisor_employees', JSON.stringify(employees));
-    }
-  }, [employees]);
 
   const form = useForm<z.infer<typeof employeeSchema>>({
     resolver: zodResolver(employeeSchema),
@@ -586,14 +584,12 @@ const SupervisorEmployees = () => {
               siteName: values.site,
               department: values.department,
               position: values.role,
-              ...(e as any),
-              role: values.role
             } 
           : e
       ));
       toast.success("Employee updated successfully!");
     } else {
-      // Create new employee
+      // Create new employee - only for demo purposes
       const newEmployee: Employee = {
         _id: Date.now().toString(),
         employeeId: `SKEMP${String(employees.length + 1).padStart(4, '0')}`,
@@ -608,8 +604,7 @@ const SupervisorEmployees = () => {
         status: "active",
         salary: 0,
         siteName: values.site,
-        ...(values as any),
-        role: values.role
+        gender: "Male"
       };
       setEmployees([...employees, newEmployee]);
       toast.success("Employee added successfully!");
@@ -633,14 +628,6 @@ const SupervisorEmployees = () => {
             />
           </div>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={fetchAllEmployeesDebug}
-              className="text-xs flex items-center gap-1"
-            >
-              <Bug className="h-3 w-3" />
-              Debug
-            </Button>
             <Button 
               onClick={() => {
                 form.reset({
@@ -663,86 +650,37 @@ const SupervisorEmployees = () => {
           </div>
         </div>
 
-        {debugMode && allEmployeesDebug.length > 0 && (
-          <Card className="bg-yellow-50 border-yellow-200">
-            <CardContent className="pt-6">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="font-semibold text-yellow-800">Debug Info</h3>
-                <Button size="sm" variant="outline" onClick={() => setDebugMode(false)}>
-                  Hide
-                </Button>
-              </div>
-              <div className="text-sm space-y-2">
-                <p><strong>Total employees in system:</strong> {allEmployeesDebug.length}</p>
-                <p><strong>Your sites:</strong> {sites.map(s => s.name).join(', ')}</p>
-                <p><strong>Filtered employees:</strong> {employees.length}</p>
-                <div className="mt-2">
-                  <p className="font-semibold">All employee sites in system:</p>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {[...new Set(allEmployeesDebug.map((e: any) => e.site || e.siteName || 'Unknown'))].map((site, i) => (
-                      <Badge key={i} variant="outline" className="text-xs">
-                        {site || 'No site'}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {loading.employees ? (
           <div className="text-center py-12">
             <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
             <p className="text-muted-foreground mt-4">Loading employees...</p>
             <div className="mt-2 text-xs text-muted-foreground">
-              Checking sites: {sites.map(s => s.name).join(', ')}
+              Site filter: {sites.map(s => s.name).join(', ')}
             </div>
           </div>
         ) : employees.length === 0 ? (
           <div className="text-center py-12">
             <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <p className="text-muted-foreground">No employees found for your site(s)</p>
-            <div className="space-y-2 mt-4">
-              <Button
-                variant="outline"
-                onClick={fetchEmployeesBySite}
-                className="mr-2"
-              >
-                <Loader2 className="h-4 w-4 mr-2" />
-                Refresh
-              </Button>
-              <Button
-                variant="outline"
-                onClick={fetchAllEmployeesDebug}
-                className="text-xs"
-              >
-                <Bug className="h-3 w-3 mr-1" />
-                Debug: Check All Employees
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              onClick={fetchEmployeesBySite}
+              className="mt-4"
+            >
+              <Loader2 className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
             {sites.length > 0 && (
               <div className="mt-4 text-sm text-muted-foreground">
                 <p>Your assigned sites: <strong>{sites.map(s => s.name).join(', ')}</strong></p>
-                <p className="text-xs mt-1">Check if employees are assigned to these sites</p>
               </div>
             )}
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-muted-foreground">
-                Showing {employees.length} employees for site(s):{" "}
-                <span className="font-semibold">{sites.map(s => s.name).join(', ')}</span>
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setDebugMode(!debugMode)}
-                className="text-xs"
-              >
-                {debugMode ? 'Hide Debug' : 'Show Debug'}
-              </Button>
+            <div className="text-sm text-muted-foreground">
+              Showing {employees.length} employees for site(s):{" "}
+              <span className="font-semibold">{sites.map(s => s.name).join(', ')}</span>
             </div>
             <div className="rounded-md border">
               <Table>
@@ -965,32 +903,12 @@ const SupervisorEmployees = () => {
                     <Loader2 className={`h-3 w-3 mr-1 ${loading.employees ? 'animate-spin' : ''}`} />
                     Refresh
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setDebugMode(!debugMode)}
-                    className="text-xs"
-                  >
-                    <Bug className="h-3 w-3 mr-1" />
-                    {debugMode ? 'Hide Debug' : 'Debug'}
-                  </Button>
                 </div>
                 <div className="text-xs text-muted-foreground">
                   {stats.total} employees • {stats.active} active • {stats.sites} site(s)
                 </div>
               </div>
             </div>
-            {debugMode && (
-              <div className="mt-4 p-3 bg-gray-50 rounded-md border">
-                <div className="text-xs space-y-1">
-                  <p><strong>Debug Info:</strong></p>
-                  <p>User ID: {currentUser.id}</p>
-                  <p>Assigned Site: {currentUser.site || 'None'}</p>
-                  <p>Found Sites: {sites.length} ({sites.map(s => s.name).join(', ')})</p>
-                  <p>Employees loaded: {employees.length}</p>
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
 
@@ -1072,7 +990,7 @@ const SupervisorEmployees = () => {
                   setEmployees={setEmployees}
                   salaryStructures={salaryStructures}
                   setSalaryStructures={setSalaryStructures}
-                  sites={sites} // Pass sites to the onboarding component
+                  sites={sites}
                 />
               </TabsContent>
             </Tabs>
@@ -1222,7 +1140,7 @@ const SupervisorEmployees = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Employee</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this employee? This action cannot be undone and all their data will be permanently removed.
+              Are you sure you want to delete this employee? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -1,4 +1,3 @@
-// src/services/TaskService.ts
 
 // Types
 export interface Site {
@@ -7,13 +6,12 @@ export interface Site {
   clientName: string;
   location: string;
   status: string;
-  managerCount?: number;  // Add this
-  supervisorCount?: number; // Add this
+  managerCount?: number;
+  supervisorCount?: number;
 }
 
 // Extended Site interface for sites with required counts
 export interface ExtendedSite extends Site {
-  staffDeployment(staffDeployment: any): unknown;
   managerCount: number;
   supervisorCount: number;
 }
@@ -71,7 +69,7 @@ export interface CreateTaskRequest {
   assignedTo: string;
   assignedToName: string;
   priority: 'high' | 'medium' | 'low';
-  status: 'pending' | 'in-progress' | 'completed' | 'cancelled';
+  status?: 'pending' | 'in-progress' | 'completed' | 'cancelled';
   deadline: string;
   dueDateTime: string;
   siteId: string;
@@ -113,7 +111,7 @@ export interface TaskStats {
 const API_URL = `http://${window.location.hostname}:5001/api`;
 
 class TaskService {
-  // Sites - Updated method to ensure counts exist
+  // Sites
   async getAllSites(): Promise<ExtendedSite[]> {
     try {
       const response = await fetch(`${API_URL}/sites`);
@@ -136,7 +134,6 @@ class TaskService {
     }
   }
 
-  // Rest of your methods remain the same...
   async getSiteById(siteId: string): Promise<Site | null> {
     try {
       const response = await fetch(`${API_URL}/sites/${siteId}`);
@@ -147,7 +144,6 @@ class TaskService {
         throw new Error(`Failed to fetch site: ${response.status}`);
       }
       const site = await response.json();
-      // Ensure counts exist for single site fetch too
       return {
         ...site,
         managerCount: site.managerCount !== undefined ? site.managerCount : 0,
@@ -192,6 +188,9 @@ class TaskService {
 
   async createTask(taskData: CreateTaskRequest): Promise<Task> {
     try {
+      console.log('📝 Sending create task request to:', `${API_URL}/tasks`);
+      console.log('📦 Task data:', JSON.stringify(taskData, null, 2));
+      
       const response = await fetch(`${API_URL}/tasks`, {
         method: 'POST',
         headers: {
@@ -200,14 +199,27 @@ class TaskService {
         body: JSON.stringify(taskData),
       });
       
+      const responseText = await response.text();
+      console.log('📨 Response status:', response.status);
+      console.log('📨 Response body:', responseText);
+      
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        let errorData;
+        try {
+          errorData = JSON.parse(responseText);
+        } catch {
+          errorData = { message: responseText || `Failed to create task: ${response.status}` };
+        }
+        console.error('❌ Server error response:', errorData);
         throw new Error(errorData.message || `Failed to create task: ${response.status}`);
       }
       
-      return await response.json();
+      const result = JSON.parse(responseText);
+      console.log('✅ Task created successfully:', result);
+      return result.task || result;
+      
     } catch (error) {
-      console.error('Error creating task:', error);
+      console.error('❌ Error creating task:', error);
       throw error;
     }
   }
@@ -458,69 +470,69 @@ class TaskService {
     }
   }
   
-  // Add these methods to your TaskService class:
-
-async getTasksByAssignee(assigneeId: string): Promise<Task[]> {
-  try {
-    const response = await fetch(`${API_URL}/tasks/assignee/${assigneeId}`);
-    if (!response.ok) {
-      if (response.status === 404) {
-        // If endpoint doesn't exist, fall back to filtering from all tasks
-        console.log("Endpoint /tasks/assignee/:id not found, filtering from all tasks");
-        const allTasks = await this.getAllTasks();
-        return allTasks.filter(task => task.assignedTo === assigneeId);
+  // Task filtering methods
+  async getTasksByAssignee(assigneeId: string): Promise<Task[]> {
+    try {
+      const response = await fetch(`${API_URL}/tasks/assignee/${assigneeId}`);
+      if (!response.ok) {
+        if (response.status === 404) {
+          // If endpoint doesn't exist, fall back to filtering from all tasks
+          console.log("Endpoint /tasks/assignee/:id not found, filtering from all tasks");
+          const allTasks = await this.getAllTasks();
+          return allTasks.filter(task => task.assignedTo === assigneeId);
+        }
+        throw new Error(`Failed to fetch tasks by assignee: ${response.status}`);
       }
-      throw new Error(`Failed to fetch tasks by assignee: ${response.status}`);
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.error(`Error fetching tasks for assignee ${assigneeId}:`, error);
+      throw error;
     }
-    const data = await response.json();
-    return Array.isArray(data) ? data : [];
-  } catch (error) {
-    console.error(`Error fetching tasks for assignee ${assigneeId}:`, error);
-    throw error;
   }
-}
 
-async getTasksByCreator(creatorId: string): Promise<Task[]> {
-  try {
-    // Try dedicated endpoint first
-    const response = await fetch(`${API_URL}/tasks/creator/${creatorId}`);
-    if (!response.ok) {
-      if (response.status === 404) {
-        // Fallback to filtering from all tasks
-        const allTasks = await this.getAllTasks();
-        return allTasks.filter(task => 
-          task.createdBy === creatorId || task.createdBy === creatorId
-        );
+  async getTasksByCreator(creatorId: string): Promise<Task[]> {
+    try {
+      // Try dedicated endpoint first
+      const response = await fetch(`${API_URL}/tasks/creator/${creatorId}`);
+      if (!response.ok) {
+        if (response.status === 404) {
+          // Fallback to filtering from all tasks
+          const allTasks = await this.getAllTasks();
+          return allTasks.filter(task => 
+            task.createdBy === creatorId || task.createdBy === creatorId
+          );
+        }
+        throw new Error(`Failed to fetch tasks by creator: ${response.status}`);
       }
-      throw new Error(`Failed to fetch tasks by creator: ${response.status}`);
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.error(`Error fetching tasks for creator ${creatorId}:`, error);
+      throw error;
     }
-    const data = await response.json();
-    return Array.isArray(data) ? data : [];
-  } catch (error) {
-    console.error(`Error fetching tasks for creator ${creatorId}:`, error);
-    throw error;
   }
-}
 
-async getTasksBySite(siteName: string): Promise<Task[]> {
-  try {
-    // Try dedicated endpoint first
-    const response = await fetch(`${API_URL}/tasks/site/${encodeURIComponent(siteName)}`);
-    if (!response.ok) {
-      if (response.status === 404) {
-        // Fallback to filtering from all tasks
-        const allTasks = await this.getAllTasks();
-        return allTasks.filter(task => task.siteName === siteName);
+  async getTasksBySite(siteName: string): Promise<Task[]> {
+    try {
+      // Try dedicated endpoint first
+      const response = await fetch(`${API_URL}/tasks/site/${encodeURIComponent(siteName)}`);
+      if (!response.ok) {
+        if (response.status === 404) {
+          // Fallback to filtering from all tasks
+          const allTasks = await this.getAllTasks();
+          return allTasks.filter(task => task.siteName === siteName);
+        }
+        throw new Error(`Failed to fetch tasks by site: ${response.status}`);
       }
-      throw new Error(`Failed to fetch tasks by site: ${response.status}`);
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.error(`Error fetching tasks for site ${siteName}:`, error);
+      throw error;
     }
-    const data = await response.json();
-    return Array.isArray(data) ? data : [];
-  } catch (error) {
-    console.error(`Error fetching tasks for site ${siteName}:`, error);
-    throw error;
   }
-}
+
   // Utility Methods
   async downloadAttachment(attachment: Attachment): Promise<void> {
     try {
@@ -583,7 +595,6 @@ async getTasksBySite(siteName: string): Promise<Task[]> {
     return colors[status] || 'default';
   }
 }
-
 
 export const taskService = new TaskService();
 export default taskService;

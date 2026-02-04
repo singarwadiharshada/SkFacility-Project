@@ -47,7 +47,7 @@ export const getProfile = async (req: AuthenticatedRequest, res: Response) => {
         phone: user.phone || '',
         role: user.role,
         department: user.department || '',
-        site: user.site || '',
+        // site: user.site || '',
         joinDate: user.joinDate,
         isActive: user.isActive,
         avatar: user.avatar || '',

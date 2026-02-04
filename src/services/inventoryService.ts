@@ -1,4 +1,6 @@
 // src/services/inventoryService.ts
+import axios from 'axios';
+
 const API_URL = `http://${window.location.hostname}:5001/api`;
 
 // InventoryItem Interface - matches backend model
@@ -64,6 +66,51 @@ interface ApiResponse<T> {
   };
 }
 
+// Axios instance
+const api = axios.create({
+  baseURL: API_URL,
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
+  }
+});
+
+// Request interceptor for logging
+api.interceptors.request.use(
+  (config) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Inventory API Request] ${config.method?.toUpperCase()} ${config.url}`);
+      if (config.params) {
+        console.log('[Inventory API Request Params]', config.params);
+      }
+    }
+    return config;
+  },
+  (error) => {
+    console.error('[Inventory API Request Error]', error);
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor for error handling
+api.interceptors.response.use(
+  (response) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Inventory API Response] ${response.status} ${response.config.url}`);
+    }
+    return response;
+  },
+  (error) => {
+    console.error('[Inventory API Error]', {
+      url: error.config?.url,
+      method: error.config?.method,
+      status: error.response?.status,
+      message: error.message,
+    });
+    return Promise.reject(error);
+  }
+);
+
 // Helper function to convert backend item to frontend item
 const convertToFrontendItem = (item: InventoryItem): FrontendInventoryItem => {
   return {
@@ -72,73 +119,56 @@ const convertToFrontendItem = (item: InventoryItem): FrontendInventoryItem => {
   };
 };
 
-// Main Inventory Service Class
+// Main Inventory Service
 class InventoryService {
-  // Private helper for API calls
-  private async fetchAPI<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const url = `${API_URL}${endpoint}`;
-    
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
-      });
-
-      if (!response.ok) {
-        let errorMessage = `HTTP ${response.status}`;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorData.message || errorMessage;
-        } catch {
-          // If response is not JSON
-        }
-        throw new Error(errorMessage);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error(`API Error [${endpoint}]:`, error);
-      throw error;
-    }
-  }
-
   // ========== ITEM METHODS ==========
 
   // Get all items with optional filters
-  async getItems(params?: {
+  async getItems(filters?: {
     search?: string;
     department?: string;
     category?: string;
     site?: string;
     page?: number;
     limit?: number;
+    assignedManager?: string;
+    [key: string]: any;
   }): Promise<FrontendInventoryItem[]> {
     try {
-      const queryParams = new URLSearchParams();
+      // Build query params
+      const params: Record<string, any> = {};
       
-      if (params?.search) queryParams.append('search', params.search);
-      if (params?.department && params.department !== 'all') {
-        queryParams.append('department', params.department);
+      // Add all filters to query parameters
+      if (filters) {
+        Object.entries(filters).forEach(([key, value]) => {
+          if (value !== undefined && value !== null && value !== '' && value !== 'all') {
+            params[key] = value;
+          }
+        });
       }
-      if (params?.category && params.category !== 'all') {
-        queryParams.append('category', params.category);
-      }
-      if (params?.site && params.site !== 'all') {
-        queryParams.append('site', params.site);
-      }
-      if (params?.page) queryParams.append('page', params.page.toString());
-      if (params?.limit) queryParams.append('limit', params.limit.toString());
-
-      const queryString = queryParams.toString();
-      const endpoint = `/inventory${queryString ? `?${queryString}` : ''}`;
       
-      const response = await this.fetchAPI<ApiResponse<InventoryItem[]>>(endpoint);
+      console.log('Fetching inventory items with filters:', filters);
+      console.log('Request params:', params);
+      
+      // ✅ FIXED: Pass params in the config object
+      const response = await api.get<ApiResponse<InventoryItem[]>>('/inventory', { 
+        params 
+      });
       
       // Convert backend items to frontend items
-      const frontendItems = (response.data || []).map(item => convertToFrontendItem(item));
+      const backendItems = response.data.data || [];
+      const frontendItems = backendItems.map(item => convertToFrontendItem(item));
+      
+      console.log(`Fetched ${frontendItems.length} inventory items`);
+      
+      // Debug: Check if items belong to the filtered manager
+      if (filters?.assignedManager && frontendItems.length > 0) {
+        const wrongItems = frontendItems.filter(item => item.assignedManager !== filters.assignedManager);
+        if (wrongItems.length > 0) {
+          console.warn(`WARNING: Found ${wrongItems.length} items not assigned to ${filters.assignedManager}!`);
+        }
+      }
+      
       return frontendItems;
     } catch (error) {
       console.error('Failed to fetch items:', error);
@@ -149,10 +179,10 @@ class InventoryService {
   // Get single item by ID
   async getItem(id: string): Promise<FrontendInventoryItem | null> {
     try {
-      const response = await this.fetchAPI<ApiResponse<InventoryItem>>(`/inventory/${id}`);
+      const response = await api.get<ApiResponse<InventoryItem>>(`/inventory/${id}`);
       
-      if (response.data) {
-        return convertToFrontendItem(response.data);
+      if (response.data.data) {
+        return convertToFrontendItem(response.data.data);
       }
       return null;
     } catch (error) {
@@ -167,15 +197,12 @@ class InventoryService {
       // Convert to backend format (remove id if present)
       const { id, ...backendItem } = itemData as any;
       
-      const response = await this.fetchAPI<ApiResponse<InventoryItem>>('/inventory', {
-        method: 'POST',
-        body: JSON.stringify(backendItem),
-      });
+      const response = await api.post<ApiResponse<InventoryItem>>('/inventory', backendItem);
       
-      return convertToFrontendItem(response.data);
+      return convertToFrontendItem(response.data.data);
     } catch (error: any) {
       console.error('Failed to create item:', error);
-      throw new Error(error.message || 'Failed to create item');
+      throw new Error(error.response?.data?.message || error.message || 'Failed to create item');
     }
   }
 
@@ -185,25 +212,20 @@ class InventoryService {
       // Convert to backend format
       const { _id, ...updateData } = updates as any;
       
-      const response = await this.fetchAPI<ApiResponse<InventoryItem>>(`/inventory/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(updateData),
-      });
+      const response = await api.put<ApiResponse<InventoryItem>>(`/inventory/${id}`, updateData);
       
-      return convertToFrontendItem(response.data);
+      return convertToFrontendItem(response.data.data);
     } catch (error: any) {
       console.error(`Failed to update item ${id}:`, error);
-      throw new Error(error.message || 'Failed to update item');
+      throw new Error(error.response?.data?.message || error.message || 'Failed to update item');
     }
   }
 
   // Delete item
   async deleteItem(id: string): Promise<boolean> {
     try {
-      const response = await this.fetchAPI<ApiResponse<{ id: string }>>(`/inventory/${id}`, {
-        method: 'DELETE',
-      });
-      return response.success;
+      const response = await api.delete<ApiResponse<{ id: string }>>(`/inventory/${id}`);
+      return response.data.success;
     } catch (error) {
       console.error(`Failed to delete item ${id}:`, error);
       return false;
@@ -215,18 +237,10 @@ class InventoryService {
   // Get inventory statistics
   async getStats(): Promise<InventoryStats> {
     try {
-      const response = await this.fetchAPI<ApiResponse<InventoryStats>>('/inventory/stats');
+      const response = await api.get<ApiResponse<InventoryStats>>('/inventory/stats');
       
-      if (response.data) {
-        return {
-          totalItems: response.data.totalItems || 0,
-          lowStockItems: response.data.lowStockItems || 0,
-          totalValue: response.data.totalValue || 0,
-          itemsByDepartment: response.data.itemsByDepartment,
-          topCategories: response.data.topCategories,
-          recentItems: response.data.recentItems,
-          averageQuantity: response.data.averageQuantity
-        };
+      if (response.data.data) {
+        return response.data.data;
       }
       
       // Return default stats if no data
@@ -249,10 +263,11 @@ class InventoryService {
   // Get low stock items
   async getLowStockItems(): Promise<FrontendInventoryItem[]> {
     try {
-      const response = await this.fetchAPI<ApiResponse<InventoryItem[]>>('/inventory/low-stock');
+      const response = await api.get<ApiResponse<InventoryItem[]>>('/inventory/low-stock');
       
       // Convert backend items to frontend items
-      const frontendItems = (response.data || []).map(item => convertToFrontendItem(item));
+      const backendItems = response.data.data || [];
+      const frontendItems = backendItems.map(item => convertToFrontendItem(item));
       return frontendItems;
     } catch (error) {
       console.error('Failed to fetch low stock items:', error);
@@ -271,15 +286,12 @@ class InventoryService {
         return rest;
       });
       
-      const response = await this.fetchAPI<ApiResponse<{ imported: number; failed: number; errors?: string[] }>>('/inventory/import', {
-        method: 'POST',
-        body: JSON.stringify(backendItems),
-      });
+      const response = await api.post<ApiResponse<{ imported: number; failed: number; errors?: string[] }>>('/inventory/import', backendItems);
       
-      return response.data || { imported: 0, failed: 0 };
+      return response.data.data || { imported: 0, failed: 0 };
     } catch (error: any) {
       console.error('Failed to import items:', error);
-      throw new Error(error.message || 'Failed to import items');
+      throw new Error(error.response?.data?.message || error.message || 'Failed to import items');
     }
   }
 
@@ -326,10 +338,10 @@ class InventoryService {
 
   // Format currency
   formatCurrency(amount: number): string {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
+      currency: 'INR',
+      minimumFractionDigits: 0,
       maximumFractionDigits: 2
     }).format(amount);
   }
@@ -407,7 +419,7 @@ class InventoryService {
     if (!dateString) return 'N/A';
     
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
+    return date.toLocaleDateString('en-IN', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'

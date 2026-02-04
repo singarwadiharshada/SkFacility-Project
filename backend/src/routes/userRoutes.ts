@@ -1,284 +1,398 @@
-// routes/userRoutes.ts
+// src/routes/authRoutes.ts - COMPLETE FIXED VERSION WITH SUPER ADMIN RESTRICTION
 import express, { Request, Response } from 'express';
-import { User } from '../models/User';
-import { auth, authorize } from '../middleware/auth';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+import User, { IUser } from '../models/User';
+import { auth } from '../middleware/auth';
 
 const router = express.Router();
 
-// Get all users (accessible by both admin and superadmin)
-router.get('/', auth, async (req: Request, res: Response) => {
+// Signup route with Super Admin restriction
+router.post('/signup', async (req: Request, res: Response) => {
   try {
-    const users = await User.find().select('-password');
-    
-    const groupedByRole = users.reduce((acc: any, user: any) => {
-      if (!acc[user.role]) {
-        acc[user.role] = [];
-      }
-      acc[user.role].push(user);
-      return acc;
-    }, {});
+    const { name, email, password, role } = req.body;
 
-    res.json({
-      success: true,
-      allUsers: users.map(user => ({
-        ...user.toObject(),
-        id: user._id.toString().slice(-6),
-        status: user.isActive ? 'active' : 'inactive'
-      })),
-      groupedByRole,
-      total: users.length,
-      active: users.filter((u: any) => u.isActive).length,
-      inactive: users.filter((u: any) => !u.isActive).length
-    });
-  } catch (error: any) {
-    console.error('Error fetching users:', error);
-    res.status(500).json({ 
-      success: false,
-      message: 'Server error fetching users' 
-    });
-  }
-});
+    console.log('\n📝 ========== SIGNUP ATTEMPT ==========');
+    console.log(`📧 Email: ${email}`);
+    console.log(`👤 Name: ${name}`);
+    console.log(`🎭 Role: ${role}`);
+    console.log(`🔑 Password length: ${password?.length}`);
 
-// Create user (accessible by both admin and superadmin)
-router.post('/', auth, async (req: Request, res: Response) => {
-  try {
-    const userData = req.body;
-    
-    console.log('👑 [CREATE USER] Attempting to create user with role:', userData.role);
-    
-    // Check if user already exists
-    const existingUser = await User.findOne({ email: userData.email });
-    if (existingUser) {
+    // Validate required fields
+    if (!name || !email || !password || !role) {
+      console.log('❌ Missing required fields');
       return res.status(400).json({
         success: false,
-        message: 'User with this email already exists'
+        message: 'Please provide all required fields'
       });
     }
 
-    // Check superadmin limit BEFORE creating user
-    if (userData.role === 'superadmin') {
-      const existingSuperadmin = await User.findOne({ role: 'superadmin' });
-      
-      if (existingSuperadmin) {
-        console.log('👑 [CREATE USER] Superadmin already exists:', existingSuperadmin.email);
-        return res.status(400).json({
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      console.log('❌ Invalid email format:', email);
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid email address'
+      });
+    }
+
+    // Check if user already exists by email
+    const existingUserByEmail = await User.findOne({ email });
+    if (existingUserByEmail) {
+      console.log('❌ Email already in use:', email);
+      return res.status(409).json({
+        success: false,
+        message: 'Email address is already registered. Please use a different email or try logging in.'
+      });
+    }
+
+    // Check if username already exists
+    const username = email.split('@')[0];
+    const existingUserByUsername = await User.findOne({ username });
+    if (existingUserByUsername) {
+      console.log('❌ Username already taken:', username);
+      const alternativeUsername = `${username}${Date.now().toString().slice(-4)}`;
+      console.log('💡 Suggested alternative username:', alternativeUsername);
+    }
+
+    // =============================================
+    // FIX: Check if Super Admin already exists
+    // =============================================
+    const existingSuperAdmins = await User.find({ role: 'superadmin' });
+    
+    // For signup, restrict to ONLY ONE Super Admin
+    if (role === 'superadmin') {
+      if (existingSuperAdmins.length > 0) {
+        console.log('❌ Super Admin already exists. Count:', existingSuperAdmins.length);
+        console.log('📋 Existing Super Admins:', existingSuperAdmins.map(u => u.email));
+        
+        return res.status(403).json({
           success: false,
-          message: 'Only one superadmin is allowed in the system. A superadmin already exists.'
+          message: 'Super Admin account already exists. Only one Super Admin is allowed in the system.'
         });
       }
+      
+      console.log('✅ No existing Super Admin found, allowing creation');
+    } else {
+      // For non-superadmin roles, restrict signup entirely
+      console.log('❌ Invalid role for signup:', role);
+      return res.status(403).json({
+        success: false,
+        message: 'Only Super Admin can sign up directly. Other roles must be created by an administrator.'
+      });
     }
 
-    // Generate username if not provided
-    if (!userData.username && userData.email) {
-      userData.username = userData.email.split('@')[0];
+    // Validate password strength
+    if (password.length < 6) {
+      console.log('❌ Password too short');
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 6 characters long'
+      });
     }
 
-    const user = new User(userData);
-    await user.save();
+    console.log('✅ All validations passed, creating user...');
 
-    // Return user without password
-    const userResponse = user.toObject();
-    delete userResponse.password;
+    // Create new user
+    const newUser = new User({
+      name,
+      email,
+      password, // Plain password - will be hashed by pre-save hook
+      role: 'superadmin',
+      username: email.split('@')[0],
+      firstName: name.split(' ')[0],
+      lastName: name.split(' ').slice(1).join(' ') || '',
+      isActive: true,
+      // site: 'Mumbai Office',
+      joinDate: new Date()
+    });
 
-    console.log('✅ [CREATE USER] User created successfully');
+    await newUser.save();
+    console.log('✅ Super Admin created successfully:', newUser.email);
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { userId: newUser._id, role: newUser.role },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '7d' }
+    );
+
+    // User response without password
+    const userResponse = {
+      _id: newUser._id.toString(),
+      id: newUser._id.toString().slice(-6),
+      name: newUser.name,
+      email: newUser.email,
+      role: newUser.role,
+      isActive: newUser.isActive,
+      joinDate: newUser.joinDate.toISOString().split('T')[0],
+      // site: newUser.site || '',
+      department: newUser.department || ''
+    };
+
+    console.log(`\n✅ ========== SIGNUP COMPLETE ==========`);
+    console.log(`👤 User: ${userResponse.email}`);
+    console.log(`🎭 Role: ${userResponse.role}`);
+    console.log(`🔑 Token: ${token.substring(0, 20)}...`);
+    console.log(`========================================\n`);
+
     res.status(201).json({
       success: true,
-      user: {
-        ...userResponse,
-        id: user._id.toString().slice(-6),
-        status: user.isActive ? 'active' : 'inactive'
-      },
-      message: 'User created successfully'
+      message: 'Super Admin account created successfully!',
+      user: userResponse,
+      token
     });
   } catch (error: any) {
-    console.error('❌ [CREATE USER] Error:', error.message);
+    console.error('🔥 SIGNUP ERROR:', error);
     
-    // Handle superadmin limit error from Mongoose middleware
-    if (error.name === 'SuperadminLimitError') {
-      return res.status(400).json({ 
-        success: false,
-        message: error.message
-      });
-    }
-    
-    // Handle duplicate key errors
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern)[0];
-      return res.status(400).json({ 
-        success: false,
-        message: `${field} already exists`
-      });
-    }
-    
-    res.status(400).json({ 
-      success: false,
-      message: error.message || 'Error creating user' 
-    });
-  }
-});
-
-// Update user
-router.put('/:id', auth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.params.id;
-    const updateData = req.body;
-    
-    console.log('👑 [UPDATE USER] Updating user:', userId, 'with role:', updateData.role);
-    
-    // Check superadmin limit if trying to update role to superadmin
-    if (updateData.role === 'superadmin') {
-      const existingSuperadmin = await User.findOne({ 
-        role: 'superadmin',
-        _id: { $ne: userId } // Exclude the current user
-      });
+      let message = 'This email is already registered.';
+      if (field === 'username') {
+        message = 'This username is already taken.';
+      }
       
-      if (existingSuperadmin) {
-        console.log('👑 [UPDATE USER] Superadmin already exists:', existingSuperadmin.email);
-        return res.status(400).json({
-          success: false,
-          message: 'Only one superadmin is allowed. Another superadmin already exists.'
-        });
-      }
-    }
-
-    const user = await User.findById(userId);
-    
-    if (!user) {
-      return res.status(404).json({
+      return res.status(409).json({
         success: false,
-        message: 'User not found'
-      });
-    }
-
-    // Update user fields
-    Object.keys(updateData).forEach(key => {
-      if (key !== 'password') { // Don't update password directly
-        (user as any)[key] = updateData[key];
-      }
-    });
-
-    await user.save();
-
-    const userResponse = user.toObject();
-    delete userResponse.password;
-
-    console.log('✅ [UPDATE USER] User updated successfully');
-    res.json({
-      success: true,
-      user: {
-        ...userResponse,
-        id: user._id.toString().slice(-6),
-        status: user.isActive ? 'active' : 'inactive'
-      },
-      message: 'User updated successfully'
-    });
-  } catch (error: any) {
-    console.error('❌ [UPDATE USER] Error:', error.message);
-    
-    // Handle superadmin limit error from Mongoose middleware
-    if (error.name === 'SuperadminLimitError') {
-      return res.status(400).json({ 
-        success: false,
-        message: error.message
+        message
       });
     }
     
-    res.status(400).json({ 
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map((err: any) => err.message);
+      return res.status(400).json({
+        success: false,
+        message: messages.join(', ')
+      });
+    }
+    
+    res.status(500).json({
       success: false,
-      message: error.message || 'Error updating user' 
+      message: error.message || 'An error occurred during signup'
     });
   }
 });
 
-// Delete user
-router.delete('/:id', auth, authorize('admin', 'superadmin'), async (req: Request, res: Response) => {
+// Login route - FIXED VERSION
+router.post('/login', async (req: Request, res: Response) => {
   try {
-    const user = await User.findById(req.params.id);
+    const { email, password, role } = req.body;
+
+    console.log('\n🔐 ========== LOGIN ATTEMPT ==========');
+    console.log(`📧 Email: ${email}`);
+    console.log(`🎭 Requested role: ${role}`);
+    console.log(`🔑 Password length: ${password?.length}`);
+
+    // Validate required fields
+    if (!email || !password || !role) {
+      console.log('❌ Missing required fields');
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide all required fields'
+      });
+    }
+
+    const user = await User.findOne({ email: email }).select('+password');
     
     if (!user) {
-      return res.status(404).json({
+      console.log('❌ User not found in database');
+      return res.status(401).json({
         success: false,
-        message: 'User not found'
+        message: 'Invalid credentials'
       });
     }
 
-    // Prevent deleting self
-    if (req.user && user._id.toString() === req.user.id) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot delete your own account'
-      });
-    }
-    
-    // Prevent deleting superadmin
-    if (user.role === 'superadmin') {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot delete superadmin account'
-      });
-    }
-
-    await user.deleteOne();
-
-    res.json({
-      success: true,
-      message: 'User deleted successfully'
+    console.log('✅ User found in database:', { 
+      email: user.email, 
+      role: user.role, 
+      isActive: user.isActive,
+      hasPassword: !!user.password,
+      passwordPreview: user.password ? user.password.substring(0, 30) + '...' : 'NO PASSWORD',
+      passwordLength: user.password ? user.password.length : 0
     });
-  } catch (error: any) {
-    console.error('Error deleting user:', error);
-    res.status(500).json({ 
-      success: false,
-      message: 'Error deleting user' 
-    });
-  }
-});
 
-// Toggle user status
-router.patch('/:id/toggle-status', auth, authorize('admin', 'superadmin'), async (req: Request, res: Response) => {
-  try {
-    const user = await User.findById(req.params.id);
-    
-    if (!user) {
-      return res.status(404).json({
+    // Check if user is active
+    if (!user.isActive) {
+      console.log('❌ Account is inactive');
+      return res.status(403).json({
         success: false,
-        message: 'User not found'
-      });
-    }
-    
-    // Prevent deactivating superadmin
-    if (user.role === 'superadmin') {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot deactivate superadmin account'
+        message: 'Account is deactivated. Contact administrator.'
       });
     }
 
-    user.isActive = !user.isActive;
+    // Verify password
+    console.log('🔐 Starting password comparison...');
+    const isValidPassword = await user.comparePassword(password);
+    console.log(`🔐 Password comparison result: ${isValidPassword ? '✅ VALID' : '❌ INVALID'}`);
+    
+    if (!isValidPassword) {
+      console.log('❌ Password verification failed');
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials'
+      });
+    }
+
+    // Verify role
+    if (user.role !== role) {
+      console.log('❌ Role mismatch:', { 
+        expected: role, 
+        actual: user.role,
+        note: `User is registered as ${user.role}, not ${role}`
+      });
+      return res.status(403).json({
+        success: false,
+        message: `You are registered as ${user.role}, not ${role}. Please select the correct role.`
+      });
+    }
+
+    // Update last login
+    user.lastLogin = new Date();
     await user.save();
+    console.log('✅ Last login timestamp updated');
 
-    const userResponse = user.toObject();
-    delete userResponse.password;
-
-    res.json({
-      success: true,
-      user: {
-        ...userResponse,
-        id: user._id.toString().slice(-6),
-        status: user.isActive ? 'active' : 'inactive'
+    // Generate JWT token
+    const token = jwt.sign(
+      { 
+        userId: user._id, 
+        role: user.role,
+        email: user.email,
+        name: user.name
       },
-      message: `User ${user.isActive ? 'activated' : 'deactivated'} successfully`
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '7d' }
+    );
+
+    console.log(`🔑 Token generated: ${token.substring(0, 20)}...`);
+
+    // User response without password
+    const userResponse = {
+      _id: user._id.toString(),
+      id: user._id.toString().slice(-6),
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      isActive: user.isActive,
+      joinDate: user.joinDate.toISOString().split('T')[0],
+      lastLogin: user.lastLogin,
+      department: user.department || '',
+      // site: user.site || '',
+      phone: user.phone || '',
+      avatar: user.avatar || ''
+    };
+
+    console.log(`\n✅ ========== LOGIN SUCCESSFUL ==========`);
+    console.log(`👤 User: ${userResponse.email}`);
+    console.log(`🎭 Role: ${userResponse.role}`);
+    // console.log(`📍 Site: ${userResponse.site}`);
+    console.log(`📅 Joined: ${userResponse.joinDate}`);
+    console.log(`==========================================\n`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Login successful',
+      user: userResponse,
+      token
     });
   } catch (error: any) {
-    console.error('Error toggling user status:', error);
-    res.status(500).json({ 
+    console.error('🔥 LOGIN ERROR:', error);
+    console.error('🔥 Error stack:', error.stack);
+    
+    res.status(500).json({
       success: false,
-      message: 'Error toggling user status' 
+      message: 'An error occurred during login. Please try again.',
+      debug: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
 
-// Get user stats
-router.get('/stats', auth, async (req: Request, res: Response) => {
+// Get current user
+router.get('/me', async (req: Request, res: Response) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'No token provided'
+      });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any;
+    
+    const user = await User.findById(decoded.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const userResponse = {
+      _id: user._id.toString(),
+      id: user._id.toString().slice(-6),
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      isActive: user.isActive,
+      joinDate: user.joinDate.toISOString().split('T')[0],
+      lastLogin: user.lastLogin,
+      department: user.department || '',
+      // site: user.site || '',
+      phone: user.phone || '',
+      avatar: user.avatar || ''
+    };
+
+    res.status(200).json({
+      success: true,
+      user: userResponse
+    });
+  } catch (error: any) {
+    console.error('Get user error:', error);
+    res.status(401).json({
+      success: false,
+      message: 'Invalid token'
+    });
+  }
+});
+
+// Verify token
+router.post('/verify', async (req: Request, res: Response) => {
+  try {
+    const { token } = req.body;
+    
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token is required'
+      });
+    }
+
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as any;
+    
+    res.status(200).json({
+      success: true,
+      message: 'Token is valid',
+      user: {
+        userId: decoded.userId,
+        role: decoded.role,
+        email: decoded.email,
+        name: decoded.name
+      }
+    });
+  } catch (error: any) {
+    console.error('Token verification error:', error);
+    res.status(401).json({
+      success: false,
+      message: 'Invalid token'
+    });
+  }
+});
+
+// Get user statistics
+router.get('/stats', async (req: Request, res: Response) => {
   try {
     const stats = await User.aggregate([
       {
@@ -289,107 +403,487 @@ router.get('/stats', auth, async (req: Request, res: Response) => {
       }
     ]);
 
-    res.json({
+    res.status(200).json({
       success: true,
-      data: stats
+      stats
     });
   } catch (error: any) {
-    console.error('Error fetching user stats:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'Error fetching user stats' 
+      message: error.message || 'Error fetching stats'
     });
   }
 });
 
-// Add this new route to check superadmin status
-router.get('/superadmin/check', auth, async (req: Request, res: Response) => {
+// =============================================
+// FIX: Add endpoint to check Super Admin status
+// =============================================
+router.get('/check-superadmin', async (req: Request, res: Response) => {
   try {
-    console.log('👑 [SUPERADMIN CHECK] Checking superadmin status');
-    const superadmin = await User.findOne({ role: 'superadmin' }).select('-password');
+    const existingSuperAdmins = await User.find({ role: 'superadmin' });
     
-    res.json({
+    res.status(200).json({
       success: true,
-      exists: !!superadmin,
-      superadmin: superadmin || null
+      exists: existingSuperAdmins.length > 0,
+      count: existingSuperAdmins.length,
+      superAdmins: existingSuperAdmins.map(u => ({
+        email: u.email,
+        name: u.name,
+        isActive: u.isActive,
+        joinDate: u.joinDate
+      }))
     });
   } catch (error: any) {
-    console.error('Error checking superadmin:', error);
-    res.status(500).json({ 
+    console.error('Check superadmin error:', error);
+    res.status(500).json({
       success: false,
-      message: 'Error checking superadmin status'
+      message: error.message || 'Error checking Super Admin status'
     });
   }
 });
 
-// Update user role specifically
-router.put('/:id/role', auth, authorize('admin', 'superadmin'), async (req: Request, res: Response) => {
+// Create default admin - FIXED VERSION with restriction
+router.post('/create-default-admin', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    const { role } = req.body;
+    // Check if Super Admin already exists
+    const existingSuperAdmins = await User.find({ role: 'superadmin' });
     
-    if (!role) {
+    if (existingSuperAdmins.length > 0) {
       return res.status(400).json({
         success: false,
-        message: 'Role is required'
+        message: 'Super Admin already exists. Cannot create default admin.'
       });
     }
     
-    console.log('👑 [UPDATE ROLE] Attempting to update role for user:', id, 'to:', role);
-    
-    // Check superadmin limit if trying to set role to superadmin
-    if (role === 'superadmin') {
-      const existingSuperadmin = await User.findOne({ 
-        role: 'superadmin',
-        _id: { $ne: id }
+    const existingAdmin = await User.findOne({ email: 'admin@example.com' });
+    if (existingAdmin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Admin user already exists'
       });
+    }
+
+    const admin = new User({
+      name: 'Super Admin',
+      email: 'admin@example.com',
+      password: 'admin123',
+      role: 'superadmin',
+      username: 'admin',
+      firstName: 'Super',
+      lastName: 'Admin',
+      isActive: true,
+      // site: 'Mumbai Office',
+      joinDate: new Date()
+    });
+
+    await admin.save();
+
+    const token = jwt.sign(
+      { userId: admin._id, role: admin.role },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '7d' }
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Default admin created successfully',
+      user: {
+        _id: admin._id.toString(),
+        id: admin._id.toString().slice(-6),
+        name: admin.name,
+        email: admin.email,
+        role: admin.role
+      },
+      token
+    });
+  } catch (error: any) {
+    console.error('Create admin error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error creating admin'
+    });
+  }
+});
+
+// Get current user info (with auth middleware)
+router.get('/current-user', auth, async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      data: req.user
+    });
+  } catch (error) {
+    console.error('Error in /current-user route:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error fetching user data' 
+    });
+  }
+});
+
+// =============================================
+// Add Super Admin creation endpoint (protected)
+// =============================================
+router.post('/create-superadmin', auth, async (req: Request, res: Response) => {
+  try {
+    // Only allow current Super Admin to create another Super Admin
+    if (req.user?.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only Super Admin can create another Super Admin'
+      });
+    }
+
+    const { name, email, password } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide all required fields'
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid email address'
+      });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: 'Email already registered'
+      });
+    }
+
+    // Optional: Limit to maximum 2 Super Admins
+    const existingSuperAdmins = await User.find({ role: 'superadmin' });
+    const MAX_SUPER_ADMINS = 2; // You can change this number
+    
+    if (existingSuperAdmins.length >= MAX_SUPER_ADMINS) {
+      return res.status(403).json({
+        success: false,
+        message: `Maximum of ${MAX_SUPER_ADMINS} Super Admins allowed`
+      });
+    }
+
+    // Validate password strength
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 6 characters long'
+      });
+    }
+
+    const newSuperAdmin = new User({
+      name,
+      email,
+      password,
+      role: 'superadmin',
+      username: email.split('@')[0],
+      firstName: name.split(' ')[0],
+      lastName: name.split(' ').slice(1).join(' ') || '',
+      isActive: true,
+      // site: 'Mumbai Office',
+      joinDate: new Date(),
+      createdBy: req.user?._id // Track who created this Super Admin
+    });
+
+    await newSuperAdmin.save();
+
+    res.status(201).json({
+      success: true,
+      message: 'Additional Super Admin created successfully',
+      user: {
+        _id: newSuperAdmin._id.toString(),
+        id: newSuperAdmin._id.toString().slice(-6),
+        name: newSuperAdmin.name,
+        email: newSuperAdmin.email,
+        role: newSuperAdmin.role,
+        isActive: newSuperAdmin.isActive,
+        // site: newSuperAdmin.site,
+        joinDate: newSuperAdmin.joinDate.toISOString().split('T')[0]
+      }
+    });
+  } catch (error: any) {
+    console.error('Create superadmin error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error creating Super Admin'
+    });
+  }
+});
+
+// Debug endpoint - Test passwords without login
+router.post('/debug-password-check', async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
+    
+    console.log('\n🔍 ========== PASSWORD DEBUG ==========');
+    console.log(`📧 Email: ${email}`);
+    console.log(`🔑 Password to test: ${password}`);
+    console.log(`🔑 Password length: ${password?.length}`);
+    
+    const user = await User.findOne({ email: email }).select('+password');
+    
+    if (!user) {
+      console.log('❌ User not found');
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+    
+    console.log(`✅ Found user: ${user.email}`);
+    console.log(`🔍 Role: ${user.role}`);
+    console.log(`🔍 Is active: ${user.isActive}`);
+    console.log(`🔍 Stored password: ${user.password.substring(0, 60)}...`);
+    console.log(`🔍 Password length: ${user.password.length}`);
+    console.log(`🔍 Is bcrypt hash? ${user.password.startsWith('$2') ? '✅ Yes' : '❌ No'}`);
+    
+    if (user.password.startsWith('$2a$')) console.log(`🔍 Hash type: bcrypt $2a$`);
+    else if (user.password.startsWith('$2b$')) console.log(`🔍 Hash type: bcrypt $2b$`);
+    else if (user.password.startsWith('$2y$')) console.log(`🔍 Hash type: bcrypt $2y$`);
+    else console.log(`🔍 Hash type: PLAIN TEXT (UNSAFE!)`);
+    
+    // Try bcrypt compare
+    console.log('\n🔐 Testing bcrypt compare...');
+    let bcryptResult = false;
+    let bcryptError = null;
+    
+    try {
+      if (user.password.startsWith('$2')) {
+        bcryptResult = await bcrypt.compare(password, user.password);
+        console.log(`🔐 Bcrypt result: ${bcryptResult ? '✅ MATCH' : '❌ NO MATCH'}`);
+      } else {
+        console.log('⚠️ Not a bcrypt hash, skipping bcrypt compare');
+      }
+    } catch (error: any) {
+      bcryptError = error.message;
+      console.log(`❌ Bcrypt error: ${error.message}`);
+    }
+    
+    // Try direct comparison
+    console.log('\n🔐 Testing direct comparison...');
+    const directResult = user.password === password;
+    console.log(`🔐 Direct result: ${directResult ? '✅ MATCH' : '❌ NO MATCH'}`);
+    
+    // Final result
+    const finalResult = bcryptResult || directResult;
+    
+    console.log(`\n📊 ========== FINAL RESULT ==========`);
+    console.log(`🔐 Password is correct? ${finalResult ? '✅ YES' : '❌ NO'}`);
+    
+    if (!finalResult) {
+      console.log('\n🔍 Testing common passwords...');
+      const commonPasswords = [
+        '123456', 'password', 'admin123', 'Admin@123', 'password123', 'admin',
+        '12345678', '123456789', '12345', '1234', 'admin@123', 'Admin123',
+        'Admin@1234', 'admin@1234', 'Password@123', 'Password123'
+      ];
       
-      if (existingSuperadmin) {
-        console.log('👑 [UPDATE ROLE] Superadmin already exists:', existingSuperadmin.email);
-        return res.status(400).json({
-          success: false,
-          message: 'Only one superadmin is allowed. Another superadmin already exists.'
-        });
+      for (const pwd of commonPasswords) {
+        try {
+          if (user.password.startsWith('$2')) {
+            const match = await bcrypt.compare(pwd, user.password);
+            if (match) {
+              console.log(`✅ Password might be: "${pwd}"`);
+              break;
+            }
+          } else if (user.password === pwd) {
+            console.log(`✅ Password is: "${pwd}"`);
+            break;
+          }
+        } catch (e) {
+          // Ignore
+        }
       }
     }
     
-    const user = await User.findByIdAndUpdate(
-      id,
-      { role },
-      { new: true, runValidators: true }
-    ).select('-password');
+    console.log(`=====================================\n`);
+    
+    res.json({
+      success: true,
+      result: finalResult,
+      user: {
+        email: user.email,
+        role: user.role,
+        isActive: user.isActive
+      },
+      passwordInfo: {
+        isHashed: user.password.startsWith('$2'),
+        hashLength: user.password.length,
+        hashType: user.password.startsWith('$2a$') ? 'bcrypt $2a$' : 
+                 user.password.startsWith('$2b$') ? 'bcrypt $2b$' : 
+                 user.password.startsWith('$2y$') ? 'bcrypt $2y$' : 'plain-text',
+        hashPreview: user.password.substring(0, 30),
+        comparisonMethods: {
+          bcrypt: bcryptResult,
+          direct: directResult,
+          bcryptError: bcryptError
+        }
+      }
+    });
+    
+  } catch (error: any) {
+    console.error('❌ Debug error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Emergency password reset (development only)
+router.post('/emergency-reset', async (req: Request, res: Response) => {
+  try {
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(403).json({
+        success: false,
+        error: 'Not allowed in production'
+      });
+    }
+    
+    const { email, newPassword } = req.body;
+    
+    if (!email || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email and new password required'
+      });
+    }
+    
+    const user = await User.findOne({ email: email });
     
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        error: 'User not found'
       });
     }
     
-    console.log('✅ [UPDATE ROLE] Role updated successfully');
+    console.log(`\n🆘 ========== EMERGENCY RESET ==========`);
+    console.log(`📧 User: ${user.email}`);
+    console.log(`🔐 Old hash: ${user.password?.substring(0, 30) || 'NULL'}...`);
+    console.log(`🔑 New password: ${newPassword}`);
+    console.log(`🔑 New password length: ${newPassword.length}`);
+    
+    // Force set password (will be hashed by pre-save hook)
+    user.password = newPassword;
+    user.passwordChangedAt = new Date();
+    
+    await user.save();
+    
+    const updatedUser = await User.findOne({ email: email }).select('+password');
+    
+    if (!updatedUser) {
+      console.log('❌ Failed to retrieve updated user');
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to verify password update'
+      });
+    }
+    
+    console.log(`\n✅ Verification:`);
+    console.log(`   New hash: ${updatedUser.password.substring(0, 30)}...`);
+    console.log(`   Hash length: ${updatedUser.password.length}`);
+    console.log(`   Is hashed? ${updatedUser.password.startsWith('$2')}`);
+    
+    const match = await bcrypt.compare(newPassword, updatedUser.password);
+    console.log(`   Password matches? ${match ? '✅ YES' : '❌ NO'}`);
+    console.log(`=====================================\n`);
+    
     res.json({
       success: true,
-      user: {
-        ...user.toObject(),
-        id: user._id.toString().slice(-6),
-        status: user.isActive ? 'active' : 'inactive'
-      },
-      message: 'User role updated successfully'
+      message: `Password for ${email} has been reset`,
+      note: 'Try logging in with the new password',
+      debug: {
+        email: email,
+        newPasswordSet: true,
+        isHashed: updatedUser.password.startsWith('$2'),
+        verification: match
+      }
     });
-  } catch (error: any) {
-    console.error('❌ [UPDATE ROLE] Error:', error.message);
     
-    // Handle superadmin limit error from Mongoose middleware
-    if (error.name === 'SuperadminLimitError') {
-      return res.status(400).json({ 
+  } catch (error: any) {
+    console.error('❌ Emergency reset error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Test password storage endpoint
+router.post('/test-password-storage', async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
+    
+    console.log('\n🧪 ========== TEST PASSWORD STORAGE ==========');
+    console.log('Email:', email);
+    console.log('Password to store:', password);
+    
+    // Create a test user
+    const testUser = new User({
+      email: email || 'test_' + Date.now() + '@test.com',
+      password: password || 'Test@123',
+      name: 'Test User',
+      role: 'superadmin',
+      isActive: true,
+      username: 'testuser',
+      site: 'Test Site'
+    });
+    
+    console.log('\n🔍 BEFORE SAVE:');
+    console.log('   Plain password:', testUser.password);
+    
+    await testUser.save();
+    
+    console.log('\n🔍 AFTER SAVE:');
+    console.log('   User saved with ID:', testUser._id);
+    
+    // Retrieve to see what was stored
+    const savedUser = await User.findById(testUser._id).select('+password');
+    
+    if (!savedUser) {
+      console.log('❌ Failed to retrieve saved user');
+      return res.status(500).json({
         success: false,
-        message: error.message
+        error: 'Failed to retrieve saved user'
       });
     }
     
-    res.status(400).json({ 
+    console.log('\n🔍 RETRIEVED FROM DB:');
+    console.log('   Has password field?', !!savedUser.password);
+    console.log('   Password length:', savedUser.password.length);
+    console.log('   Is bcrypt hash?', savedUser.password.startsWith('$2'));
+    console.log('   Hash preview:', savedUser.password.substring(0, 30) + '...');
+    
+    // Test comparison
+    const match = await bcrypt.compare(password || 'Test@123', savedUser.password);
+    console.log('\n🔐 PASSWORD COMPARISON:');
+    console.log('   Match?', match ? '✅ YES' : '❌ NO');
+    
+    console.log('===========================================\n');
+    
+    res.json({
+      success: true,
+      message: 'Test completed',
+      storedHash: savedUser.password.substring(0, 30) + '...',
+      isHashed: savedUser.password.startsWith('$2'),
+      canLogin: !!savedUser.password
+    });
+    
+  } catch (error: any) {
+    console.error('🧪 Test error:', error);
+    res.status(500).json({
       success: false,
-      message: error.message || 'Error updating user role'
+      error: error.message
     });
   }
 });

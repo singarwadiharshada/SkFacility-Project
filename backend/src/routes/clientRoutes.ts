@@ -1,4 +1,3 @@
-
 import express from 'express';
 import {
   getAllClients,
@@ -8,20 +7,21 @@ import {
   deleteClient,
   searchClients,
   toggleClientStatus,
-  getClientStats
+  getClientStats,
+  getCRMStats
 } from '../controllers/clientController';
 
 const router = express.Router();
 
-// Client routes
+// Important: Define specific routes BEFORE parameter routes
 router.get('/', getAllClients);
 router.get('/search', searchClients);
 router.get('/stats', getClientStats);
-router.get('/:id', getClientById);
+router.get('/crm-stats', getCRMStats);  // Specific route before :id
+router.get('/:id', getClientById);      // Parameter route comes last
 router.post('/', createClient);
 router.put('/:id', updateClient);
 router.delete('/:id', deleteClient);
 router.patch('/:id/toggle-status', toggleClientStatus);
 
 export default router;
-
