@@ -15,7 +15,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 
 // API base URL
-const API_URL = `http://${window.location.hostname}:5001/api`;
+const API_URL = process.env.NODE_ENV === 'development' 
+  ? `http://localhost:5001/api` 
+  : '/api';
 
 // Get current supervisor info from localStorage
 const getCurrentSupervisor = () => {

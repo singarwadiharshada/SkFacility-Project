@@ -10,7 +10,9 @@ import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // Define the API Base URL
-const API_URL = `http://${window.location.hostname}:5001/api`;
+const API_URL = process.env.NODE_ENV === 'development' 
+  ? `http://localhost:5001/api` 
+  : '/api';
 
 // Types
 interface Employee {

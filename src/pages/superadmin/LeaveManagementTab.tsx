@@ -130,7 +130,9 @@ interface ApiManagerLeaveRequest {
   isManagerLeave?: boolean;
 }
 
-const API_URL = `http://${window.location.hostname}:5001/api`;
+const API_URL = process.env.NODE_ENV === 'development' 
+  ? `http://localhost:5001/api` 
+  : '/api';
 
 const LeaveManagementTab = ({ leaveRequests, setLeaveRequests }: LeaveManagementTabProps) => {
   const [activeTab, setActiveTab] = useState<string>("supervisor-employee");

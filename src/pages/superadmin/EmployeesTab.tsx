@@ -21,7 +21,9 @@ interface EmployeesTabProps {
   setActiveTab: (tab: string) => void;
 }
 
-const API_URL = `http://${window.location.hostname}:5001/api`;
+const API_URL = process.env.NODE_ENV === 'development' 
+  ? `http://localhost:5001/api` 
+  : '/api';
 
 // EPF Form 11 Type
 interface EPFForm11Data {

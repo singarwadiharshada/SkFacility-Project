@@ -504,7 +504,9 @@ const AdminLeavePage: React.FC = () => {
   });
 
   // API Base URL
- const API_URL = `http://${window.location.hostname}:5001/api`;
+ const API_URL = process.env.NODE_ENV === 'development' 
+  ? `http://localhost:5001/api` 
+  : '/api';
   // Fetch current user from localStorage on component mount
   useEffect(() => {
     fetchCurrentUser();

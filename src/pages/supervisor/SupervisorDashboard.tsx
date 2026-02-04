@@ -124,7 +124,9 @@ interface OutletContext {
 }
 
 // API base URL
-const API_URL = `http://${window.location.hostname}:5001/api`;
+const API_URL = process.env.NODE_ENV === 'development' 
+  ? `http://localhost:5001/api` 
+  : '/api';
 // Current supervisor info - Dynamic from localStorage
 const getCurrentSupervisor = () => {
   const storedUser = localStorage.getItem("sk_user");

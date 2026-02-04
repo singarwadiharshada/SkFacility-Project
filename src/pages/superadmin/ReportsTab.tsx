@@ -156,7 +156,9 @@ interface APIAttendance {
   remarks?: string;
 }
 
-const API_URL = `http://${window.location.hostname}:5001/api`;
+const API_URL = process.env.NODE_ENV === 'development' 
+  ? `http://localhost:5001/api` 
+  : '/api';
 
 const ReportsTab = ({ employees, attendance, selectedMonth = new Date().toISOString().slice(0, 7) }: ReportsTabProps) => {
   // State for payroll data
